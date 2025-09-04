@@ -1,7 +1,7 @@
 # main.py
 import tkinter as tk
 from tkinter import ttk
-from tabs import capital_costs, operational_costs, it_infrastructure, electricity_costs, export_tab
+from tabs import capital_costs, operational_costs, it_infrastructure, electricity_costs, export_tab, npv_analysis
 from crud import CRUD
 from utils import TotalCosts
 
@@ -31,6 +31,10 @@ class CalculatorApp(tk.Tk):
 
         self.export_tab = export_tab.ExportTab(self.notebook, self)
         self.notebook.add(self.export_tab, text="Экспорт")
+
+        self.npv_tab = npv_analysis.NPVTab(self.notebook, self.crud)
+        self.notebook.add(self.npv_tab, text="NPV-анализ")
+
 
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
 

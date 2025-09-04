@@ -177,3 +177,17 @@ class TotalCosts:
         summary += f"Стоимость электроэнергии: {self.electricity_costs}\n"
         summary += f"Общая стоимость: {self.capital_costs + self.operational_costs + self.electricity_costs}"
         return summary
+
+
+
+
+
+
+
+
+
+def calculate_npv(investment, discount_rate, cash_flows):
+    npv = -investment
+    for t, cf in enumerate(cash_flows, start=1):
+        npv += cf / ((1 + discount_rate) ** t)
+    return npv
