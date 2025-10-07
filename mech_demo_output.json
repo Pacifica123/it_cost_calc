@@ -1,0 +1,153 @@
+{
+  "timestamp": "2025-10-07T09:07:08.887985Z",
+  "weights": [
+    0.75,
+    0.25
+  ],
+  "pareto": [
+    {
+      "items": [
+        {
+          "weight": 3,
+          "CPU": 4,
+          "RAM": 2,
+          "energy": 5
+        }
+      ],
+      "raw_scores": [
+        2.6,
+        -5
+      ],
+      "normalized_scores": [
+        0.35135135135135137,
+        0.6666666666666666
+      ],
+      "agg_score": 0.4301801801801802,
+      "dist_to_ideal": 0.5859492979969055
+    },
+    {
+      "items": [
+        {
+          "weight": 2,
+          "CPU": 3,
+          "RAM": 3,
+          "energy": 4
+        }
+      ],
+      "raw_scores": [
+        2.4,
+        -4
+      ],
+      "normalized_scores": [
+        0.29729729729729726,
+        0.8333333333333334
+      ],
+      "agg_score": 0.4313063063063063,
+      "dist_to_ideal": 0.6142375442234923
+    },
+    {
+      "items": [
+        {
+          "weight": 1,
+          "CPU": 2,
+          "RAM": 1,
+          "energy": 3
+        }
+      ],
+      "raw_scores": [
+        1.3,
+        -3
+      ],
+      "normalized_scores": [
+        0.0,
+        1.0
+      ],
+      "agg_score": 0.25,
+      "dist_to_ideal": 0.8660254037844386
+    },
+    {
+      "items": [
+        {
+          "weight": 4,
+          "CPU": 5,
+          "RAM": 4,
+          "energy": 6
+        }
+      ],
+      "raw_scores": [
+        3.7,
+        -6
+      ],
+      "normalized_scores": [
+        0.6486486486486487,
+        0.5
+      ],
+      "agg_score": 0.6114864864864865,
+      "dist_to_ideal": 0.3938093816458866
+    },
+    {
+      "items": [
+        {
+          "weight": 3,
+          "CPU": 4,
+          "RAM": 2,
+          "energy": 5
+        },
+        {
+          "weight": 2,
+          "CPU": 3,
+          "RAM": 3,
+          "energy": 4
+        }
+      ],
+      "raw_scores": [
+        5.0,
+        -9
+      ],
+      "normalized_scores": [
+        1.0,
+        0.0
+      ],
+      "agg_score": 0.75,
+      "dist_to_ideal": 0.5
+    },
+    {
+      "items": [
+        {
+          "weight": 3,
+          "CPU": 4,
+          "RAM": 2,
+          "energy": 5
+        },
+        {
+          "weight": 1,
+          "CPU": 2,
+          "RAM": 1,
+          "energy": 3
+        }
+      ],
+      "raw_scores": [
+        3.9000000000000004,
+        -8
+      ],
+      "normalized_scores": [
+        0.7027027027027029,
+        0.16666666666666666
+      ],
+      "agg_score": 0.5686936936936938,
+      "dist_to_ideal": 0.48979625697459067
+    }
+  ],
+  "ideal": [
+    1.0,
+    1.0
+  ],
+  "mins": [
+    1.3,
+    -9.0
+  ],
+  "maxs": [
+    5.0,
+    -3.0
+  ]
+}
