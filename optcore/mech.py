@@ -59,6 +59,36 @@ class Item:
         object.__setattr__(self, "properties", dict(properties))
 
 
+@dataclass
+class FuzzyValue:
+    low: float
+    high: float
+
+
+@dataclass
+class FuzzyTerm:
+    low: float
+    high: float
+    a1: float = 0.2  # параметр эксперта
+
+    def mu_true(self, x: float) -> float:
+        """Функция истинности."""
+        if x < self.a1 or x > 1.0:
+            return max(0.0, min(1.0, 0.5 * (1.0 + (math.pi / 2.0) * ((2.0 * x - 1.0 - self.a1) / (1.0 - self.a1)))))
+        v = 0.5 * (1.0 + (math.pi / 2.0) * ((2.0 * x - 1.0 - self.a1) / (1.0 - self.a1)))
+        return max(0.0, min(1.0, v))
+
+    def mu_false(self, x: float) -> float:
+        if x < 0.0 or x > 1.0 - self.a1:
+            return max(0.0, min(1.0, 0.5 * (1.0 + (math.pi / 2.0) * ((1.0 - self.a1 - 2.0 * x) / (1.0 - self.a1)))))
+        v = 0.5 * (1.0 + (math.pi / 2.0) * ((1.0 - self.a1 - 2.0 * x) / (1.0 - self.a1)))
+        return max(0.0, min(1.0, v))
+
+    def centroid(self) -> float:
+        """Простая дефаззификация по центру интервала."""
+        return (self.low + self.high) / 2.0
+
+
 class KnapsackMechanic:
     """
     Класс, реализующий перебор рюкзачных подмножеств и вычисление метрик.
@@ -130,6 +160,11 @@ class KnapsackMechanic:
         и возвращает список (subset_tuple, raw_scores_tuple).
         raw_scores уже приведены к направлению 'чем больше - тем лучше' путем умножения на optimize_directions.
         """
+        def defuzzify(value):
+            if isinstance(value, FuzzyTerm):
+                return value.centroid()
+            return float(value)
+
         feasible = []
         for r in range(len(self.items) + 1):
             for comb in itertools.combinations(self.items, r):
@@ -139,7 +174,7 @@ class KnapsackMechanic:
                 if cval <= self.max_constraint + 1e-12:
                     # Считаем критерии и приводим к "больше - лучше"
                     raw = tuple(
-                        direction * func(comb)
+                        direction * defuzzify(func(comb))
                         for func, direction in zip(self.criteria_funcs, self.optimize_directions)
                     )
                     feasible.append((comb, raw))
@@ -174,6 +209,13 @@ class KnapsackMechanic:
         ge = all((x + self.dominance_eps) >= y for x, y in zip(v1, v2))
         gt = any((x - self.dominance_eps) > y for x, y in zip(v1, v2))
         return ge and gt
+    
+
+    def fuzzy_dominates(self, v1, v2):
+        # каждая компонента — степень уверенности, что v1[i] ≥ v2[i]
+        degrees = [min(1.0, max(0.0, (x - y + 1) / 2)) for x, y in zip(v1, v2)]
+        return np.mean(degrees) > 0.7  # доминирует, если уверенность > 0.7
+
 
     def pareto_filter(self, scored: List[Tuple[Tuple[Item, ...], Tuple[float, ...]]]) \
             -> List[Tuple[Tuple[Item, ...], Tuple[float, ...]]]:
@@ -297,7 +339,7 @@ class KnapsackMechanic:
                 "dist_to_ideal": float(dist),
             })
             log.append(json.dumps({
-                "items": [it.properties for it in subset],
+                "items": [to_json_serializable(it.properties) for it in subset],
                 "raw_scores": tuple(raw_scores),
                 "normalized_scores": tuple(nvec),
                 "agg_score": float(agg),
@@ -331,6 +373,34 @@ class KnapsackMechanic:
 # --------------------------
 # Функция-обёртка run()
 # --------------------------
+def to_json_serializable(obj):
+    import collections.abc
+    # Позволяет расширять обработку конкретных классов
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    if isinstance(obj, dict):
+        return {to_json_serializable(k): to_json_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [to_json_serializable(el) for el in obj]
+    # Обработка конкретного класса FuzzyValue
+    if type(obj).__name__ == "FuzzyValue":
+        return {"low": getattr(obj, "low", None), "high": getattr(obj, "high", None)}
+    # Для других объектов пытаемся взять их __dict__ или поля dataclass
+    if hasattr(obj, "__dict__"):
+        return {k: to_json_serializable(v) for k, v in obj.__dict__.items() if not k.startswith("_")}
+    if hasattr(obj, "__slots__"):  # если используются слоты
+        return {slot: to_json_serializable(getattr(obj, slot)) for slot in obj.__slots__}
+    # Для читаемых коллекций (NamedTuple и пр.)
+    if isinstance(obj, collections.abc.Iterable):
+        try:
+            return [to_json_serializable(i) for i in obj]
+        except Exception:
+            pass
+    # По умолчанию возвращаем строковое представление
+    return str(obj)
+
+
+
 def run(params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Точка входа для внешнего использования.
@@ -366,11 +436,19 @@ def run(params: Dict[str, Any]) -> Dict[str, Any]:
 if __name__ == "__main__":
     # Небольшой демонстрационный сценарий
     items = [
-        Item(weight=3, CPU=4, RAM=2, energy=5),
-        Item(weight=2, CPU=3, RAM=3, energy=4),
-        Item(weight=1, CPU=2, RAM=1, energy=3),
-        Item(weight=4, CPU=5, RAM=4, energy=6)
+        Item(weight=3, CPU=4, RAM=2, energy=5, reliability=FuzzyValue(0.6, 0.8)),
+        Item(weight=2, CPU=3, RAM=3, energy=4, reliability=FuzzyValue(0.3, 0.6)),
+        Item(weight=1, CPU=2, RAM=1, energy=3, reliability=FuzzyValue(0.4, 0.9)),
+        Item(weight=4, CPU=5, RAM=4, energy=6, reliability=FuzzyValue(0.2, 0.5))
     ]
+
+    def reliability(subset):
+        if not subset:
+            return FuzzyTerm(0.0, 0.0)
+        low = np.mean([it.properties["reliability"].low for it in subset])
+        high = np.mean([it.properties["reliability"].high for it in subset])
+        return FuzzyTerm(low, high)
+
 
     def weight_constraint(subset):
         return sum(it.properties.get("weight", 0) for it in subset)
@@ -394,5 +472,5 @@ if __name__ == "__main__":
     out = run(params)
     # Для демонстрации — сохраним краткий результат в json
     with open("mech_demo_output.json", "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, indent=2)
+        json.dump(out, f, ensure_ascii=False, indent=2, default=to_json_serializable)
     print("Demo finished. Results saved to mech_demo_output.json and detailed log in debug_log.txt")

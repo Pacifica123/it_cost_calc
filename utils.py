@@ -191,3 +191,7 @@ def calculate_npv(investment, discount_rate, cash_flows):
     for t, cf in enumerate(cash_flows, start=1):
         npv += cf / ((1 + discount_rate) ** t)
     return npv
+
+
+
+
