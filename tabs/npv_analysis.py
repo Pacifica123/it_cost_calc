@@ -1,55 +1,77 @@
-import tkinter as tk
-from tkinter import ttk
+# tabs/npv_tab.py
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from tkinter import scrolledtext
 
-# Можно использовать отдельную функцию для расчета итогового NPV
+
 def calculate_npv(investment, discount_rate, cash_flows):
     npv = -investment
     for t, cf in enumerate(cash_flows, start=1):
         npv += cf / ((1 + discount_rate) ** t)
     return npv
 
-class NPVTab(tk.Frame):
-    def __init__(self, parent, crud):
+
+class NPVTab(ttk.Frame):
+    def __init__(self, parent, crud=None):
         super().__init__(parent)
         self.crud = crud
 
-        # Поля ввода
-        tk.Label(self, text="Начальные инвестиции (I):").grid(row=0, column=0, sticky="w")
-        self.invest_entry = tk.Entry(self)
-        self.invest_entry.grid(row=0, column=1)
+        # Общий контейнер
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill=BOTH, expand=True, padx=15, pady=15)
 
-        tk.Label(self, text="Денежные потоки по годам (через запятую):").grid(row=1, column=0, sticky="w")
-        self.cf_entry = tk.Entry(self, width=50)
-        self.cf_entry.grid(row=1, column=1)
+        # Левая панель — ввод данных и результат
+        left_frame = ttk.Labelframe(main_frame, text="Расчет NPV", bootstyle=INFO)
+        left_frame.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 10))
 
-        tk.Label(self, text="Ставка дисконтирования r (например 0.1):").grid(row=2, column=0, sticky="w")
-        self.r_entry = tk.Entry(self)
-        self.r_entry.grid(row=2, column=1)
+        # Правая панель — график
+        right_frame = ttk.Labelframe(main_frame, text="График NPV", bootstyle=INFO)
+        right_frame.pack(side=RIGHT, fill=BOTH, expand=True)
 
-        # Кнопка расчета
-        self.calc_button = tk.Button(self, text="Рассчитать NPV", command=self.calculate_and_plot)
-        self.calc_button.grid(row=3, column=0, columnspan=2, pady=10)
+        # --- Ввод данных ---
+        ttk.Label(left_frame, text="Начальные инвестиции (I):", font=("Segoe UI", 10, "bold"),
+                  foreground="black").pack(anchor=W, pady=(5, 0), padx=10)
+        self.invest_entry = ttk.Entry(left_frame, width=25)
+        self.invest_entry.pack(pady=5, padx=10, fill=X)
 
-        # Поле для текста результата
-        self.result_text = tk.Text(self, height=15, width=80)
-        self.result_text.grid(row=4, column=0, columnspan=2)
+        ttk.Label(left_frame, text="Денежные потоки по годам (через запятую):",
+                  font=("Segoe UI", 10, "bold"), foreground="black").pack(anchor=W, pady=(5, 0), padx=10)
+        self.cf_entry = ttk.Entry(left_frame, width=40)
+        self.cf_entry.pack(pady=5, padx=10, fill=X)
 
-        # Поле для графика
-        self.fig, self.ax = plt.subplots(figsize=(6,4))
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
-        self.canvas.get_tk_widget().grid(row=5, column=0, columnspan=2)
+        ttk.Label(left_frame, text="Ставка дисконтирования r (например 0.1):",
+                  font=("Segoe UI", 10, "bold"), foreground="black").pack(anchor=W, pady=(5, 0), padx=10)
+        self.r_entry = ttk.Entry(left_frame, width=25)
+        self.r_entry.pack(pady=5, padx=10, fill=X)
+
+        ttk.Button(left_frame, text="📊 Рассчитать NPV", bootstyle=SUCCESS,
+                   command=self.calculate_and_plot).pack(pady=10, padx=10, fill=X)
+
+        # --- Результат расчета ---
+        self.result_text = scrolledtext.ScrolledText(left_frame, height=18, width=60, font=("Consolas", 9))
+        self.result_text.pack(padx=10, pady=(5, 10), fill=BOTH, expand=True)
+
+        # --- График ---
+        self.fig, self.ax = plt.subplots(figsize=(6, 4))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=right_frame)
+        self.canvas.get_tk_widget().pack(fill=BOTH, expand=True, padx=10, pady=10)
+
+        self.ax.set_title("График NPV", fontsize=10)
+        self.ax.set_xlabel("Год")
+        self.ax.set_ylabel("Накопленный NPV")
 
     def calculate_and_plot(self):
         try:
             investment = float(self.invest_entry.get())
-            cash_flows = [float(x) for x in self.cf_entry.get().split(",")]
+            cash_flows = [float(x.strip()) for x in self.cf_entry.get().split(",")]
             r = float(self.r_entry.get())
 
+            # --- Расчет ---
             debug_lines = []
             debug_lines.append(f"{'Год':>3} | {'I':>10} | {'CFt':>10} | {'DiscF':>10} | {'PVt':>10} | {'NPVt':>10}")
-            debug_lines.append("-"*70)
+            debug_lines.append("-" * 70)
 
             total_npv = -investment
             accumulated_npv = [total_npv]
@@ -63,24 +85,26 @@ class NPVTab(tk.Frame):
                 total_pv += cf
                 total_npv += PV_t
                 accumulated_npv.append(total_npv)
-                debug_lines.append(f"{t+1:>3} | {0:>10.2f} | {cf:>10.2f} | {disc_factor:>10.4f} | {PV_t:>10.2f} | {total_npv:>10.2f}")
+                debug_lines.append(f"{t + 1:>3} | {0:>10.2f} | {cf:>10.2f} | {disc_factor:>10.4f} | {PV_t:>10.2f} | {total_npv:>10.2f}")
 
-            debug_lines.append("-"*70)
+            debug_lines.append("-" * 70)
             debug_lines.append(f"{'Сумма':>3} | {investment:>10.2f} | {'':>10} | {'':>10} | {total_pv:>10.2f} | {total_npv:>10.2f}")
 
-            self.result_text.delete('1.0', tk.END)
-            self.result_text.insert(tk.END, "\n".join(debug_lines))
+            self.result_text.delete('1.0', 'end')
+            self.result_text.insert('end', "\n".join(debug_lines))
 
+            # --- Построение графика ---
             self.ax.clear()
-            self.ax.plot(range(1, len(accumulated_npv)+1), accumulated_npv, marker='o')
-            self.ax.axhline(0, color='red', linestyle='--')
-            self.ax.set_xlabel("Год")
-            self.ax.set_ylabel("Накопленный NPV")
-            self.ax.set_title("NPV по годам при ставке r")
+            self.ax.plot(range(1, len(accumulated_npv) + 1), accumulated_npv,
+                         marker='o', linestyle='-', color='#2E86C1', linewidth=2, markersize=6)
+            self.ax.axhline(0, color='red', linestyle='--', linewidth=1)
+            self.ax.set_xlabel("Год", fontsize=9)
+            self.ax.set_ylabel("Накопленный NPV", fontsize=9)
+            self.ax.set_title(f"NPV по годам (r = {r:.2f})", fontsize=10)
+            self.ax.grid(True, linestyle=':', alpha=0.6)
             self.fig.tight_layout()
             self.canvas.draw()
 
         except Exception as e:
-            self.result_text.delete('1.0', tk.END)
-            self.result_text.insert(tk.END, f"Ошибка: {e}")
-
+            self.result_text.delete('1.0', 'end')
+            self.result_text.insert('end', f"Ошибка: {e}")
