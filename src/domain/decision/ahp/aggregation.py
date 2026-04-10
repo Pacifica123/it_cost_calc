@@ -44,6 +44,7 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
     total_energy = 0.0
     perf_sum = 0.0
     rel_vals = []
+    lifespan_vals = []
     counts = {}
     for d in devs:
         role = d.get("role", "unknown")
@@ -58,17 +59,28 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
             + float(d.get("perf", 0.0))
         )
         r = d.get("reliability", None)
+        rel_centroid = None
         if isinstance(r, dict) and "low" in r and "high" in r:
-            rel_vals.append(FuzzyInterval(float(r["low"]), float(r["high"])).centroid())
+            rel_centroid = FuzzyInterval(float(r["low"]), float(r["high"])).centroid()
+            rel_vals.append(rel_centroid)
         else:
             if r is None:
                 pass
             else:
                 try:
-                    rel_vals.append(float(r))
+                    rel_centroid = float(r)
+                    rel_vals.append(rel_centroid)
                 except Exception:
                     pass
+
+        lifespan = d.get("lifespan", None)
+        if lifespan is not None:
+            try:
+                lifespan_vals.append(float(lifespan))
+            except Exception:
+                pass
     avg_reliability = float(np.mean(rel_vals)) if len(rel_vals) > 0 else 0.0
+    avg_lifespan = float(np.mean(lifespan_vals)) if len(lifespan_vals) > 0 else 0.0
     res = {
         "id": cfg.get("id", None),
         "total_cost": total_cost,
@@ -77,6 +89,7 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "avg_reliability": avg_reliability,
         "counts": counts,
         "people": int(cfg.get("meta", {}).get("people", cfg.get("people", 0))),
+        "lifespan": avg_lifespan,
     }
     return res
 

@@ -35,3 +35,20 @@ DEFAULT_CONSTRAINTS = {
     "max_energy": 700.0,
     "people_match_tolerance": 0.25,
 }
+
+
+SOFT_CRITERIA_LABELS = {
+    "avg_reliability": "Надежность",
+    "total_performance": "Производительность",
+    "total_cost": "Совокупная стоимость",
+    "total_energy": "Энергопотребление",
+    "lifespan": "Срок службы / запас устойчивости",
+}
+
+SOFT_CRITERIA_SHORT_LABELS = {
+    "avg_reliability": "Надежность",
+    "total_performance": "Производит.",
+    "total_cost": "Стоимость",
+    "total_energy": "Энергия",
+    "lifespan": "Срок службы",
+}

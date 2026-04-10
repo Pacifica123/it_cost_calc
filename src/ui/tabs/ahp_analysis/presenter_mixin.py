@@ -13,19 +13,21 @@ class AHPPresenterMixin:
             lines.append("WARNING: " + report["warning"])
         crit = report.get("criteria", {})
         if crit:
-            w = crit.get("weights", [])
+            weights = crit.get("weights", [])
             names = crit.get("names", [])
             lines.append("Критерии (веса):")
-            for n, wt in zip(names, w):
-                lines.append(f"  {n}: {wt:.4f}")
+            for criterion_id, weight in zip(names, weights):
+                criterion_label = self._format_soft_criterion_label(criterion_id)
+                lines.append(f"  {criterion_label}: {weight:.4f}")
             lines.append(f"CR(criteria): {crit.get('CR'):.4f}  CI: {crit.get('CI'):.6f}")
         final = report.get("final", {})
         if final:
             lines.append("Рейтинг (top -> ...):")
-            for aid, sc in final.get("ranking", []):
-                lines.append(f"  {aid}: {sc:.4f}")
-            sel = report.get("selection", {}).get("selected_ids", [])
-            lines.append("Выбранные (top): " + ", ".join(sel))
+            for aid, score in final.get("ranking", []):
+                config_name = self._configuration_display_name(aid)
+                lines.append(f"  {config_name}: {score:.4f}")
+            selected = [self._configuration_display_name(item) for item in report.get("selection", {}).get("selected_ids", [])]
+            lines.append("Выбранные (top): " + ", ".join(selected))
         self.summary_text.insert("1.0", "\n".join(lines))
 
     def _fill_details(self, report):

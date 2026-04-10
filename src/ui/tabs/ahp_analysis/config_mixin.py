@@ -9,6 +9,9 @@ class AHPConfigurationMixin:
         tk.Label(popup, text="ID конфигурации").pack()
         id_entry = tk.Entry(popup)
         id_entry.pack()
+        tk.Label(popup, text="Название конфигурации").pack()
+        name_entry = tk.Entry(popup)
+        name_entry.pack()
         tk.Label(popup, text="People (число людей)").pack()
         people_entry = tk.Entry(popup)
         people_entry.pack()
@@ -19,9 +22,10 @@ class AHPConfigurationMixin:
             if not cid:
                 messagebox.showerror("Error", "ID не может быть пустым")
                 return
+            name = name_entry.get().strip() or cid
             people = int(people_entry.get() or 0)
-            self.configurations[cid] = {"devices": [], "meta": {"people": people}}
-            self.cfg_table.insert("", "end", iid=cid, values=(cid, people, 0))
+            self.configurations[cid] = {"name": name, "devices": [], "meta": {"people": people}}
+            self.cfg_table.insert("", "end", iid=cid, values=(cid, name, people, 0))
             popup.destroy()
 
         tk.Button(popup, text="Сохранить", command=save).pack()
@@ -42,12 +46,11 @@ class AHPConfigurationMixin:
             return
         iid = sel[0]
         cfg = self.configurations.get(iid, {"devices": [], "meta": {}})
-        # populate dev_table
         self.dev_table.delete(*self.dev_table.get_children())
         for idx, d in enumerate(cfg["devices"]):
             vals = (
                 d.get("role", ""),
-                d.get("vendor", ""),
+                d.get("vendor", d.get("source_name", "")),
                 d.get("cpu_score", 0),
                 d.get("ram_score", 0),
                 d.get("energy", 0),
@@ -74,14 +77,15 @@ class AHPConfigurationMixin:
             ("ram_score", "0.0"),
             ("energy", "0.0"),
             ("cost", "0.0"),
+            ("lifespan", "4.0"),
             ("rel_low", "0.5"),
             ("rel_high", "0.9"),
         ]:
             tk.Label(popup, text=label).pack(anchor="w")
-            e = tk.Entry(popup)
-            e.pack(fill="x")
-            e.insert(0, default)
-            entries[label] = e
+            entry = tk.Entry(popup)
+            entry.pack(fill="x")
+            entry.insert(0, default)
+            entries[label] = entry
 
         def save_dev():
             d = {
@@ -91,16 +95,17 @@ class AHPConfigurationMixin:
                 "ram_score": float(entries["ram_score"].get() or 0.0),
                 "energy": float(entries["energy"].get() or 0.0),
                 "cost": float(entries["cost"].get() or 0.0),
+                "lifespan": float(entries["lifespan"].get() or 0.0),
                 "reliability": {
                     "low": float(entries["rel_low"].get() or 0.0),
                     "high": float(entries["rel_high"].get() or 0.0),
                 },
             }
             self.configurations[cfg_id]["devices"].append(d)
-            # update table counts
             cnt = len(self.configurations[cfg_id]["devices"])
             people = self.configurations[cfg_id]["meta"].get("people", 0)
-            self.cfg_table.item(cfg_id, values=(cfg_id, people, cnt))
+            name = self.configurations[cfg_id].get("name", cfg_id)
+            self.cfg_table.item(cfg_id, values=(cfg_id, name, people, cnt))
             self._on_select_config(None)
             popup.destroy()
 
@@ -111,16 +116,14 @@ class AHPConfigurationMixin:
         if not sel:
             return
         item = sel[0]
-        # parse id and index
         parts = item.split("_dev_")
         if len(parts) != 2:
             return
         cfg_id, idx = parts[0], int(parts[1])
         if cfg_id in self.configurations and idx < len(self.configurations[cfg_id]["devices"]):
             del self.configurations[cfg_id]["devices"][idx]
-            # rebuild dev table
             self._on_select_config(None)
-            # update devices_count
             cnt = len(self.configurations[cfg_id]["devices"])
             people = self.configurations[cfg_id]["meta"].get("people", 0)
-            self.cfg_table.item(cfg_id, values=(cfg_id, people, cnt))
+            name = self.configurations[cfg_id].get("name", cfg_id)
+            self.cfg_table.item(cfg_id, values=(cfg_id, name, people, cnt))

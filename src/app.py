@@ -7,6 +7,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from application.services.cost_aggregation_service import CostAggregationService
+from application.services.decision_demo_service import DecisionDemoDataService
 from application.services.electricity_cost_service import ElectricityCostService
 from application.services.equipment_service import EquipmentService
 from application.services.npv_report_service import NPVReportService
@@ -55,6 +56,7 @@ class CalculatorApp(tk.Tk):
         self.crud = TreeviewCrudRepository(self.entity_repository)
         self.equipment_service = EquipmentService(self.entity_repository)
         self.cost_aggregation_service = CostAggregationService()
+        self.decision_demo_data_service = DecisionDemoDataService()
 
         self.prepare_cost_summary_use_case = PrepareCostSummaryUseCase(
             self.cost_aggregation_service, self.equipment_service
@@ -164,11 +166,32 @@ class CalculatorApp(tk.Tk):
 
         self.load_demo_dataset_use_case.execute(demo_dataset_path)
         self._refresh_runtime_views()
+
+        demo_decision_payload = self.decision_demo_data_service.build(self.entity_repository.entities)
+        self.configuration_selection_tab.load_demo_configurations(
+            demo_decision_payload["configurations"],
+            constraints=demo_decision_payload["constraints"],
+            message=(
+                "Демо-конфигурации собраны из того же набора оборудования, который был загружен в капитальные затраты. "
+                "При желании переключите режим на экспертный и задайте собственную матрицу важности критериев."
+            ),
+        )
+        self.criteria_importance_tab.load_case_data(
+            demo_decision_payload["criteria_case"],
+            message=(
+                "Демонстрационный кейс обоснования выбора ИТ-решения сформирован на основе текущего демонстрационного набора оборудования."
+            ),
+        )
+
         self.demo_status_var.set(
             "Демо-данные загружены вручную из data/fixtures/demo_dataset.json."
         )
         logger.info("Демо-данные загружены через GUI: %s", demo_dataset_path)
-        messagebox.showinfo("Готово", "Демонстрационный набор данных загружен.", parent=self)
+        messagebox.showinfo(
+            "Готово",
+            "Демонстрационный набор данных загружен, а связанные вкладки обновлены аутентичными сценариями.",
+            parent=self,
+        )
 
     def on_tab_change(self, _event) -> None:
         current_index = self.notebook.index("current")

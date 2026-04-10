@@ -34,15 +34,12 @@ class CriteriaImportanceTab(
         self.case_data = None
         self.analysis_report = None
         self._build_ui()
-        self._load_default_case()
+        self._reset_case()
 
     def _build_ui(self):
         toolbar = tk.Frame(self)
         toolbar.pack(fill="x", padx=6, pady=6)
 
-        tk.Button(toolbar, text="Загрузить пример из лекции", command=self._load_default_case).pack(
-            side="left"
-        )
         tk.Button(toolbar, text="Загрузить JSON...", command=self._load_json).pack(side="left")
         tk.Button(toolbar, text="Сохранить JSON...", command=self._save_json).pack(side="left")
         tk.Button(toolbar, text="Рассчитать", command=self._run_analysis).pack(
@@ -53,7 +50,8 @@ class CriteriaImportanceTab(
             self,
             text=(
                 "Модуль автоматизирует кейс выбора ИТ-решения по методике анализа важности критериев. "
-                "В первой области можно вручную добавлять критерии как строки и системы как колонки."
+                "Демо-сценарий загружается общей кнопкой \"Загрузить демо-данные\" над вкладками, "
+                "после чего здесь можно редактировать критерии, системы, оценки и связи."
             ),
             anchor="w",
             justify="left",
@@ -221,6 +219,26 @@ class CriteriaImportanceTab(
         rank_scroll.pack(fill="y", side="right")
         self.ranking_tree.configure(yscrollcommand=rank_scroll.set)
 
+
+    def _reset_case(self):
+        self.case_data = None
+        self.analysis_report = None
+        self._refresh_scores_tree()
+        self._refresh_relations_tree()
+        self._clear_result_tables()
+        self._set_result(
+            "Данные для анализа еще не подготовлены. "
+            "Загрузите JSON вручную или используйте общую кнопку \"Загрузить демо-данные\"."
+        )
+
+    def load_case_data(self, case_data, *, message=None):
+        self.case_data = case_data
+        self.analysis_report = None
+        self._refresh_scores_tree()
+        self._refresh_relations_tree()
+        self._clear_result_tables()
+        self._set_result(message or "Демо-сценарий для обоснования выбора ИТ-решения загружен.")
+
     def _load_default_case(self):
         if load_default_budgeting_case is None:
             messagebox.showerror(
@@ -228,14 +246,12 @@ class CriteriaImportanceTab(
                 "Не удалось импортировать модуль domain.decision.criteria_importance.analysis",
             )
             return
-        self.case_data = load_default_budgeting_case()
-        self.analysis_report = None
-        self._refresh_scores_tree()
-        self._refresh_relations_tree()
-        self._clear_result_tables()
-        self._set_result(
-            "Загружен демонстрационный пример выбора системы бюджетирования из лекции.\n"
-            'Можно вручную добавлять критерии и системы, менять оценки и связи, затем нажать "Рассчитать".'
+        self.load_case_data(
+            load_default_budgeting_case(),
+            message=(
+                "Загружен резервный пример кейса анализа важности критериев.\n"
+                'Можно вручную добавлять критерии и системы, менять оценки и связи, затем нажать "Рассчитать".'
+            ),
         )
 
     def _load_json(self):
