@@ -61,7 +61,7 @@
 
 ## Слои системы
 
-### `src/it_cost_calc/ui`
+### `src/ui`
 Отвечает за:
 - вкладки;
 - формы ввода;
@@ -71,7 +71,7 @@
 
 UI не должен быть местом хранения предметной логики.
 
-### `src/it_cost_calc/application`
+### `src/application`
 Отвечает за:
 - orchestration;
 - use case-сценарии;
@@ -84,7 +84,7 @@ UI не должен быть местом хранения предметной
 - `LoadDemoDatasetUseCase`;
 - `BuildNpvReportUseCase`.
 
-### `src/it_cost_calc/domain`
+### `src/domain`
 Отвечает за:
 - предметные модели;
 - финансовые формулы;
@@ -94,7 +94,7 @@ UI не должен быть местом хранения предметной
 
 Это слой, который должен оставаться максимально независимым от `Tkinter`, JSON-хранилищ и конкретных экранов.
 
-### `src/it_cost_calc/infrastructure`
+### `src/infrastructure`
 Отвечает за:
 - JSON storage;
 - runtime-репозитории;

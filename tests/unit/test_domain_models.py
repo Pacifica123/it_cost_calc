@@ -1,4 +1,4 @@
-from it_cost_calc.domain import (
+from domain import (
     AnalysisResult,
     CapitalItem,
     Criterion,

@@ -7,7 +7,7 @@
 
 ## Слой `ui`
 
-Каталог: `src/it_cost_calc/ui/`
+Каталог: `src/ui/`
 
 Здесь находятся:
 - вкладки интерфейса;
@@ -28,7 +28,7 @@
 
 ## Слой `application`
 
-Каталог: `src/it_cost_calc/application/`
+Каталог: `src/application/`
 
 Это слой сценариев использования.
 Он координирует взаимодействие между `ui`, `domain` и `infrastructure`.
@@ -47,7 +47,7 @@
 
 ## Слой `domain`
 
-Каталог: `src/it_cost_calc/domain/`
+Каталог: `src/domain/`
 
 Это ядро предметной логики проекта.
 
@@ -68,7 +68,7 @@
 
 ## Слой `infrastructure`
 
-Каталог: `src/it_cost_calc/infrastructure/`
+Каталог: `src/infrastructure/`
 
 Здесь находятся технические адаптеры:
 - JSON storage;

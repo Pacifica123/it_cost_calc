@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from it_cost_calc.domain.decision.ahp.math_utils import (
+from domain.decision.ahp.math_utils import (
     ahp_priority_and_consistency,
     build_pairwise_matrix_from_scores,
     geometric_mean_matrix,

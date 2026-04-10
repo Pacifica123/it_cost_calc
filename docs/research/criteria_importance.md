@@ -23,9 +23,9 @@
 
 ## Где расположен код
 
-- `src/it_cost_calc/domain/decision/criteria_importance/analysis.py`
-- `src/it_cost_calc/domain/decision/criteria_importance/pipeline.py`
-- `src/it_cost_calc/ui/tabs/criteria_importance/`
+- `src/domain/decision/criteria_importance/analysis.py`
+- `src/domain/decision/criteria_importance/pipeline.py`
+- `src/ui/tabs/criteria_importance/`
 
 ## Что содержит результат
 

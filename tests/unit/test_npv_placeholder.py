@@ -1,6 +1,6 @@
 import pytest
 
-from it_cost_calc.domain.finance.npv import calculate_npv
+from domain.finance.npv import calculate_npv
 
 
 def test_calculate_npv_matches_expected_discounted_cash_flow_value():

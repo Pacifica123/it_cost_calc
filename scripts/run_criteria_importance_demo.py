@@ -9,11 +9,11 @@ if str(SRC) not in sys.path:
 
 
 def main() -> None:
-    from it_cost_calc.domain.decision.criteria_importance.analysis import (
+    from domain.decision.criteria_importance.analysis import (
         load_default_budgeting_case,
         run_importance_pipeline,
     )
-    from it_cost_calc.infrastructure.logging import configure_logging
+    from infrastructure.logging import configure_logging
 
     configure_logging(repo_root=ROOT)
     case = load_default_budgeting_case()

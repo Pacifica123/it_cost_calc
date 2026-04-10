@@ -1,43 +1,12 @@
-from it_cost_calc.domain.models import (
-    Alternative,
-    AnalysisResult,
-    CapitalItem,
-    Criterion,
-    ElectricityProfile,
-    EquipmentCategory,
-    ExpenseType,
-    OperationalExpense,
-    Relation,
-    RelationOperator,
-    as_equipment_category,
-    as_relation_operator,
-    ensure_alternative,
-    ensure_capital_item,
-    ensure_criterion,
-    ensure_electricity_profile,
-    ensure_operational_expense,
-    ensure_relation,
-    to_plain_data,
-)
+"""Совместимость со старым пространством имён пакета."""
+from importlib import import_module
 
-__all__ = [
-    "Alternative",
-    "AnalysisResult",
-    "CapitalItem",
-    "Criterion",
-    "ElectricityProfile",
-    "EquipmentCategory",
-    "ExpenseType",
-    "OperationalExpense",
-    "Relation",
-    "RelationOperator",
-    "as_equipment_category",
-    "as_relation_operator",
-    "ensure_alternative",
-    "ensure_capital_item",
-    "ensure_criterion",
-    "ensure_electricity_profile",
-    "ensure_operational_expense",
-    "ensure_relation",
-    "to_plain_data",
-]
+_real_package = import_module("domain")
+
+__path__ = _real_package.__path__
+__all__ = getattr(_real_package, "__all__", [])
+
+for _name in dir(_real_package):
+    if _name.startswith("__") and _name not in {"__doc__", "__all__"}:
+        continue
+    globals()[_name] = getattr(_real_package, _name)

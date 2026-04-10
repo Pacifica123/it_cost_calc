@@ -1,4 +1,4 @@
-from it_cost_calc.application.services.cost_summary_service import CostSummaryService
+from application.services.cost_summary_service import CostSummaryService
 
 
 class DummyCrud:

@@ -1,6 +1,6 @@
 import numpy as np
 
-from it_cost_calc.domain.optimization import Item, run
+from domain.optimization import Item, run
 
 
 def test_mech_wrapper_keeps_run_entrypoint_working():

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from it_cost_calc.domain.decision.criteria_importance.analysis import (
+from domain.decision.criteria_importance.analysis import (
     load_default_budgeting_case,
     run_importance_pipeline,
 )

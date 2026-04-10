@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
 
-from it_cost_calc.domain.decision.ahp.aggregation import (
+from domain.decision.ahp.aggregation import (
     aggregate_configuration,
     filter_hard_constraints,
 )
-from it_cost_calc.domain.decision.ahp.defaults import DEFAULT_CONSTRAINTS
+from domain.decision.ahp.defaults import DEFAULT_CONSTRAINTS
 
 
 def test_filter_hard_constraints_keeps_only_expected_sample_configurations():

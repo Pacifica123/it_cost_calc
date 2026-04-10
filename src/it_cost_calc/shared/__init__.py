@@ -1,13 +1,12 @@
-from .constants import CAPITAL_COST_CATEGORIES, OPERATIONAL_COST_CATEGORIES
-from .formatting import format_cost_summary, format_money
-from .validation import parse_float, parse_int, require_text
+"""Совместимость со старым пространством имён пакета."""
+from importlib import import_module
 
-__all__ = [
-    "CAPITAL_COST_CATEGORIES",
-    "OPERATIONAL_COST_CATEGORIES",
-    "format_cost_summary",
-    "format_money",
-    "parse_float",
-    "parse_int",
-    "require_text",
-]
+_real_package = import_module("shared")
+
+__path__ = _real_package.__path__
+__all__ = getattr(_real_package, "__all__", [])
+
+for _name in dir(_real_package):
+    if _name.startswith("__") and _name not in {"__doc__", "__all__"}:
+        continue
+    globals()[_name] = getattr(_real_package, _name)

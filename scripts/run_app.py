@@ -8,7 +8,7 @@ if str(SRC) not in sys.path:
 
 
 def main() -> None:
-    from it_cost_calc.bootstrap import main as app_main
+    from bootstrap import main as app_main
 
     app_main()
 

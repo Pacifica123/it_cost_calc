@@ -1,6 +1,6 @@
-from it_cost_calc.application.services.equipment_service import EquipmentService
-from it_cost_calc.domain import CapitalItem, OperationalExpense
-from it_cost_calc.infrastructure.repositories.in_memory_entity_repository import (
+from application.services.equipment_service import EquipmentService
+from domain import CapitalItem, OperationalExpense
+from infrastructure.repositories.in_memory_entity_repository import (
     InMemoryEntityRepository,
 )
 

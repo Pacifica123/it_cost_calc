@@ -24,9 +24,9 @@ def energy(subset):
 
 
 def main() -> None:
-    from it_cost_calc.domain.optimization.ga import run_ga_mvp
-    from it_cost_calc.domain.optimization.mech import Item
-    from it_cost_calc.infrastructure.logging import configure_logging
+    from domain.optimization.ga import run_ga_mvp
+    from domain.optimization.mech import Item
+    from infrastructure.logging import configure_logging
 
     configure_logging(repo_root=ROOT)
     items = [

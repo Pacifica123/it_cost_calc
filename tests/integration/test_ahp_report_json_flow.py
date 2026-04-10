@@ -1,13 +1,13 @@
 import json
 from pathlib import Path
 
-from it_cost_calc.domain.decision.ahp import (
+from domain.decision.ahp import (
     DEFAULT_CONSTRAINTS,
     DEFAULT_EXPERT_MATRICES,
     DEFAULT_SOFT_CRITERIA,
     run_ahp_pipeline,
 )
-from it_cost_calc.infrastructure.storage import JsonFileStorage
+from infrastructure.storage import JsonFileStorage
 
 
 def test_ahp_sample_report_can_be_built_and_saved_to_json(tmp_path: Path):

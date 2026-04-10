@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from it_cost_calc.bootstrap import load_demo_data
-from it_cost_calc.application.services.cost_aggregation_service import CostAggregationService
-from it_cost_calc.application.services.equipment_service import EquipmentService
-from it_cost_calc.application.use_cases.export_cost_report import ExportCostReportUseCase
-from it_cost_calc.application.use_cases.prepare_cost_summary import PrepareCostSummaryUseCase
-from it_cost_calc.infrastructure.repositories.json_entity_repository import JsonEntityRepository
-from it_cost_calc.infrastructure.storage import JsonFileStorage
+from bootstrap import load_demo_data
+from application.services.cost_aggregation_service import CostAggregationService
+from application.services.equipment_service import EquipmentService
+from application.use_cases.export_cost_report import ExportCostReportUseCase
+from application.use_cases.prepare_cost_summary import PrepareCostSummaryUseCase
+from infrastructure.repositories.json_entity_repository import JsonEntityRepository
+from infrastructure.storage import JsonFileStorage
 
 
 def test_demo_dataset_can_be_loaded_and_exported_to_csv(tmp_path: Path):

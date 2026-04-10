@@ -1,4 +1,4 @@
-from it_cost_calc.application.services.npv_report_service import NPVReportService
+from application.services.npv_report_service import NPVReportService
 
 
 def test_npv_report_service_builds_rows_and_accumulated_points():

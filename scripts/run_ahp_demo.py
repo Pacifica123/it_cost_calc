@@ -9,13 +9,13 @@ if str(SRC) not in sys.path:
 
 
 def main() -> None:
-    from it_cost_calc.domain.decision.ahp import (
+    from domain.decision.ahp import (
         DEFAULT_CONSTRAINTS,
         DEFAULT_EXPERT_MATRICES,
         DEFAULT_SOFT_CRITERIA,
         run_ahp_pipeline,
     )
-    from it_cost_calc.infrastructure.logging import configure_logging
+    from infrastructure.logging import configure_logging
 
     configure_logging(repo_root=ROOT)
     sample_path = ROOT / "data" / "examples" / "ahp" / "test_confs.json"

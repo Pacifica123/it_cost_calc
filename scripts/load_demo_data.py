@@ -8,8 +8,8 @@ if str(SRC) not in sys.path:
 
 
 def main() -> None:
-    from it_cost_calc.bootstrap import load_demo_data
-    from it_cost_calc.infrastructure.logging import configure_logging
+    from bootstrap import load_demo_data
+    from infrastructure.logging import configure_logging
 
     configure_logging(repo_root=ROOT)
     dataset = load_demo_data(ROOT)

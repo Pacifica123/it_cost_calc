@@ -19,8 +19,8 @@ AHP-модуль предназначен для выбора оптимальн
 - словарь жёстких ограничений.
 
 В коде это сосредоточено в:
-- `src/it_cost_calc/domain/decision/ahp/configuration_selector.py`
-- `src/it_cost_calc/domain/decision/ahp/pipeline.py`
+- `src/domain/decision/ahp/configuration_selector.py`
+- `src/domain/decision/ahp/pipeline.py`
 
 ## Что происходит внутри
 

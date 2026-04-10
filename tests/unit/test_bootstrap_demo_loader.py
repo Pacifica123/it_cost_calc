@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from it_cost_calc.bootstrap import load_demo_data
-from it_cost_calc.infrastructure.storage import JsonFileStorage
+from bootstrap import load_demo_data
+from infrastructure.storage import JsonFileStorage
 
 
 def test_bootstrap_load_demo_data_writes_runtime_storage(tmp_path: Path):

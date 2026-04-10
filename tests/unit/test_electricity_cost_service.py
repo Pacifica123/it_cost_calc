@@ -1,5 +1,5 @@
-from it_cost_calc.application.services.electricity_cost_service import ElectricityCostService
-from it_cost_calc.domain import ElectricityProfile
+from application.services.electricity_cost_service import ElectricityCostService
+from domain import ElectricityProfile
 
 
 def test_electricity_cost_service_applies_round_the_clock_override_for_servers():

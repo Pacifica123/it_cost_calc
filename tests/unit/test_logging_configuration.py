@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from it_cost_calc.infrastructure.logging import configure_logging
+from infrastructure.logging import configure_logging
 
 
 def test_configure_logging_writes_file(tmp_path: Path) -> None:

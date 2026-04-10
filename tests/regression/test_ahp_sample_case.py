@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from it_cost_calc.domain.decision.ahp import (
+from domain.decision.ahp import (
     DEFAULT_CONSTRAINTS,
     DEFAULT_EXPERT_MATRICES,
     DEFAULT_SOFT_CRITERIA,

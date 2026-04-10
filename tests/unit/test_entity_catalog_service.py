@@ -1,5 +1,5 @@
-from it_cost_calc.application.services.entity_catalog_service import EntityCatalogService
-from it_cost_calc.infrastructure.repositories.in_memory_entity_repository import (
+from application.services.entity_catalog_service import EntityCatalogService
+from infrastructure.repositories.in_memory_entity_repository import (
     InMemoryEntityRepository,
 )
 
