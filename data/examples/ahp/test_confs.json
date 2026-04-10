@@ -1,0 +1,60 @@
+{
+        "configurations": [
+            {
+                "id": "A",
+                "devices": [
+                    {"role": "client", "vendor": "Intel", "cpu_score": 2.0, "ram_score": 1.0, "energy": 50, "cost": 300, "reliability": {"low": 0.7, "high": 0.9}},
+                    {"role": "client", "vendor": "AMD", "cpu_score": 2.2, "ram_score": 1.0, "energy": 55, "cost": 310, "reliability": {"low": 0.75, "high": 0.9}},
+                    {"role": "server", "vendor": "Intel", "cpu_score": 5.0, "ram_score": 4.0, "energy": 200, "cost": 2000, "reliability": {"low": 0.85, "high": 0.95}}
+                ],
+                "meta": {"people": 3}
+            },
+            {
+                "id": "B",
+                "devices": [
+                    {"role": "client", "vendor": "AMD", "cpu_score": 2.5, "ram_score": 1.2, "energy": 60, "cost": 320, "reliability": {"low": 0.8, "high": 0.95}},
+                    {"role": "client", "vendor": "AMD", "cpu_score": 2.5, "ram_score": 1.2, "energy": 60, "cost": 320, "reliability": {"low": 0.8, "high": 0.95}},
+                    {"role": "server", "vendor": "Intel", "cpu_score": 4.5, "ram_score": 3.5, "energy": 180, "cost": 1800, "reliability": {"low": 0.8, "high": 0.92}}
+                ],
+                "meta": {"people": 2}
+            },
+            {
+                "id": "C",
+                "devices": [
+                    {"role": "client", "vendor": "Intel", "cpu_score": 1.5, "ram_score": 0.8, "energy": 40, "cost": 250, "reliability": {"low": 0.6, "high": 0.75}},
+                    {"role": "client", "vendor": "Intel", "cpu_score": 1.5, "ram_score": 0.8, "energy": 40, "cost": 250, "reliability": {"low": 0.6, "high": 0.75}},
+                    {"role": "client", "vendor": "Intel", "cpu_score": 1.5, "ram_score": 0.8, "energy": 40, "cost": 250, "reliability": {"low": 0.6, "high": 0.75}},
+                    {"role": "server", "vendor": "AMD", "cpu_score": 4.0, "ram_score": 3.0, "energy": 160, "cost": 1600, "reliability": {"low": 0.75, "high": 0.9}}
+                ],
+                "meta": {"people": 3}
+            },
+            {
+                "id": "D",
+                "devices": [
+                    {"role": "client", "vendor": "Generic", "cpu_score": 1.0, "ram_score": 0.5, "energy": 30, "cost": 150, "reliability": {"low": 0.4, "high": 0.6}},
+                    {"role": "server", "vendor": "Generic", "cpu_score": 3.0, "ram_score": 2.0, "energy": 120, "cost": 1000, "reliability": {"low": 0.5, "high": 0.7}}
+                ],
+                "meta": {"people": 1}
+            },
+            {
+                "id": "E",
+                "devices": [
+                    {"role": "client", "vendor": "Intel", "cpu_score": 2.0, "ram_score": 1.0, "energy": 50, "cost": 300, "reliability": {"low": 0.7, "high": 0.85}},
+                    {"role": "client", "vendor": "Intel", "cpu_score": 2.0, "ram_score": 1.0, "energy": 50, "cost": 300, "reliability": {"low": 0.7, "high": 0.85}},
+                    {"role": "client", "vendor": "Intel", "cpu_score": 2.0, "ram_score": 1.0, "energy": 50, "cost": 300, "reliability": {"low": 0.7, "high": 0.85}},
+                    {"role": "client", "vendor": "Intel", "cpu_score": 2.0, "ram_score": 1.0, "energy": 50, "cost": 300, "reliability": {"low": 0.7, "high": 0.85}},
+                    {"role": "server", "vendor": "Intel", "cpu_score": 5.5, "ram_score": 5.0, "energy": 250, "cost": 2500, "reliability": {"low": 0.9, "high": 0.98}}
+                ],
+                "meta": {"people": 4}
+            },
+            {
+                "id": "F",
+                "devices": [
+                    {"role": "client", "vendor": "AMD", "cpu_score": 2.5, "ram_score": 1.2, "energy": 60, "cost": 320, "reliability": {"low": 0.7, "high": 0.9}},
+                    {"role": "router", "vendor": "Cisco", "cpu_score": 0.0, "ram_score": 0.0, "energy": 50, "cost": 400, "reliability": {"low": 0.85, "high": 0.95}},
+                    {"role": "server", "vendor": "AMD", "cpu_score": 4.8, "ram_score": 3.8, "energy": 190, "cost": 1900, "reliability": {"low": 0.82, "high": 0.93}}
+                ],
+                "meta": {"people": 2}
+            }
+        ]
+    }

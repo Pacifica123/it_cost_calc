@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "it-cost-calc"
+version = "0.1.0"
+description = "Настольный калькулятор и набор модулей поддержки принятия решений для анализа стоимости ИТ-инфраструктуры."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Diploma project workspace" }]
+dependencies = [
+    "beautifulsoup4",
+    "lxml",
+    "matplotlib",
+    "numpy",
+    "playwright",
+    "requests",
+    "ttkbootstrap==1.18.0",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.10.0",
+    "pytest>=8.0.0",
+    "ruff>=0.11.0",
+    "pre-commit>=3.7.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra"
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+extend-exclude = '''
+/(
+    data/generated
+  | docs/thesis/raw
+  | tools/catalog_parser/legacy
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    "data/generated",
+    "docs/thesis/raw",
+    "tools/catalog_parser/legacy",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501", "I001", "B905"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]
+"src/it_cost_calc/application/legacy_crud.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/ahp_analysis_tab.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/ahp_tab.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/capital_costs.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/capital_costs_tab.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/electricity_costs.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/electricity_costs_tab.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/it_infrastructure.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/npv_analysis.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/operational_costs.py" = ["F401"]
+"src/it_cost_calc/ui/tabs/operational_costs_tab.py" = ["F401"]
+"src/it_cost_calc/domain/decision/ahp/ahp_config_selector.py" = ["F401"]
+"src/it_cost_calc/domain/decision/criteria_importance/importance_method.py" = ["F401"]

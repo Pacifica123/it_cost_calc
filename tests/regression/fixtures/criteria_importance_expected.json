@@ -1,0 +1,32 @@
+{
+  "winner_id": "system2",
+  "winner_name": "Система 2",
+  "ranking_ids": [
+    "system2",
+    "system3",
+    "system1"
+  ],
+  "weighted_sum": {
+    "system1": 242.0,
+    "system2": 269.0,
+    "system3": 259.0
+  },
+  "final_nondominated": [
+    "system1",
+    "system2",
+    "system3"
+  ],
+  "criterion_multiplicity": {
+    "1": 3,
+    "2": 3,
+    "3": 8,
+    "4.1": 8,
+    "4.2": 8,
+    "4.3": 8,
+    "4.4": 4,
+    "5": 8,
+    "6": 3,
+    "7": 1,
+    "8": 2
+  }
+}
