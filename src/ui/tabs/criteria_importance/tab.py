@@ -4,6 +4,8 @@ import json
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from ui.tabs.base_scrollable_tab import BaseScrollableTab
+
 from .data_mixin import CriteriaImportanceDataMixin
 from .tables_mixin import CriteriaImportanceTablesMixin
 from .dialogs_mixin import CriteriaImportanceDialogsMixin
@@ -26,7 +28,7 @@ class CriteriaImportanceTab(
     CriteriaImportanceTablesMixin,
     CriteriaImportancePresenterMixin,
     CriteriaImportanceDataMixin,
-    tk.Frame,
+    BaseScrollableTab,
 ):
     def __init__(self, parent, crud):
         super().__init__(parent)
@@ -37,7 +39,10 @@ class CriteriaImportanceTab(
         self._reset_case()
 
     def _build_ui(self):
-        toolbar = tk.Frame(self)
+        root = self.inner_frame
+        root.columnconfigure(0, weight=1)
+
+        toolbar = tk.Frame(root)
         toolbar.pack(fill="x", padx=6, pady=6)
 
         tk.Button(toolbar, text="Загрузить JSON...", command=self._load_json).pack(side="left")
@@ -47,7 +52,7 @@ class CriteriaImportanceTab(
         )
 
         top_label = tk.Label(
-            self,
+            root,
             text=(
                 "Модуль автоматизирует кейс выбора ИТ-решения по методике анализа важности критериев. "
                 "Демо-сценарий загружается общей кнопкой \"Загрузить демо-данные\" над вкладками, "
@@ -58,7 +63,7 @@ class CriteriaImportanceTab(
         )
         top_label.pack(fill="x", padx=6)
 
-        main_pane = tk.PanedWindow(self, orient="horizontal", sashrelief="raised")
+        main_pane = tk.PanedWindow(root, orient="horizontal", sashrelief="raised")
         main_pane.pack(fill="both", expand=True, padx=6, pady=6)
 
         left_panel = tk.Frame(main_pane)

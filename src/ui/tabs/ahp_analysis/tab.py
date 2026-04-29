@@ -5,6 +5,8 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ui.tabs.base_scrollable_tab import BaseScrollableTab
+
 from .config_mixin import AHPConfigurationMixin
 from .io_mixin import AHPIOMixin
 from .presenter_mixin import AHPPresenterMixin
@@ -29,7 +31,7 @@ except Exception:
     run_ahp_pipeline = None
 
 
-class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterMixin, tk.Frame):
+class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterMixin, BaseScrollableTab):
     def __init__(self, parent, crud):
         super().__init__(parent)
         self.crud = crud
@@ -54,7 +56,10 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         self.reports_dir.mkdir(parents=True, exist_ok=True)
 
     def _build_ui(self):
-        ctrl = tk.Frame(self)
+        root = self.inner_frame
+        root.columnconfigure(0, weight=1)
+
+        ctrl = tk.Frame(root)
         ctrl.pack(fill="x", padx=6, pady=6)
 
         tk.Button(ctrl, text="Добавить конфигурацию", command=self._add_config_popup).pack(
@@ -69,7 +74,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         ).pack(side="left")
 
         self.cfg_table = ttk.Treeview(
-            self,
+            root,
             columns=("id", "name", "people", "devices_count"),
             show="headings",
             height=6,
@@ -85,7 +90,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         self.cfg_table.pack(fill="x", padx=6, pady=(0, 6))
         self.cfg_table.bind("<<TreeviewSelect>>", self._on_select_config)
 
-        dev_frame = tk.Frame(self)
+        dev_frame = tk.Frame(root)
         dev_frame.pack(fill="x", padx=6, pady=6)
 
         tk.Label(dev_frame, text="Устройства выбранной конфигурации:").pack(anchor="w")
@@ -108,7 +113,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
             self.dev_table.heading(col, text=name)
         self.dev_table.pack(fill="x")
 
-        dev_btns = tk.Frame(self)
+        dev_btns = tk.Frame(root)
         dev_btns.pack(fill="x", padx=6)
         tk.Button(dev_btns, text="Добавить устройство", command=self._add_device_popup).pack(
             side="left"
@@ -117,7 +122,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
             side="left"
         )
 
-        conf_frame = tk.LabelFrame(self, text="Параметры анализа")
+        conf_frame = tk.LabelFrame(root, text="Параметры анализа")
         conf_frame.pack(fill="x", padx=6, pady=6)
 
         tk.Label(conf_frame, text="Max budget:").grid(row=0, column=0, sticky="w")
@@ -196,7 +201,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         self.matrix_grid = tk.Frame(self.matrix_box)
         self.matrix_grid.pack(fill="x", padx=6, pady=(0, 6))
 
-        out_frame = tk.LabelFrame(self, text="Результат")
+        out_frame = tk.LabelFrame(root, text="Результат")
         out_frame.pack(fill="both", expand=True, padx=6, pady=6)
 
         self.summary_text = tk.Text(out_frame, height=10)

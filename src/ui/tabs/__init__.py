@@ -5,6 +5,7 @@ from . import configuration_selection_tab as configuration_selection_tab
 from . import criteria_importance_tab as criteria_importance_tab
 from . import energy_tab as energy_tab
 from . import export_tab as export_tab
+from . import genetic_optimization_tab as genetic_optimization_tab
 from . import infrastructure_tab as infrastructure_tab
 from . import npv_tab as npv_tab
 from . import opex_tab as opex_tab
@@ -27,6 +28,7 @@ __all__ = [
     "criteria_importance_tab",
     "energy_tab",
     "export_tab",
+    "genetic_optimization_tab",
     "infrastructure_tab",
     "npv_tab",
     "opex_tab",

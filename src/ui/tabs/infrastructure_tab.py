@@ -5,26 +5,15 @@ import logging
 import tkinter as tk
 from tkinter import ttk
 
+from ui.tabs.base_scrollable_tab import BaseScrollableTab
+
 logger = logging.getLogger(__name__)
 
 
-class ITInfrastructureTab(tk.Frame):
+class ITInfrastructureTab(BaseScrollableTab):
     def __init__(self, parent, crud):
         super().__init__(parent)
         self.crud = crud
-
-        # Скроллбар
-        self.canvas = tk.Canvas(self, width=585, height=400)
-        self.canvas.pack(side="left", fill="both", expand=True)
-
-        self.scrollbar = tk.Scrollbar(self)
-        self.scrollbar.pack(side="right", fill="y")
-
-        self.canvas.config(yscrollcommand=self.scrollbar.set)
-        self.scrollbar.config(command=self.canvas.yview)
-
-        self.inner_frame = tk.Frame(self.canvas)
-        self.canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
 
         # Кнопка для создания новой статьи
         self.create_article_button = tk.Button(
@@ -32,8 +21,7 @@ class ITInfrastructureTab(tk.Frame):
         )
         self.create_article_button.pack(fill="x")
 
-        self.inner_frame.update_idletasks()
-        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+        self.update_scrollregion()
 
         self.tables = {}
 
@@ -73,8 +61,7 @@ class ITInfrastructureTab(tk.Frame):
                 command=lambda table=new_table[1]: self.delete_row(article_name, table),
             ).pack(side="left")
 
-            self.inner_frame.update_idletasks()
-            self.canvas.config(scrollregion=self.canvas.bbox("all"))
+            self.update_scrollregion()
 
             popup.destroy()
 

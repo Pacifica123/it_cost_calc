@@ -6,17 +6,19 @@ import tkinter as tk
 from tkinter import ttk
 
 from shared.formatting import format_cost_summary
+from ui.tabs.base_scrollable_tab import BaseScrollableTab
 
 
-class ExportTab(ttk.Frame):
+class ExportTab(BaseScrollableTab):
     def __init__(self, parent, app):
         super().__init__(parent)
         self.app = app
+        root = self.inner_frame
 
-        self.export_button = tk.Button(self, text="Экспортировать в CSV", command=self._export)
+        self.export_button = tk.Button(root, text="Экспортировать в CSV", command=self._export)
         self.export_button.pack(fill="x")
 
-        self.summary_text = tk.Text(self, height=10, width=50)
+        self.summary_text = tk.Text(root, height=10, width=50)
         self.summary_text.pack(fill="both", expand=True)
 
         self.update_summary()

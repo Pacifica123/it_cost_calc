@@ -10,11 +10,15 @@ from application.services.cost_aggregation_service import CostAggregationService
 from application.services.decision_demo_service import DecisionDemoDataService
 from application.services.electricity_cost_service import ElectricityCostService
 from application.services.equipment_service import EquipmentService
+from application.services.genetic_optimization_service import GeneticOptimizationService
+from application.services.genetic_ahp_ranking_service import GeneticAhpRankingService
 from application.services.npv_report_service import NPVReportService
 from application.use_cases import (
     BuildNpvReportUseCase,
     CalculateElectricityCostsUseCase,
     ExportCostReportUseCase,
+    RunGeneticOptimizationUseCase,
+    RunGeneticAhpRankingUseCase,
     LoadDemoDatasetUseCase,
     PrepareCostSummaryUseCase,
 )
@@ -28,6 +32,7 @@ from ui.tabs import (
     criteria_importance_tab,
     energy_tab,
     export_tab,
+    genetic_optimization_tab,
     infrastructure_tab,
     npv_tab,
     opex_tab,
@@ -69,6 +74,13 @@ class CalculatorApp(tk.Tk):
             ElectricityCostService()
         )
         self.build_npv_report_use_case = BuildNpvReportUseCase(NPVReportService())
+        self.genetic_optimization_service = GeneticOptimizationService(self.entity_repository)
+        self.run_genetic_optimization_use_case = RunGeneticOptimizationUseCase(
+            self.genetic_optimization_service
+        )
+        self.run_genetic_ahp_ranking_use_case = RunGeneticAhpRankingUseCase(
+            GeneticAhpRankingService(self.genetic_optimization_service)
+        )
 
         self.demo_status_var = tk.StringVar(
             value="Демо-данные не загружаются автоматически. При необходимости используйте кнопку выше."
@@ -104,6 +116,14 @@ class CalculatorApp(tk.Tk):
 
         self.npv_tab = npv_tab.NPVTab(self.notebook, self.build_npv_report_use_case)
         self.notebook.add(self.npv_tab, text="NPV-анализ")
+
+        self.genetic_optimization_tab = genetic_optimization_tab.GeneticOptimizationTab(
+            self.notebook,
+            self.run_genetic_optimization_use_case,
+            run_genetic_ahp_ranking_use_case=self.run_genetic_ahp_ranking_use_case,
+            energy_tab=self.energy_tab,
+        )
+        self.notebook.add(self.genetic_optimization_tab, text="Генетический подбор")
 
         self.configuration_selection_tab = configuration_selection_tab.ConfigurationSelectionTab(
             self.notebook, self.crud

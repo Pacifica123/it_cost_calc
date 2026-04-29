@@ -1,15 +1,27 @@
-"""Application use cases."""
+"""Application use case public API with lazy imports."""
 
-from .build_npv_report import BuildNpvReportUseCase
-from .calculate_electricity_costs import CalculateElectricityCostsUseCase
-from .export_cost_report import ExportCostReportUseCase
-from .load_demo_dataset import LoadDemoDatasetUseCase
-from .prepare_cost_summary import PrepareCostSummaryUseCase
+from __future__ import annotations
 
-__all__ = [
-    "BuildNpvReportUseCase",
-    "CalculateElectricityCostsUseCase",
-    "ExportCostReportUseCase",
-    "LoadDemoDatasetUseCase",
-    "PrepareCostSummaryUseCase",
-]
+from importlib import import_module
+from typing import Any
+
+_EXPORTS = {
+    "BuildNpvReportUseCase": "application.use_cases.build_npv_report",
+    "CalculateElectricityCostsUseCase": "application.use_cases.calculate_electricity_costs",
+    "ExportCostReportUseCase": "application.use_cases.export_cost_report",
+    "LoadDemoDatasetUseCase": "application.use_cases.load_demo_dataset",
+    "PrepareCostSummaryUseCase": "application.use_cases.prepare_cost_summary",
+    "RunGeneticOptimizationUseCase": "application.use_cases.run_genetic_optimization",
+    "RunGeneticAhpRankingUseCase": "application.use_cases.run_genetic_ahp_ranking",
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(_EXPORTS[name])
+    value = getattr(module, name)
+    globals()[name] = value
+    return value

@@ -20,6 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for lean environments
     _BOOTSTYLE_SUPPORTED = False
 
 from application.use_cases.build_npv_report import BuildNpvReportUseCase
+from ui.tabs.base_scrollable_tab import BaseScrollableTab
 
 
 def _bootstyle_kwargs(value: str) -> dict[str, str]:
@@ -28,12 +29,13 @@ def _bootstyle_kwargs(value: str) -> dict[str, str]:
     return {}
 
 
-class NPVTab(ttk.Frame):
+class NPVTab(BaseScrollableTab):
     def __init__(self, parent, build_npv_report_use_case: BuildNpvReportUseCase):
         super().__init__(parent)
         self.build_npv_report_use_case = build_npv_report_use_case
 
-        main_frame = ttk.Frame(self)
+        root = self.inner_frame
+        main_frame = ttk.Frame(root)
         main_frame.pack(fill=BOTH, expand=True, padx=15, pady=15)
 
         left_frame = ttk.Labelframe(

@@ -28,10 +28,15 @@
 - `development/testing.md` — тестовая стратегия;
 - `development/logging.md` — логирование.
 
+### Демонстрация и защита
+- `demo/README.md` — обзор демонстрационных сценариев;
+- `demo/ga_ahp_defense_guide.md` — сценарий показа генетического подбора и связки ГА + AHP, текст выступления и ответы на вопросы.
+
 ### Исследовательские материалы
 - `research/README.md` — обзор исследовательской зоны;
 - `research/ahp.md` — заметки по AHP;
 - `research/criteria_importance.md` — анализ важности критериев;
+- `research/genetic_algorithm.md` — генетический алгоритм подбора конфигурации и связка ГА + AHP;
 - `research/parsing.md` — парсинг каталога оборудования.
 
 ### Материалы по работе
@@ -48,4 +53,6 @@
 3. `architecture/system_schema.md`
 4. `architecture/module_map.md`
 5. `architecture/data_map.md`
-6. `traceability.md`
+6. `research/genetic_algorithm.md`
+7. `demo/ga_ahp_defense_guide.md`
+8. `traceability.md`

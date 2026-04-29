@@ -1,0 +1,30 @@
+{
+  "scenario": "ga_mvp_weight_performance_energy",
+  "description": "Демонстрационный эталон результата универсального ядра ГА: ограничение по весу, максимизация производительности и минимизация энергии.",
+  "parameters": {
+    "max_weight": 5,
+    "criteria": [
+      {"name": "performance", "direction": "max", "weight": 0.75},
+      {"name": "energy", "direction": "min", "weight": 0.25}
+    ],
+    "seed": 42,
+    "fitness_scale": "normalized_0_1"
+  },
+  "expected_behavior": {
+    "result_must_be_feasible": true,
+    "best_solution_should_contain_more_than_one_item": true,
+    "fitness_uses_normalized_scores": true
+  },
+  "sample_best_solution": {
+    "items": ["Server_A", "Server_B"],
+    "total_weight": 5,
+    "performance": 5.0,
+    "energy": 9.0,
+    "normalized_scores_by_criterion": {
+      "performance": 1.0,
+      "energy": 0.0
+    },
+    "aggregate_score": 0.75
+  },
+  "note": "Файл фиксирует ожидаемую форму и смысл результата. Актуальный JSON можно пересобрать командой: python scripts/run_ga_demo.py."
+}
