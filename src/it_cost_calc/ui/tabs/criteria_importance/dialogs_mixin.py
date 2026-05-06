@@ -243,7 +243,7 @@ class CriteriaImportanceDialogsMixin:
         form = tk.Frame(popup)
         form.pack(padx=10, pady=10)
 
-        tk.Label(form, text="Левый критерий").grid(row=0, column=0, sticky="w")
+        tk.Label(form, text="Критерий в левой части").grid(row=0, column=0, sticky="w")
         ttk.Combobox(form, textvariable=left_var, values=ids, state="readonly", width=12).grid(
             row=0, column=1, sticky="w"
         )
@@ -253,7 +253,7 @@ class CriteriaImportanceDialogsMixin:
         )
         tk.Label(form, text="Коэффициент").grid(row=2, column=0, sticky="w")
         tk.Entry(form, textvariable=factor_var, width=14).grid(row=2, column=1, sticky="w")
-        tk.Label(form, text="Правый критерий").grid(row=3, column=0, sticky="w")
+        tk.Label(form, text="Критерий в правой части").grid(row=3, column=0, sticky="w")
         ttk.Combobox(form, textvariable=right_var, values=ids, state="readonly", width=12).grid(
             row=3, column=1, sticky="w"
         )

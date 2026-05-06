@@ -148,10 +148,10 @@ class CriteriaImportanceTab(
             height=10,
         )
         for col, title, width in [
-            ("left", "Левый критерий", 130),
+            ("left", "Критерий в левой части", 130),
             ("op", "Операция", 80),
             ("factor", "Коэффициент", 100),
-            ("right", "Правый критерий", 130),
+            ("right", "Критерий в правой части", 130),
         ]:
             self.relations_tree.heading(col, text=title)
             self.relations_tree.column(col, width=width, anchor="center")
