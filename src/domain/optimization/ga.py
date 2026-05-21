@@ -552,6 +552,8 @@ def _empty_result(
         "constraints_metadata": _constraint_metadata(constraints),
         "constraints": [],
         "top_solutions": [],
+        "top_solutions_source": "unique_feasible_archive",
+        "unique_feasible_solutions_seen": 0,
         "allow_empty": allow_empty,
     }
 
@@ -704,6 +706,28 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
         subset = subset_from_mask(items, mask)
         return _evaluate_constraints(subset, constraints)
 
+    feasible_solution_archive: List[Mask] = []
+    feasible_solution_archive_seen: set[Mask] = set()
+
+    def register_feasible_mask(mask: Sequence[int]) -> None:
+        """Сохраняет уникальное допустимое решение, которое реально видел GA.
+
+        Архив нужен для честного ``top_solutions``: раньше итоговый top-N
+        строился только из лучшего решения и финальной популяции, поэтому
+        сильные кандидаты из ранних поколений могли исчезать из отчёта.
+        """
+        normalized_mask = mask_to_tuple(mask)
+        if normalized_mask in feasible_solution_archive_seen:
+            return
+        if not is_feasible(normalized_mask):
+            return
+        feasible_solution_archive_seen.add(normalized_mask)
+        feasible_solution_archive.append(normalized_mask)
+
+    def register_feasible_masks(masks: Sequence[Sequence[int]]) -> None:
+        for mask in masks:
+            register_feasible_mask(mask)
+
     def add_unique_mask(target: List[Mask], mask: Sequence[int]) -> None:
         normalized_mask = mask_to_tuple(mask)
         if normalized_mask not in target and is_feasible(normalized_mask):
@@ -853,10 +877,13 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
             allow_empty=allow_empty,
         )
 
+    register_feasible_masks(init_pop)
+
     while len(init_pop) < pop_size:
         init_pop.append(rnd.choice(init_pop))
 
     population: List[Mask] = init_pop[:pop_size]
+    register_feasible_masks(population)
     feasible_initial_count = len({mask for mask in population if is_feasible(mask)})
     logger.info(
         "Стартовая популяция GA подготовлена: %s решений, уникальных допустимых=%s, init_mode=%s",
@@ -945,6 +972,7 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
 
     for gen in range(1, generations + 1):
         population = [repair(mask) for mask in population]
+        register_feasible_masks(population)
         raw_list = [raw_scores_for_mask(mask) for mask in population]
         agg_list = [agg_fitness_from_raw(raw) for raw in raw_list]
 
@@ -1016,6 +1044,7 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
                 child_b = mutate(child_b)
                 next_pop.append(child_b)
 
+        register_feasible_masks(next_pop)
         population = next_pop
 
     def solution_payload(mask: Sequence[int], *, rank: int | None = None) -> Dict[str, Any]:
@@ -1053,14 +1082,15 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
             payload["rank"] = int(rank)
         return payload
 
-    candidate_masks = list(dict.fromkeys(([best] if best is not None else []) + list(population)))
+    if best is not None:
+        register_feasible_mask(best)
+    register_feasible_masks(population)
+
+    candidate_masks = list(feasible_solution_archive)
     scored_candidates: List[Tuple[float, Mask]] = []
     for candidate_mask in candidate_masks:
-        if candidate_mask is None:
-            continue
         normalized_mask = mask_to_tuple(candidate_mask)
-        if is_feasible(normalized_mask):
-            scored_candidates.append((agg_fitness_from_raw(raw_scores_for_mask(normalized_mask)), normalized_mask))
+        scored_candidates.append((agg_fitness_from_raw(raw_scores_for_mask(normalized_mask)), normalized_mask))
     scored_candidates.sort(key=lambda item: item[0], reverse=True)
     top_solutions = [
         solution_payload(mask, rank=rank)
@@ -1123,6 +1153,8 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
         "constraints_metadata": _constraint_metadata(constraints),
         "constraints": best_constraints,
         "top_solutions": top_solutions,
+        "top_solutions_source": "unique_feasible_archive",
+        "unique_feasible_solutions_seen": len(feasible_solution_archive),
         "allow_empty": allow_empty,
     }
     logger.info(
