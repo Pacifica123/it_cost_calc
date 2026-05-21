@@ -464,6 +464,7 @@ class GeneticAhpRankingService:
             value_matrix=value_matrix,
             utility_matrix=utility_matrix,
         )
+        winner_interpretation = dict(winner_comparison.get("interpretation", {}))
         diagnostics = dict(criterion_diagnostics or {})
         warnings = self._agreement_warnings(
             status=status,
@@ -493,6 +494,7 @@ class GeneticAhpRankingService:
             "winner_rank_delta": winner_rank_delta,
             "rank_deltas": rank_deltas,
             "winner_comparison": winner_comparison,
+            "winner_interpretation": winner_interpretation,
             "criterion_diagnostics": diagnostics,
             "warnings": warnings,
             "thresholds": {
@@ -588,7 +590,7 @@ class GeneticAhpRankingService:
 
     def _format_plain_number(self, value: float) -> str:
         if abs(value - round(value)) <= 1e-9:
-            return str(int(round(value)))
+            return f"{int(round(value)):,}".replace(",", " ")
         return f"{value:.4f}".rstrip("0").rstrip(".")
 
     def _candidate_ga_rank(self, candidate: Mapping[str, Any], fallback_index: int) -> int:
@@ -683,8 +685,27 @@ class GeneticAhpRankingService:
             [item for item in criterion_deltas if item["utility_delta"] < -1e-9],
             key=lambda item: item["utility_delta"],
         )
+        same_winner = ahp_winner_index == ga_winner_index
+        ga_score_delta = self._safe_score_delta(
+            candidates[ahp_winner_index].get("score"),
+            candidates[ga_winner_index].get("score"),
+        )
+        ahp_score_delta = float(ahp_scores[ahp_winner_index] - ahp_scores[ga_winner_index])
+        interpretation = self._winner_interpretation(
+            same_winner=same_winner,
+            ahp_winner_id=alt_ids[ahp_winner_index],
+            ga_winner_id=alt_ids[ga_winner_index],
+            ahp_score_delta=ahp_score_delta,
+            ga_score_delta=ga_score_delta,
+            ahp_winner_ahp_score=float(ahp_scores[ahp_winner_index]),
+            ga_winner_ahp_score=float(ahp_scores[ga_winner_index]),
+            ahp_winner_ga_score=candidates[ahp_winner_index].get("score"),
+            ga_winner_ga_score=candidates[ga_winner_index].get("score"),
+            criterion_deltas=criterion_deltas,
+        )
+
         return {
-            "same_winner": ahp_winner_index == ga_winner_index,
+            "same_winner": same_winner,
             "ahp_winner": {
                 "id": alt_ids[ahp_winner_index],
                 "name": self._candidate_name(candidates[ahp_winner_index], alt_ids[ahp_winner_index]),
@@ -701,20 +722,158 @@ class GeneticAhpRankingService:
                 "ga_score": candidates[ga_winner_index].get("score"),
                 "ahp_score": float(ahp_scores[ga_winner_index]),
             },
-            "ga_score_delta": self._safe_score_delta(
-                candidates[ahp_winner_index].get("score"),
-                candidates[ga_winner_index].get("score"),
-            ),
-            "ahp_score_delta": float(ahp_scores[ahp_winner_index] - ahp_scores[ga_winner_index]),
+            "ga_score_delta": ga_score_delta,
+            "ahp_score_delta": ahp_score_delta,
             "criterion_deltas": criterion_deltas,
             "utility_advantages": advantages[:3],
             "utility_tradeoffs": tradeoffs[:3],
             "summary": self._winner_comparison_summary(
-                same_winner=ahp_winner_index == ga_winner_index,
+                same_winner=same_winner,
                 advantages=advantages,
                 tradeoffs=tradeoffs,
             ),
+            "interpretation": interpretation,
         }
+
+    def _winner_interpretation(
+        self,
+        *,
+        same_winner: bool,
+        ahp_winner_id: str,
+        ga_winner_id: str,
+        ahp_score_delta: float,
+        ga_score_delta: float | None,
+        ahp_winner_ahp_score: float,
+        ga_winner_ahp_score: float,
+        ahp_winner_ga_score: Any,
+        ga_winner_ga_score: Any,
+        criterion_deltas: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        ahp_score_delta_percent = self._relative_percent(ahp_score_delta, ga_winner_ahp_score)
+        ga_score_delta_percent = self._relative_percent(ga_score_delta, ga_winner_ga_score)
+        key_deltas = self._key_metric_deltas(criterion_deltas)
+
+        if same_winner:
+            summary = (
+                "AHP и GA выбрали одного лидера; дополнительная интерпретация "
+                "сводится к проверке вклада критериев."
+            )
+            bullets = [summary]
+        else:
+            parts = [
+                f"{self._format_signed_percent(ahp_score_delta_percent)} по AHP score",
+                f"{self._format_signed_percent(ga_score_delta_percent)} по GA score",
+            ]
+            parts.extend(item["text"] for item in key_deltas[:3])
+            summary = (
+                f"AHP выбрал {ahp_winner_id} вместо GA-лидера {ga_winner_id}: "
+                + ", ".join(parts)
+                + "."
+            )
+            bullets = [
+                f"Преимущество AHP-лидера над GA-лидером по AHP score: {self._format_signed_percent(ahp_score_delta_percent)}.",
+                f"Изменение GA score относительно GA-лидера: {self._format_signed_percent(ga_score_delta_percent)}.",
+            ]
+            bullets.extend(item["sentence"] for item in key_deltas[:3])
+
+        return {
+            "summary": summary,
+            "same_winner": same_winner,
+            "ahp_winner_id": ahp_winner_id,
+            "ga_winner_id": ga_winner_id,
+            "ahp_score_delta": ahp_score_delta,
+            "ahp_score_delta_percent": ahp_score_delta_percent,
+            "ga_score_delta": ga_score_delta,
+            "ga_score_delta_percent": ga_score_delta_percent,
+            "ahp_winner_ahp_score": ahp_winner_ahp_score,
+            "ga_winner_ahp_score": ga_winner_ahp_score,
+            "ahp_winner_ga_score": self._finite_score_or_none(ahp_winner_ga_score),
+            "ga_winner_ga_score": self._finite_score_or_none(ga_winner_ga_score),
+            "key_metric_deltas": key_deltas,
+            "bullets": bullets,
+        }
+
+    def _key_metric_deltas(self, criterion_deltas: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        result = []
+        for criterion in ("capital_cost", "client_capacity", "total_power_watts"):
+            item = next(
+                (row for row in criterion_deltas if str(row.get("criterion")) == criterion),
+                None,
+            )
+            if not item:
+                continue
+            delta = self._finite_score_or_none(item.get("value_delta"))
+            if delta is None or abs(delta) <= 1e-9:
+                continue
+            text = self._metric_delta_text(criterion, delta)
+            result.append(
+                {
+                    "criterion": criterion,
+                    "value_delta": delta,
+                    "direction": item.get("direction"),
+                    "text": text,
+                    "sentence": self._metric_delta_sentence(criterion, delta),
+                    "ahp_winner_value": item.get("ahp_winner_value"),
+                    "ga_winner_value": item.get("ga_winner_value"),
+                    "utility_delta": item.get("utility_delta"),
+                }
+            )
+        return result
+
+    def _metric_delta_text(self, criterion: str, delta: float) -> str:
+        if criterion == "capital_cost":
+            return f"{self._format_signed_money(delta)} стоимости"
+        if criterion == "client_capacity":
+            return f"{self._format_signed_number(delta)} клиентских мест"
+        if criterion == "total_power_watts":
+            return f"{self._format_signed_number(delta)} Вт мощности"
+        return f"{self._format_signed_number(delta)} по {criterion}"
+
+    def _metric_delta_sentence(self, criterion: str, delta: float) -> str:
+        if criterion == "capital_cost":
+            if delta < 0:
+                return f"AHP-лидер дешевле GA-лидера на {self._format_money(abs(delta))}."
+            return f"AHP-лидер дороже GA-лидера на {self._format_money(abs(delta))}."
+        if criterion == "client_capacity":
+            if delta < 0:
+                return f"AHP-лидер даёт на {self._format_plain_number(abs(delta))} клиентских мест меньше."
+            return f"AHP-лидер даёт на {self._format_plain_number(abs(delta))} клиентских мест больше."
+        if criterion == "total_power_watts":
+            if delta < 0:
+                return f"AHP-лидер потребляет на {self._format_plain_number(abs(delta))} Вт меньше."
+            return f"AHP-лидер потребляет на {self._format_plain_number(abs(delta))} Вт больше."
+        return f"Разница по критерию {criterion}: {self._format_signed_number(delta)}."
+
+    def _relative_percent(self, delta: float | None, reference: Any) -> float | None:
+        if delta is None:
+            return None
+        reference_value = self._finite_score_or_none(reference)
+        if reference_value is None or abs(reference_value) <= 1e-12:
+            return None
+        return 100.0 * float(delta) / abs(reference_value)
+
+    def _finite_score_or_none(self, value: Any) -> float | None:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        return numeric if np.isfinite(numeric) else None
+
+    def _format_signed_percent(self, value: float | None) -> str:
+        if value is None:
+            return "нет данных"
+        return f"{value:+.2f}%"
+
+    def _format_signed_money(self, value: float) -> str:
+        sign = "+" if value > 0 else "-" if value < 0 else ""
+        return f"{sign}{self._format_money(abs(value))}"
+
+    def _format_money(self, value: float) -> str:
+        return f"{self._format_plain_number(value)} руб."
+
+    def _format_signed_number(self, value: float) -> str:
+        sign = "+" if value > 0 else "-" if value < 0 else ""
+        return f"{sign}{self._format_plain_number(abs(value))}"
 
     def _safe_score_delta(self, left: Any, right: Any) -> float | None:
         try:

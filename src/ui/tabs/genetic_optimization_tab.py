@@ -669,11 +669,28 @@ class GeneticOptimizationTab(BaseScrollableTab):
         if not agreement:
             return "Согласованность ГА и AHP не рассчитана."
         summary = str(agreement.get("summary") or "").strip()
+        interpretation = self._winner_interpretation_text(agreement)
         warnings = agreement.get("warnings", [])
         warning_text = ""
         if isinstance(warnings, list) and warnings:
             warning_text = " " + " ".join(str(item) for item in warnings[:2])
-        return (summary or "Согласованность ГА и AHP рассчитана.") + warning_text
+        parts = [summary or "Согласованность ГА и AHP рассчитана."]
+        if interpretation:
+            parts.append(interpretation)
+        if warning_text:
+            parts.append(warning_text.strip())
+        return " ".join(parts)
+
+    def _winner_interpretation_text(self, agreement: Mapping[str, Any]) -> str:
+        interpretation = agreement.get("winner_interpretation")
+        if not isinstance(interpretation, Mapping):
+            comparison = agreement.get("winner_comparison")
+            if isinstance(comparison, Mapping):
+                interpretation = comparison.get("interpretation")
+        if not isinstance(interpretation, Mapping):
+            return ""
+        summary = str(interpretation.get("summary") or "").strip()
+        return summary
 
     def _clear_tree(self, tree: ttk.Treeview) -> None:
         tree.delete(*tree.get_children())

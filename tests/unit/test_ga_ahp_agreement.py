@@ -162,3 +162,68 @@ def test_agreement_report_warns_about_inactive_constant_criteria():
     )
     assert report["agreement"]["criterion_diagnostics"] == diagnostics
     assert report["agreement"]["warnings"][:2] == diagnostics["warnings"]
+
+
+def test_winner_interpretation_explains_score_and_metric_tradeoff():
+    class TradeoffGeneticService:
+        def run(self, **options):
+            return {
+                "status": "ok",
+                "candidate_solutions": [
+                    {
+                        "rank": 1,
+                        "score": 0.85,
+                        "selected_items": [{"name": "Powerful"}],
+                        "totals": {"capital_cost": 500000.0},
+                        "raw_scores_by_criterion": {
+                            "client_capacity": 6.0,
+                            "capital_cost": 500000.0,
+                        },
+                        "directed_scores_by_criterion": {
+                            "client_capacity": 6.0,
+                            "capital_cost": -500000.0,
+                        },
+                    },
+                    {
+                        "rank": 2,
+                        "score": 0.78,
+                        "selected_items": [{"name": "Budget"}],
+                        "totals": {"capital_cost": 400000.0},
+                        "raw_scores_by_criterion": {
+                            "client_capacity": 4.0,
+                            "capital_cost": 400000.0,
+                        },
+                        "directed_scores_by_criterion": {
+                            "client_capacity": 4.0,
+                            "capital_cost": -400000.0,
+                        },
+                    },
+                ],
+                "ga_result": {
+                    "criteria_metadata": [
+                        {"name": "client_capacity", "direction": "max"},
+                        {"name": "capital_cost", "direction": "min"},
+                    ],
+                    "criterion_names": ["client_capacity", "capital_cost"],
+                    "criterion_directions": ["max", "min"],
+                    "normalization_mins": [3.0, -600000.0],
+                    "normalization_maxs": [6.0, -350000.0],
+                    "weights": [0.3, 0.7],
+                },
+                "export_payload": {"genetic_optimization": {"status": "ok"}},
+            }
+
+    service = GeneticAhpRankingService(TradeoffGeneticService())
+
+    result = service.run(ahp_top_limit=2, saaty_cap=False)
+
+    interpretation = result["ahp_report"]["agreement"]["winner_interpretation"]
+    assert interpretation["ahp_winner_id"] == "GA-2"
+    assert interpretation["ga_winner_id"] == "GA-1"
+    assert interpretation["ahp_score_delta_percent"] > 0
+    assert interpretation["ga_score_delta_percent"] < 0
+    assert "по AHP score" in interpretation["summary"]
+    assert "по GA score" in interpretation["summary"]
+    assert "стоимости" in interpretation["summary"]
+    assert "клиентских мест" in interpretation["summary"]
+    assert result["export_payload"]["ga_ahp_agreement"]["winner_interpretation"] == interpretation
