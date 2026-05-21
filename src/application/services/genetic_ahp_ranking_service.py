@@ -133,12 +133,22 @@ class GeneticAhpRankingService:
                     "id": alt_ids[index],
                     "name": self._candidate_name(candidate, alt_ids[index]),
                     "score": float(final_scores_norm[index]),
-                    "ga_rank": candidate.get("rank"),
+                    "ga_rank": self._candidate_ga_rank(candidate, index),
                     "ga_score": candidate.get("score"),
                     "totals": deepcopy(candidate.get("totals", {})),
                     "selected_items": deepcopy(candidate.get("selected_items", [])),
                 }
             )
+
+        agreement = self._build_agreement_report(
+            candidates=candidates,
+            alt_ids=alt_ids,
+            ranked_indices=ranked_indices,
+            ahp_scores=final_scores_norm,
+            criteria=criteria,
+            value_matrix=value_matrix,
+            utility_matrix=utility_matrix,
+        )
 
         report = {
             "status": "ok",
@@ -181,6 +191,7 @@ class GeneticAhpRankingService:
                 "criterion_values": self._matrix_by_candidate(alt_ids, criteria, value_matrix),
                 "criterion_utilities": self._matrix_by_candidate(alt_ids, criteria, utility_matrix),
             },
+            "agreement": agreement,
             "explanation": (
                 "ГА сформировал набор допустимых кандидатных конфигураций. "
                 "AHP затем независимо оценил этот же пул по значениям критериев кандидатов "
@@ -379,6 +390,298 @@ class GeneticAhpRankingService:
         ):
             return "independent_candidate_metrics"
         return "custom_ahp_criteria"
+
+    def _build_agreement_report(
+        self,
+        *,
+        candidates: Sequence[Mapping[str, Any]],
+        alt_ids: Sequence[str],
+        ranked_indices: Sequence[int],
+        ahp_scores: np.ndarray,
+        criteria: Sequence[Mapping[str, Any]],
+        value_matrix: np.ndarray,
+        utility_matrix: np.ndarray,
+    ) -> dict[str, Any]:
+        candidate_count = len(candidates)
+        ahp_rank_by_index = {candidate_index: rank for rank, candidate_index in enumerate(ranked_indices, start=1)}
+        ga_rank_by_index = {
+            index: self._candidate_ga_rank(candidate, index)
+            for index, candidate in enumerate(candidates)
+        }
+
+        rank_deltas = []
+        absolute_deltas = []
+        for index, candidate in enumerate(candidates):
+            ga_rank = ga_rank_by_index[index]
+            ahp_rank = ahp_rank_by_index[index]
+            delta = ahp_rank - ga_rank
+            absolute_deltas.append(abs(delta))
+            rank_deltas.append(
+                {
+                    "id": alt_ids[index],
+                    "name": self._candidate_name(candidate, alt_ids[index]),
+                    "ga_rank": ga_rank,
+                    "ahp_rank": ahp_rank,
+                    "rank_delta": delta,
+                    "ga_score": candidate.get("score"),
+                    "ahp_score": float(ahp_scores[index]),
+                }
+            )
+
+        top_3_overlap = self._top_overlap(ga_rank_by_index, ahp_rank_by_index, limit=3)
+        top_5_overlap = self._top_overlap(ga_rank_by_index, ahp_rank_by_index, limit=5)
+        max_rank_delta = max(absolute_deltas, default=0)
+        mean_abs_rank_delta = float(np.mean(absolute_deltas)) if absolute_deltas else 0.0
+        winner_index = int(ranked_indices[0]) if ranked_indices else 0
+        winner_ga_rank = ga_rank_by_index.get(winner_index, winner_index + 1)
+        winner_rank_delta = ahp_rank_by_index.get(winner_index, 1) - winner_ga_rank
+        status, status_label = self._agreement_status(
+            candidate_count=candidate_count,
+            top_3_overlap=top_3_overlap,
+            top_5_overlap=top_5_overlap,
+            max_rank_delta=max_rank_delta,
+            winner_ga_rank=winner_ga_rank,
+        )
+        winner_comparison = self._winner_comparison(
+            candidates=candidates,
+            alt_ids=alt_ids,
+            ranked_indices=ranked_indices,
+            ahp_scores=ahp_scores,
+            ga_rank_by_index=ga_rank_by_index,
+            criteria=criteria,
+            value_matrix=value_matrix,
+            utility_matrix=utility_matrix,
+        )
+        warnings = self._agreement_warnings(
+            status=status,
+            candidate_count=candidate_count,
+            winner_ga_rank=winner_ga_rank,
+            max_rank_delta=max_rank_delta,
+            top_3_overlap=top_3_overlap,
+        )
+
+        return {
+            "status": status,
+            "status_label": status_label,
+            "summary": self._agreement_summary(
+                status_label=status_label,
+                top_3_overlap=top_3_overlap,
+                top_5_overlap=top_5_overlap,
+                max_rank_delta=max_rank_delta,
+                winner_ga_rank=winner_ga_rank,
+            ),
+            "candidate_count": candidate_count,
+            "top_3_overlap": top_3_overlap,
+            "top_5_overlap": top_5_overlap,
+            "max_rank_delta": max_rank_delta,
+            "mean_abs_rank_delta": mean_abs_rank_delta,
+            "winner_ga_rank": winner_ga_rank,
+            "winner_rank_delta": winner_rank_delta,
+            "rank_deltas": rank_deltas,
+            "winner_comparison": winner_comparison,
+            "warnings": warnings,
+            "thresholds": {
+                "high": "top-3 совпадает, максимальный сдвиг ранга не больше 1",
+                "moderate": "top-3 почти совпадает, максимальный сдвиг ранга не больше 3",
+                "conflict": "AHP-лидер вне GA top-5 или top-3 не пересекается",
+            },
+        }
+
+    def _candidate_ga_rank(self, candidate: Mapping[str, Any], fallback_index: int) -> int:
+        try:
+            rank = int(candidate.get("rank"))
+        except (TypeError, ValueError):
+            rank = fallback_index + 1
+        return rank if rank > 0 else fallback_index + 1
+
+    def _top_overlap(
+        self,
+        ga_rank_by_index: Mapping[int, int],
+        ahp_rank_by_index: Mapping[int, int],
+        *,
+        limit: int,
+    ) -> int:
+        if not ga_rank_by_index or not ahp_rank_by_index:
+            return 0
+        effective_limit = min(limit, len(ga_rank_by_index), len(ahp_rank_by_index))
+        ga_top = {index for index, rank in ga_rank_by_index.items() if rank <= effective_limit}
+        ahp_top = {index for index, rank in ahp_rank_by_index.items() if rank <= effective_limit}
+        return len(ga_top & ahp_top)
+
+    def _agreement_status(
+        self,
+        *,
+        candidate_count: int,
+        top_3_overlap: int,
+        top_5_overlap: int,
+        max_rank_delta: int,
+        winner_ga_rank: int,
+    ) -> tuple[str, str]:
+        if candidate_count <= 1:
+            return "high", "высокая согласованность"
+
+        top_3_limit = min(3, candidate_count)
+        top_5_limit = min(5, candidate_count)
+        if winner_ga_rank > top_5_limit or top_3_overlap == 0:
+            return "conflict", "конфликт оценок"
+        if top_3_overlap == top_3_limit and max_rank_delta <= 1:
+            return "high", "высокая согласованность"
+        if top_3_overlap >= max(1, top_3_limit - 1) and max_rank_delta <= 3:
+            return "moderate", "умеренная согласованность"
+        if top_5_overlap >= max(1, top_5_limit - 2):
+            return "low", "слабая согласованность"
+        return "conflict", "конфликт оценок"
+
+    def _winner_comparison(
+        self,
+        *,
+        candidates: Sequence[Mapping[str, Any]],
+        alt_ids: Sequence[str],
+        ranked_indices: Sequence[int],
+        ahp_scores: np.ndarray,
+        ga_rank_by_index: Mapping[int, int],
+        criteria: Sequence[Mapping[str, Any]],
+        value_matrix: np.ndarray,
+        utility_matrix: np.ndarray,
+    ) -> dict[str, Any]:
+        if not candidates or not ranked_indices:
+            return {}
+
+        ahp_winner_index = int(ranked_indices[0])
+        ga_winner_index = min(ga_rank_by_index, key=lambda index: ga_rank_by_index[index])
+        criterion_deltas = []
+        for criterion_index, criterion in enumerate(criteria):
+            criterion_deltas.append(
+                {
+                    "criterion": str(criterion.get("name")),
+                    "direction": str(criterion.get("direction_label", "max")),
+                    "ahp_winner_value": float(value_matrix[criterion_index, ahp_winner_index]),
+                    "ga_winner_value": float(value_matrix[criterion_index, ga_winner_index]),
+                    "value_delta": float(
+                        value_matrix[criterion_index, ahp_winner_index]
+                        - value_matrix[criterion_index, ga_winner_index]
+                    ),
+                    "ahp_winner_utility": float(utility_matrix[criterion_index, ahp_winner_index]),
+                    "ga_winner_utility": float(utility_matrix[criterion_index, ga_winner_index]),
+                    "utility_delta": float(
+                        utility_matrix[criterion_index, ahp_winner_index]
+                        - utility_matrix[criterion_index, ga_winner_index]
+                    ),
+                }
+            )
+
+        advantages = sorted(
+            [item for item in criterion_deltas if item["utility_delta"] > 1e-9],
+            key=lambda item: item["utility_delta"],
+            reverse=True,
+        )
+        tradeoffs = sorted(
+            [item for item in criterion_deltas if item["utility_delta"] < -1e-9],
+            key=lambda item: item["utility_delta"],
+        )
+        return {
+            "same_winner": ahp_winner_index == ga_winner_index,
+            "ahp_winner": {
+                "id": alt_ids[ahp_winner_index],
+                "name": self._candidate_name(candidates[ahp_winner_index], alt_ids[ahp_winner_index]),
+                "ga_rank": ga_rank_by_index[ahp_winner_index],
+                "ahp_rank": 1,
+                "ga_score": candidates[ahp_winner_index].get("score"),
+                "ahp_score": float(ahp_scores[ahp_winner_index]),
+            },
+            "ga_winner": {
+                "id": alt_ids[ga_winner_index],
+                "name": self._candidate_name(candidates[ga_winner_index], alt_ids[ga_winner_index]),
+                "ga_rank": ga_rank_by_index[ga_winner_index],
+                "ahp_rank": int(ranked_indices.index(ga_winner_index) + 1),
+                "ga_score": candidates[ga_winner_index].get("score"),
+                "ahp_score": float(ahp_scores[ga_winner_index]),
+            },
+            "ga_score_delta": self._safe_score_delta(
+                candidates[ahp_winner_index].get("score"),
+                candidates[ga_winner_index].get("score"),
+            ),
+            "ahp_score_delta": float(ahp_scores[ahp_winner_index] - ahp_scores[ga_winner_index]),
+            "criterion_deltas": criterion_deltas,
+            "utility_advantages": advantages[:3],
+            "utility_tradeoffs": tradeoffs[:3],
+            "summary": self._winner_comparison_summary(
+                same_winner=ahp_winner_index == ga_winner_index,
+                advantages=advantages,
+                tradeoffs=tradeoffs,
+            ),
+        }
+
+    def _safe_score_delta(self, left: Any, right: Any) -> float | None:
+        try:
+            left_value = float(left)
+            right_value = float(right)
+        except (TypeError, ValueError):
+            return None
+        if not np.isfinite(left_value) or not np.isfinite(right_value):
+            return None
+        return left_value - right_value
+
+    def _winner_comparison_summary(
+        self,
+        *,
+        same_winner: bool,
+        advantages: Sequence[Mapping[str, Any]],
+        tradeoffs: Sequence[Mapping[str, Any]],
+    ) -> str:
+        if same_winner:
+            return "AHP и GA выбрали одного лидера."
+
+        advantage_names = ", ".join(str(item["criterion"]) for item in advantages[:2])
+        tradeoff_names = ", ".join(str(item["criterion"]) for item in tradeoffs[:2])
+        if advantage_names and tradeoff_names:
+            return (
+                "AHP выбрал другого лидера: он сильнее по критериям "
+                f"{advantage_names}, но слабее по критериям {tradeoff_names}."
+            )
+        if advantage_names:
+            return f"AHP выбрал другого лидера: он сильнее по критериям {advantage_names}."
+        return "AHP выбрал другого лидера; требуется проверить вклад критериев."
+
+    def _agreement_warnings(
+        self,
+        *,
+        status: str,
+        candidate_count: int,
+        winner_ga_rank: int,
+        max_rank_delta: int,
+        top_3_overlap: int,
+    ) -> list[str]:
+        warnings = []
+        if candidate_count > 1 and winner_ga_rank > min(5, candidate_count):
+            warnings.append(
+                "AHP выбрал вариант, который находится за пределами GA top-5; "
+                "результат нужно рассматривать как спорный компромисс."
+            )
+        if status in {"low", "conflict"} and max_rank_delta >= 4:
+            warnings.append(
+                "Обнаружен сильный скачок ранга между GA и AHP; "
+                "проверьте веса и вклад отдельных критериев."
+            )
+        if status == "conflict" and top_3_overlap == 0:
+            warnings.append("Top-3 GA и top-3 AHP не имеют общих вариантов.")
+        return warnings
+
+    def _agreement_summary(
+        self,
+        *,
+        status_label: str,
+        top_3_overlap: int,
+        top_5_overlap: int,
+        max_rank_delta: int,
+        winner_ga_rank: int,
+    ) -> str:
+        return (
+            f"Согласованность GA и AHP: {status_label}. "
+            f"Пересечение top-3: {top_3_overlap}, пересечение top-5: {top_5_overlap}. "
+            f"Максимальный сдвиг ранга: {max_rank_delta}. "
+            f"AHP-лидер имеет GA-ранг {winner_ga_rank}."
+        )
 
     def _candidate_pool_snapshot(
         self, candidates: Sequence[Mapping[str, Any]], alt_ids: Sequence[str]
