@@ -1,15 +1,3 @@
-"""Устаревший совместимый импорт. Используйте ``analysis``."""
+"""Compatibility wrapper for ``domain.decision.criteria_importance.importance_method``."""
 
-from .analysis import (
-    case_to_json,
-    dominance_relation,
-    load_default_budgeting_case,
-    run_importance_pipeline,
-)
-
-__all__ = [
-    "load_default_budgeting_case",
-    "run_importance_pipeline",
-    "dominance_relation",
-    "case_to_json",
-]
+from domain.decision.criteria_importance.importance_method import *  # noqa: F401,F403

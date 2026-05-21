@@ -1,5 +1,3 @@
-"""Compatibility wrapper for the stage-4 service name."""
+"""Compatibility wrapper for ``application.services.cost_summary_service``."""
 
-from it_cost_calc.application.services.cost_aggregation_service import CostAggregationService
-
-CostSummaryService = CostAggregationService
+from application.services.cost_summary_service import *  # noqa: F401,F403

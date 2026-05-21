@@ -1,5 +1,3 @@
-"""Compatibility wrapper for the renamed cost summary service."""
+"""Compatibility wrapper for ``application.services.total_costs``."""
 
-from it_cost_calc.application.services.cost_summary_service import CostSummaryService
-
-TotalCosts = CostSummaryService
+from application.services.total_costs import *  # noqa: F401,F403

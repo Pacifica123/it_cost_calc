@@ -1,7 +1,3 @@
-"""Compatibility adapter exposing the legacy Treeview-based CRUD facade."""
+"""Compatibility wrapper for ``application.crud_compat``."""
 
-from it_cost_calc.infrastructure.repositories.treeview_crud_repository import TreeviewCrudRepository
-
-CRUD = TreeviewCrudRepository
-
-__all__ = ["CRUD", "TreeviewCrudRepository"]
+from application.crud_compat import *  # noqa: F401,F403

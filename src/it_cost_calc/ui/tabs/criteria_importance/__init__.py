@@ -1,3 +1,3 @@
-from .tab import CriteriaImportanceTab
+"""Compatibility wrapper for ``ui.tabs.criteria_importance``."""
 
-__all__ = ["CriteriaImportanceTab"]
+from ui.tabs.criteria_importance import *  # noqa: F401,F403

@@ -1,16 +1,3 @@
-CAPITAL_COST_CATEGORIES = (
-    "server",
-    "client",
-    "network",
-    "licenses",
-)
+"""Compatibility wrapper for ``shared.constants``."""
 
-OPERATIONAL_COST_CATEGORIES = (
-    "subscription_licenses",
-    "server_rental",
-    "migration",
-    "testing",
-    "backup",
-    "labor_costs",
-    "server_administration",
-)
+from shared.constants import *  # noqa: F401,F403

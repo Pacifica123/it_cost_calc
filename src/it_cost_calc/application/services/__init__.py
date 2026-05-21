@@ -1,19 +1,3 @@
-from .cost_aggregation_service import CostAggregationService
-from .cost_summary_service import CostSummaryService
-from .electricity_cost_service import ElectricityCostService
-from .entity_catalog_service import EntityCatalogService
-from .equipment_service import EquipmentService
-from .genetic_optimization_service import GeneticOptimizationService
-from .genetic_ahp_ranking_service import GeneticAhpRankingService
-from .npv_report_service import NPVReportService
+"""Compatibility wrapper for ``application.services``."""
 
-__all__ = [
-    "CostAggregationService",
-    "CostSummaryService",
-    "ElectricityCostService",
-    "EntityCatalogService",
-    "EquipmentService",
-    "GeneticOptimizationService",
-    "GeneticAhpRankingService",
-    "NPVReportService",
-]
+from application.services import *  # noqa: F401,F403

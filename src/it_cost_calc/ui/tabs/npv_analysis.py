@@ -1,5 +1,3 @@
-"""Совместимая импорт-обёртка."""
+"""Compatibility wrapper for ``ui.tabs.npv_analysis``."""
 
-from .npv_tab import NPVTab
-
-__all__ = ["NPVTab"]
+from ui.tabs.npv_analysis import *  # noqa: F401,F403

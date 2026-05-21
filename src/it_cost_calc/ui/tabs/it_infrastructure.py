@@ -1,5 +1,3 @@
-"""Совместимая импорт-обёртка."""
+"""Compatibility wrapper for ``ui.tabs.it_infrastructure``."""
 
-from .infrastructure_tab import ITInfrastructureTab
-
-__all__ = ["ITInfrastructureTab"]
+from ui.tabs.it_infrastructure import *  # noqa: F401,F403

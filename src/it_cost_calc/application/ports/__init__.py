@@ -1,5 +1,3 @@
-"""Application layer ports."""
+"""Compatibility wrapper for ``application.ports``."""
 
-from .entity_repository import EntityRepository
-
-__all__ = ["EntityRepository"]
+from application.ports import *  # noqa: F401,F403

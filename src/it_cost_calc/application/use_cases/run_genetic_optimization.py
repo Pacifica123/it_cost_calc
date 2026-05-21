@@ -1,15 +1,3 @@
-"""Use case for running genetic optimization from the application layer."""
+"""Compatibility wrapper for ``application.use_cases.run_genetic_optimization``."""
 
-from __future__ import annotations
-
-from typing import Any
-
-from it_cost_calc.application.services.genetic_optimization_service import GeneticOptimizationService
-
-
-class RunGeneticOptimizationUseCase:
-    def __init__(self, service: GeneticOptimizationService):
-        self.service = service
-
-    def execute(self, **options: Any) -> dict[str, Any]:
-        return self.service.run(**options)
+from application.use_cases.run_genetic_optimization import *  # noqa: F401,F403

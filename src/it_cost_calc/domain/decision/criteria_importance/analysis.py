@@ -1,12 +1,3 @@
-"""Public criteria-importance analysis API."""
+"""Compatibility wrapper for ``domain.decision.criteria_importance.analysis``."""
 
-from .case_data import load_default_budgeting_case
-from .pipeline import dominance_relation, run_importance_pipeline
-from .serialization import case_to_json
-
-__all__ = [
-    "load_default_budgeting_case",
-    "run_importance_pipeline",
-    "dominance_relation",
-    "case_to_json",
-]
+from domain.decision.criteria_importance.analysis import *  # noqa: F401,F403

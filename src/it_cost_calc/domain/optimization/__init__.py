@@ -1,3 +1,3 @@
-from .mech import FuzzyTerm, FuzzyValue, Item, KnapsackMechanic, run
+"""Compatibility wrapper for ``domain.optimization``."""
 
-__all__ = ["Item", "FuzzyValue", "FuzzyTerm", "KnapsackMechanic", "run"]
+from domain.optimization import *  # noqa: F401,F403

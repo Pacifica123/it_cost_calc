@@ -1,3 +1,3 @@
-from .record_form_dialog import RecordFormDialog
+"""Compatibility wrapper for ``ui.dialogs``."""
 
-__all__ = ["RecordFormDialog"]
+from ui.dialogs import *  # noqa: F401,F403

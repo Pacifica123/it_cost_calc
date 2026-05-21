@@ -1,5 +1,3 @@
-"""Infrastructure storage adapters."""
+"""Compatibility wrapper for ``infrastructure.storage``."""
 
-from .json_file_storage import JsonFileStorage
-
-__all__ = ["JsonFileStorage"]
+from infrastructure.storage import *  # noqa: F401,F403

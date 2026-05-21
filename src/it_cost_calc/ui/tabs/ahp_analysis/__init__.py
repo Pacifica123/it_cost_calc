@@ -1,3 +1,3 @@
-from .tab import ConfigurationSelectionTab, AHPAnalysisTab
+"""Compatibility wrapper for ``ui.tabs.ahp_analysis``."""
 
-__all__ = ["ConfigurationSelectionTab", "AHPAnalysisTab"]
+from ui.tabs.ahp_analysis import *  # noqa: F401,F403

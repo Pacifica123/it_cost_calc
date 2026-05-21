@@ -1,5 +1,3 @@
-"""Совместимая импорт-обёртка."""
+"""Compatibility wrapper for ``ui.tabs.electricity_costs_tab``."""
 
-from .energy_tab import EnergyTab
-
-__all__ = ["EnergyTab"]
+from ui.tabs.electricity_costs_tab import *  # noqa: F401,F403

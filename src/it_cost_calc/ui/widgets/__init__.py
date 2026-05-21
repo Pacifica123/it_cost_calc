@@ -1,3 +1,3 @@
-from .entity_table_section import EntityTableSection
+"""Compatibility wrapper for ``ui.widgets``."""
 
-__all__ = ["EntityTableSection"]
+from ui.widgets import *  # noqa: F401,F403

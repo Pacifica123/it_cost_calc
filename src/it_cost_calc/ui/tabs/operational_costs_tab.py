@@ -1,5 +1,3 @@
-"""Совместимая импорт-обёртка."""
+"""Compatibility wrapper for ``ui.tabs.operational_costs_tab``."""
 
-from .opex_tab import OpexTab
-
-__all__ = ["OpexTab"]
+from ui.tabs.operational_costs_tab import *  # noqa: F401,F403

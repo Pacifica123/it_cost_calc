@@ -1,5 +1,3 @@
-"""Совместимая импорт-обёртка."""
+"""Compatibility wrapper for ``ui.tabs.configuration_selection_tab``."""
 
-from .ahp_analysis import ConfigurationSelectionTab, AHPAnalysisTab
-
-__all__ = ["ConfigurationSelectionTab", "AHPAnalysisTab"]
+from ui.tabs.configuration_selection_tab import *  # noqa: F401,F403

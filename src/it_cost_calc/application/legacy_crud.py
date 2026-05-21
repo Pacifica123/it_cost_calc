@@ -1,5 +1,3 @@
-"""Устаревший совместимый импорт для CRUD-адаптера."""
+"""Compatibility wrapper for ``application.legacy_crud``."""
 
-from it_cost_calc.application.crud_compat import CRUD
-
-__all__ = ["CRUD"]
+from application.legacy_crud import *  # noqa: F401,F403

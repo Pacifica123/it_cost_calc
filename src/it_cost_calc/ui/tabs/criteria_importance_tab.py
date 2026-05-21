@@ -1,5 +1,3 @@
-"""Compatibility wrapper for the refactored criteria-importance tab."""
+"""Compatibility wrapper for ``ui.tabs.criteria_importance_tab``."""
 
-from .criteria_importance import CriteriaImportanceTab
-
-__all__ = ["CriteriaImportanceTab"]
+from ui.tabs.criteria_importance_tab import *  # noqa: F401,F403
