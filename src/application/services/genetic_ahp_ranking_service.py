@@ -140,6 +140,11 @@ class GeneticAhpRankingService:
                 }
             )
 
+        criterion_diagnostics = self._criterion_diagnostics(
+            criteria=criteria,
+            value_matrix=value_matrix,
+            utility_matrix=utility_matrix,
+        )
         agreement = self._build_agreement_report(
             candidates=candidates,
             alt_ids=alt_ids,
@@ -148,6 +153,7 @@ class GeneticAhpRankingService:
             criteria=criteria,
             value_matrix=value_matrix,
             utility_matrix=utility_matrix,
+            criterion_diagnostics=criterion_diagnostics,
         )
 
         report = {
@@ -176,6 +182,7 @@ class GeneticAhpRankingService:
                 "weights_per_criterion": alt_weights_per_criterion,
                 "consistency_per_criterion": alt_consistency_per_criterion,
             },
+            "criterion_diagnostics": criterion_diagnostics,
             "final": {
                 "raw_final_scores": final_scores.tolist(),
                 "normalized_final_scores": final_scores_norm.tolist(),
@@ -405,6 +412,7 @@ class GeneticAhpRankingService:
         criteria: Sequence[Mapping[str, Any]],
         value_matrix: np.ndarray,
         utility_matrix: np.ndarray,
+        criterion_diagnostics: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         candidate_count = len(candidates)
         ahp_rank_by_index = {candidate_index: rank for rank, candidate_index in enumerate(ranked_indices, start=1)}
@@ -456,12 +464,14 @@ class GeneticAhpRankingService:
             value_matrix=value_matrix,
             utility_matrix=utility_matrix,
         )
+        diagnostics = dict(criterion_diagnostics or {})
         warnings = self._agreement_warnings(
             status=status,
             candidate_count=candidate_count,
             winner_ga_rank=winner_ga_rank,
             max_rank_delta=max_rank_delta,
             top_3_overlap=top_3_overlap,
+            criterion_diagnostics=diagnostics,
         )
 
         return {
@@ -483,6 +493,7 @@ class GeneticAhpRankingService:
             "winner_rank_delta": winner_rank_delta,
             "rank_deltas": rank_deltas,
             "winner_comparison": winner_comparison,
+            "criterion_diagnostics": diagnostics,
             "warnings": warnings,
             "thresholds": {
                 "high": "top-3 совпадает, максимальный сдвиг ранга не больше 1",
@@ -490,6 +501,95 @@ class GeneticAhpRankingService:
                 "conflict": "AHP-лидер вне GA top-5 или top-3 не пересекается",
             },
         }
+
+    def _criterion_diagnostics(
+        self,
+        *,
+        criteria: Sequence[Mapping[str, Any]],
+        value_matrix: np.ndarray,
+        utility_matrix: np.ndarray,
+    ) -> dict[str, Any]:
+        inactive = []
+        active = []
+        for criterion_index, criterion in enumerate(criteria):
+            criterion_name = str(criterion.get("name") or f"criterion_{criterion_index + 1}")
+            values = value_matrix[criterion_index, :].astype(float) if value_matrix.size else np.array([], dtype=float)
+            utilities = utility_matrix[criterion_index, :].astype(float) if utility_matrix.size else np.array([], dtype=float)
+            finite_values = values[np.isfinite(values)]
+            finite_utilities = utilities[np.isfinite(utilities)]
+            is_constant_value = bool(
+                len(finite_values) > 0
+                and len(finite_values) == len(values)
+                and float(np.max(finite_values) - np.min(finite_values)) <= 1e-12
+            )
+            is_constant_utility = bool(
+                len(finite_utilities) > 0
+                and len(finite_utilities) == len(utilities)
+                and float(np.max(finite_utilities) - np.min(finite_utilities)) <= 1e-12
+            )
+            row = {
+                "criterion": criterion_name,
+                "direction": str(criterion.get("direction_label", "max")),
+                "candidate_count": int(len(values)),
+                "min_value": float(np.min(finite_values)) if len(finite_values) else None,
+                "max_value": float(np.max(finite_values)) if len(finite_values) else None,
+                "min_utility": float(np.min(finite_utilities)) if len(finite_utilities) else None,
+                "max_utility": float(np.max(finite_utilities)) if len(finite_utilities) else None,
+                "affects_ranking": not is_constant_utility,
+            }
+            if is_constant_value:
+                constant_value = float(finite_values[0])
+                row.update(
+                    {
+                        "reason": "constant_value",
+                        "constant_value": constant_value,
+                        "constant_utility": float(finite_utilities[0]) if len(finite_utilities) else None,
+                        "message": (
+                            f"Критерий {criterion_name} не влияет на ранжирование: "
+                            f"у всех кандидатов значение {self._format_plain_number(constant_value)}."
+                        ),
+                    }
+                )
+                inactive.append(row)
+            elif is_constant_utility:
+                row.update(
+                    {
+                        "reason": "constant_utility",
+                        "message": (
+                            f"Критерий {criterion_name} не влияет на ранжирование после нормализации: "
+                            "у всех кандидатов одинаковая полезность."
+                        ),
+                    }
+                )
+                inactive.append(row)
+            else:
+                active.append(row)
+
+        inactive_messages = [str(item["message"]) for item in inactive if item.get("message")]
+        return {
+            "status": "has_inactive_criteria" if inactive else "ok",
+            "inactive_criteria_count": len(inactive),
+            "active_criteria_count": len(active),
+            "inactive_criteria": inactive,
+            "active_criteria": active,
+            "warnings": inactive_messages,
+            "summary": self._criterion_diagnostics_summary(inactive),
+        }
+
+    def _criterion_diagnostics_summary(self, inactive_criteria: Sequence[Mapping[str, Any]]) -> str:
+        if not inactive_criteria:
+            return "Все критерии различают хотя бы часть кандидатных конфигураций."
+        names = ", ".join(str(item.get("criterion")) for item in inactive_criteria[:3])
+        suffix = "" if len(inactive_criteria) <= 3 else f" и ещё {len(inactive_criteria) - 3}"
+        return (
+            "Обнаружены критерии, которые не влияют на ранжирование кандидатов: "
+            f"{names}{suffix}."
+        )
+
+    def _format_plain_number(self, value: float) -> str:
+        if abs(value - round(value)) <= 1e-9:
+            return str(int(round(value)))
+        return f"{value:.4f}".rstrip("0").rstrip(".")
 
     def _candidate_ga_rank(self, candidate: Mapping[str, Any], fallback_index: int) -> int:
         try:
@@ -655,8 +755,16 @@ class GeneticAhpRankingService:
         winner_ga_rank: int,
         max_rank_delta: int,
         top_3_overlap: int,
+        criterion_diagnostics: Mapping[str, Any] | None = None,
     ) -> list[str]:
         warnings = []
+        diagnostics_warnings = (
+            criterion_diagnostics.get("warnings", [])
+            if isinstance(criterion_diagnostics, Mapping)
+            else []
+        )
+        if isinstance(diagnostics_warnings, list):
+            warnings.extend(str(item) for item in diagnostics_warnings if str(item).strip())
         if candidate_count > 1 and winner_ga_rank > min(5, candidate_count):
             warnings.append(
                 "AHP выбрал вариант, который находится за пределами GA top-5; "

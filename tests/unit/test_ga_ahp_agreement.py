@@ -81,3 +81,84 @@ def test_agreement_report_marks_close_rankings_as_high_agreement():
     assert agreement["top_3_overlap"] == 3
     assert agreement["max_rank_delta"] == 0
     assert agreement["winner_comparison"]["same_winner"] is True
+
+
+def test_agreement_report_warns_about_inactive_constant_criteria():
+    class ConstantCriteriaGeneticService:
+        def run(self, **options):
+            return {
+                "status": "ok",
+                "candidate_solutions": [
+                    {
+                        "rank": 1,
+                        "score": 0.9,
+                        "selected_items": [{"name": "A"}],
+                        "raw_scores_by_criterion": {
+                            "category_coverage": 4.0,
+                            "client_capacity": 6.0,
+                            "total_power_watts": 0.0,
+                            "capital_cost": 500.0,
+                        },
+                        "directed_scores_by_criterion": {
+                            "category_coverage": 4.0,
+                            "client_capacity": 6.0,
+                            "total_power_watts": -0.0,
+                            "capital_cost": -500.0,
+                        },
+                    },
+                    {
+                        "rank": 2,
+                        "score": 0.8,
+                        "selected_items": [{"name": "B"}],
+                        "raw_scores_by_criterion": {
+                            "category_coverage": 4.0,
+                            "client_capacity": 4.0,
+                            "total_power_watts": 0.0,
+                            "capital_cost": 400.0,
+                        },
+                        "directed_scores_by_criterion": {
+                            "category_coverage": 4.0,
+                            "client_capacity": 4.0,
+                            "total_power_watts": -0.0,
+                            "capital_cost": -400.0,
+                        },
+                    },
+                ],
+                "ga_result": {
+                    "criteria_metadata": [
+                        {"name": "category_coverage", "direction": "max"},
+                        {"name": "client_capacity", "direction": "max"},
+                        {"name": "total_power_watts", "direction": "min"},
+                        {"name": "capital_cost", "direction": "min"},
+                    ],
+                    "criterion_names": [
+                        "category_coverage",
+                        "client_capacity",
+                        "total_power_watts",
+                        "capital_cost",
+                    ],
+                    "criterion_directions": ["max", "max", "min", "min"],
+                    "normalization_mins": [3.0, 3.0, -0.0, -1000.0],
+                    "normalization_maxs": [4.0, 6.0, -0.0, 0.0],
+                    "weights": [0.35, 0.25, 0.15, 0.25],
+                },
+                "export_payload": {"genetic_optimization": {"status": "ok"}},
+            }
+
+    service = GeneticAhpRankingService(ConstantCriteriaGeneticService())
+
+    result = service.run(ahp_top_limit=2)
+
+    report = result["ahp_report"]
+    diagnostics = report["criterion_diagnostics"]
+    inactive_names = [row["criterion"] for row in diagnostics["inactive_criteria"]]
+    assert diagnostics["status"] == "has_inactive_criteria"
+    assert inactive_names == ["category_coverage", "total_power_watts"]
+    assert diagnostics["inactive_criteria_count"] == 2
+    assert diagnostics["active_criteria_count"] == 2
+    assert (
+        "Критерий total_power_watts не влияет на ранжирование: у всех кандидатов значение 0."
+        in diagnostics["warnings"]
+    )
+    assert report["agreement"]["criterion_diagnostics"] == diagnostics
+    assert report["agreement"]["warnings"][:2] == diagnostics["warnings"]
