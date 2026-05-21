@@ -37,7 +37,10 @@
 - `research/ahp.md` — заметки по AHP;
 - `research/criteria_importance.md` — анализ важности критериев;
 - `research/genetic_algorithm.md` — генетический алгоритм подбора конфигурации и связка ГА + AHP;
-- `research/parsing.md` — парсинг каталога оборудования.
+- `research/parsing.md` — парсинг каталога оборудования;
+- `research/ideas/genetic_algorithm_plain_manifest.md` — простое md-объяснение роли ГА;
+- `research/ideas/future_independent_ga_ahp_assessment.md` — идея независимого сопоставления оценок ГА и AHP;
+- `research/ideas/future_hybrid_ga_ahp_score.md` — идея гибридной итоговой оценки ГА и AHP.
 
 ### Материалы по работе
 - `traceability.md` — связь между разделами работы, кодом и примерами данных;
@@ -54,5 +57,8 @@
 4. `architecture/module_map.md`
 5. `architecture/data_map.md`
 6. `research/genetic_algorithm.md`
-7. `demo/ga_ahp_defense_guide.md`
-8. `traceability.md`
+7. `research/ideas/genetic_algorithm_plain_manifest.md`
+8. `research/ideas/future_independent_ga_ahp_assessment.md`
+9. `research/ideas/future_hybrid_ga_ahp_score.md`
+10. `demo/ga_ahp_defense_guide.md`
+11. `traceability.md`
