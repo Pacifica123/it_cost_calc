@@ -80,6 +80,9 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.ahp_agreement_var = tk.StringVar(
             value="Согласованность ГА и AHP появится после запуска сценария «ГА + AHP»."
         )
+        self.hybrid_summary_var = tk.StringVar(
+            value="Гибридная итоговая оценка появится после запуска сценария «ГА + AHP»."
+        )
         self.explanation_var = tk.StringVar(
             value=(
                 "Задайте ограничения и веса критериев, затем нажмите «Запустить ГА». "
@@ -159,10 +162,12 @@ class GeneticOptimizationTab(BaseScrollableTab):
         metrics_tab = ttk.Frame(tables)
         history_tab = ttk.Frame(tables)
         ahp_tab = ttk.Frame(tables)
+        hybrid_tab = ttk.Frame(tables)
         tables.add(composition_tab, text="Состав")
         tables.add(metrics_tab, text="Метрики")
         tables.add(history_tab, text="Сходимость")
         tables.add(ahp_tab, text="AHP-ранжирование")
+        tables.add(hybrid_tab, text="Гибридная оценка")
 
         self.composition_table = self._build_tree(
             composition_tab,
@@ -226,6 +231,34 @@ class GeneticOptimizationTab(BaseScrollableTab):
                 "rank_delta": "Δ ранга",
                 "row_status": "Статус",
                 "cost": "Стоимость",
+            },
+        )
+
+        ttk.Label(
+            hybrid_tab,
+            textvariable=self.hybrid_summary_var,
+            wraplength=680,
+            justify="left",
+        ).pack(fill="x", padx=4, pady=(4, 8))
+        self.hybrid_ranking_table = self._build_tree(
+            hybrid_tab,
+            columns=(
+                "rank",
+                "name",
+                "hybrid_score",
+                "ga_rank",
+                "ahp_rank",
+                "score_disagreement",
+                "comment",
+            ),
+            headings={
+                "rank": "Гибридный ранг",
+                "name": "Кандидатная конфигурация",
+                "hybrid_score": "Hybrid score",
+                "ga_rank": "ГА-ранг",
+                "ahp_rank": "AHP-ранг",
+                "score_disagreement": "Расхождение",
+                "comment": "Комментарий",
             },
         )
 
@@ -578,17 +611,27 @@ class GeneticOptimizationTab(BaseScrollableTab):
         if not hasattr(self, "ahp_ranking_table"):
             return
         self._clear_tree(self.ahp_ranking_table)
+        if hasattr(self, "hybrid_ranking_table"):
+            self._clear_tree(self.hybrid_ranking_table)
         if not isinstance(report, Mapping):
             return
         if report.get("status") != "ok":
             reason = report.get("reason") or "AHP-ранжирование не выполнено."
             self.status_var.set(str(reason))
             self.ahp_agreement_var.set(str(reason))
+            if hasattr(self, "hybrid_summary_var"):
+                self.hybrid_summary_var.set("Гибридная оценка не рассчитана: AHP-ранжирование не выполнено.")
             return
 
         agreement = report.get("agreement", {}) if isinstance(report.get("agreement"), Mapping) else {}
+        hybrid_assessment = (
+            report.get("hybrid_assessment", {})
+            if isinstance(report.get("hybrid_assessment"), Mapping)
+            else {}
+        )
         rank_delta_by_id = self._rank_delta_by_id(agreement)
         self.ahp_agreement_var.set(self._agreement_text(agreement))
+        self._render_hybrid_assessment(hybrid_assessment, agreement)
 
         ranking = report.get("final", {}).get("ranking", []) if isinstance(report.get("final"), Mapping) else []
         for row in ranking:
@@ -619,11 +662,42 @@ class GeneticOptimizationTab(BaseScrollableTab):
                 f"AHP выбрал: {winner.get('name')} со score={self._format_number(winner.get('score'), digits=4)}; "
                 f"ГА/AHP: {agreement_status}."
             )
+            hybrid_text = self._hybrid_summary_text(hybrid_assessment, agreement)
             self.explanation_var.set(
                 "ГА сформировал пул допустимых конфигураций, после чего AHP независимо оценил те же альтернативы. "
-                f"{self._agreement_text(agreement)}"
+                f"{self._agreement_text(agreement)} {hybrid_text}"
             )
         self.update_scrollregion()
+
+    def _render_hybrid_assessment(
+        self,
+        hybrid: Mapping[str, Any],
+        agreement: Mapping[str, Any],
+    ) -> None:
+        if not hasattr(self, "hybrid_ranking_table"):
+            return
+        self._clear_tree(self.hybrid_ranking_table)
+        summary = self._hybrid_summary_text(hybrid, agreement)
+        self.hybrid_summary_var.set(summary)
+        if hybrid.get("status") != "ok":
+            return
+
+        for row in hybrid.get("ranking", []) if isinstance(hybrid.get("ranking"), list) else []:
+            if not isinstance(row, Mapping):
+                continue
+            self.hybrid_ranking_table.insert(
+                "",
+                "end",
+                values=(
+                    row.get("rank"),
+                    row.get("name"),
+                    self._format_number(row.get("hybrid_score"), digits=4),
+                    row.get("ga_rank"),
+                    row.get("ahp_rank"),
+                    self._format_number(row.get("score_disagreement"), digits=4),
+                    self._hybrid_row_comment(row),
+                ),
+            )
 
     def _rank_delta_by_id(self, agreement: Mapping[str, Any]) -> dict[str, int]:
         result: dict[str, int] = {}
@@ -691,6 +765,50 @@ class GeneticOptimizationTab(BaseScrollableTab):
             return ""
         summary = str(interpretation.get("summary") or "").strip()
         return summary
+
+    def _hybrid_summary_text(
+        self,
+        hybrid: Mapping[str, Any],
+        agreement: Mapping[str, Any],
+    ) -> str:
+        if not hybrid:
+            return "Гибридная итоговая оценка не рассчитана."
+        if hybrid.get("status") != "ok":
+            reason = str(hybrid.get("reason") or "нет данных для гибридного расчёта")
+            return f"Гибридная итоговая оценка не рассчитана: {reason}."
+
+        winner = hybrid.get("winner", {}) if isinstance(hybrid.get("winner"), Mapping) else {}
+        lambda_label = str(hybrid.get("lambda_label") or "нейтральный компромисс")
+        lambda_value = self._format_number(hybrid.get("lambda"), digits=2)
+        score = self._format_number(winner.get("hybrid_score"), digits=4)
+        base = (
+            f"Гибридный лидер: {winner.get('id', '—')} — {winner.get('name', '—')} "
+            f"со score={score}. Режим: {lambda_label}, λ={lambda_value}."
+        )
+        if str(agreement.get("status")) == "conflict":
+            base += " GA и AHP находятся в конфликте, поэтому результат является компромиссным ориентиром."
+        warnings = hybrid.get("warnings", [])
+        if isinstance(warnings, list) and warnings:
+            base += " " + " ".join(str(item) for item in warnings[:2])
+        return base
+
+    def _hybrid_row_comment(self, row: Mapping[str, Any]) -> str:
+        ga_rank = row.get("ga_rank")
+        ahp_rank = row.get("ahp_rank")
+        try:
+            ga_rank_int = int(ga_rank)
+            ahp_rank_int = int(ahp_rank)
+        except (TypeError, ValueError):
+            return "компромиссный вариант"
+        if ga_rank_int == 1 and ahp_rank_int == 1:
+            return "подтверждён обоими методами"
+        if ga_rank_int <= 3 and ahp_rank_int <= 3:
+            return "сильный верхний слой"
+        if ga_rank_int <= 3:
+            return "сильнее по GA"
+        if ahp_rank_int <= 3:
+            return "сильнее по AHP"
+        return "компромиссный вариант"
 
     def _clear_tree(self, tree: ttk.Treeview) -> None:
         tree.delete(*tree.get_children())
