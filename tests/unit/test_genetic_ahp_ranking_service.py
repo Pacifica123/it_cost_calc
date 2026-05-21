@@ -110,6 +110,8 @@ def test_genetic_ahp_service_ranks_ga_candidate_solutions():
     assert report["final"]["winner_id"]
     assert report["final"]["ranking"][0]["selected_items"]
     assert "genetic_ahp_ranking" in result["export_payload"]
+    assert "ga_ahp_agreement" in result["export_payload"]
+    assert "independent_assessment" in result["export_payload"]
 
 
 def test_genetic_ahp_use_case_delegates_to_service():
@@ -206,3 +208,5 @@ def test_genetic_ahp_default_mode_uses_independent_candidate_metrics_with_anchor
     assert len(report["independent_assessment"]["ahp_scores"]) == 3
     assert report["independent_assessment"]["candidate_pool"][0]["name"] == "A"
     assert "genetic_ahp_ranking" in result["export_payload"]
+    assert result["export_payload"]["ga_ahp_agreement"] == report["agreement"]
+    assert result["export_payload"]["independent_assessment"] == report["independent_assessment"]

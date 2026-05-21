@@ -203,6 +203,10 @@ class GeneticAhpRankingService:
     def _combined_result(self, genetic_summary: Mapping[str, Any], ahp_report: Mapping[str, Any]) -> dict[str, Any]:
         export_payload = deepcopy(genetic_summary.get("export_payload", {}))
         export_payload["genetic_ahp_ranking"] = deepcopy(ahp_report)
+        export_payload["ga_ahp_agreement"] = deepcopy(ahp_report.get("agreement", {}))
+        export_payload["independent_assessment"] = deepcopy(
+            ahp_report.get("independent_assessment", {})
+        )
         return {
             "status": "ok" if ahp_report.get("status") == "ok" else "partial",
             "genetic_optimization": deepcopy(dict(genetic_summary)),

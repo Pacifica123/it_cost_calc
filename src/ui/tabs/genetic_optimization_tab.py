@@ -72,6 +72,9 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.require_licenses_var = tk.BooleanVar(value=False)
 
         self.status_var = tk.StringVar(value="ГА ещё не запускался.")
+        self.ahp_agreement_var = tk.StringVar(
+            value="Согласованность ГА и AHP появится после запуска сценария «ГА + AHP»."
+        )
         self.explanation_var = tk.StringVar(
             value=(
                 "Задайте ограничения и веса критериев, затем нажмите «Запустить ГА». "
@@ -191,15 +194,32 @@ class GeneticOptimizationTab(BaseScrollableTab):
             },
         )
 
+        ttk.Label(
+            ahp_tab,
+            textvariable=self.ahp_agreement_var,
+            wraplength=680,
+            justify="left",
+        ).pack(fill="x", padx=4, pady=(4, 8))
         self.ahp_ranking_table = self._build_tree(
             ahp_tab,
-            columns=("rank", "name", "ahp_score", "ga_rank", "ga_score", "cost"),
+            columns=(
+                "rank",
+                "name",
+                "ahp_score",
+                "ga_rank",
+                "ga_score",
+                "rank_delta",
+                "row_status",
+                "cost",
+            ),
             headings={
-                "rank": "Место",
+                "rank": "Место AHP",
                 "name": "Кандидатная конфигурация",
                 "ahp_score": "AHP score",
                 "ga_rank": "ГА-ранг",
                 "ga_score": "ГА score",
+                "rank_delta": "Δ ранга",
+                "row_status": "Статус",
                 "cost": "Стоимость",
             },
         )
@@ -430,6 +450,10 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self._clear_tree(self.history_table)
         if hasattr(self, "ahp_ranking_table"):
             self._clear_tree(self.ahp_ranking_table)
+        if hasattr(self, "ahp_agreement_var"):
+            self.ahp_agreement_var.set(
+                "Согласованность ГА и AHP появится после запуска сценария «ГА + AHP»."
+            )
 
         ga_result = result.get("ga_result", {}) if isinstance(result.get("ga_result"), Mapping) else {}
         if result.get("status") == "error":
@@ -522,11 +546,20 @@ class GeneticOptimizationTab(BaseScrollableTab):
         if report.get("status") != "ok":
             reason = report.get("reason") or "AHP-ранжирование не выполнено."
             self.status_var.set(str(reason))
+            self.ahp_agreement_var.set(str(reason))
             return
+
+        agreement = report.get("agreement", {}) if isinstance(report.get("agreement"), Mapping) else {}
+        rank_delta_by_id = self._rank_delta_by_id(agreement)
+        self.ahp_agreement_var.set(self._agreement_text(agreement))
 
         ranking = report.get("final", {}).get("ranking", []) if isinstance(report.get("final"), Mapping) else []
         for row in ranking:
             totals = row.get("totals", {}) if isinstance(row.get("totals"), Mapping) else {}
+            delta = rank_delta_by_id.get(
+                str(row.get("id")),
+                self._rank_delta_from_row(row),
+            )
             self.ahp_ranking_table.insert(
                 "",
                 "end",
@@ -536,20 +569,74 @@ class GeneticOptimizationTab(BaseScrollableTab):
                     self._format_number(row.get("score"), digits=4),
                     row.get("ga_rank"),
                     self._format_number(row.get("ga_score"), digits=4),
+                    self._format_rank_delta(delta),
+                    self._rank_delta_status(delta),
                     self._format_money(totals.get("capital_cost")),
                 ),
             )
 
         winner = report.get("final", {}).get("winner", {}) if isinstance(report.get("final"), Mapping) else {}
         if winner:
+            agreement_status = str(agreement.get("status_label") or "согласованность не рассчитана")
             self.status_var.set(
-                f"AHP выбрал: {winner.get('name')} со score={self._format_number(winner.get('score'), digits=4)}."
+                f"AHP выбрал: {winner.get('name')} со score={self._format_number(winner.get('score'), digits=4)}; "
+                f"ГА/AHP: {agreement_status}."
             )
             self.explanation_var.set(
-                "ГА сформировал несколько допустимых конфигураций, а AHP выполнил объяснимое ранжирование этих альтернатив "
-                "по тем же критериям и весам. Победитель AHP показан во вкладке «AHP-ранжирование»."
+                "ГА сформировал пул допустимых конфигураций, после чего AHP независимо оценил те же альтернативы. "
+                f"{self._agreement_text(agreement)}"
             )
         self.update_scrollregion()
+
+    def _rank_delta_by_id(self, agreement: Mapping[str, Any]) -> dict[str, int]:
+        result: dict[str, int] = {}
+        for row in agreement.get("rank_deltas", []) if isinstance(agreement.get("rank_deltas"), list) else []:
+            if not isinstance(row, Mapping):
+                continue
+            candidate_id = str(row.get("id") or "")
+            if not candidate_id:
+                continue
+            try:
+                result[candidate_id] = int(row.get("rank_delta"))
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    def _rank_delta_from_row(self, row: Mapping[str, Any]) -> int | None:
+        try:
+            ahp_rank = int(row.get("rank"))
+            ga_rank = int(row.get("ga_rank"))
+        except (TypeError, ValueError):
+            return None
+        return ahp_rank - ga_rank
+
+    def _format_rank_delta(self, delta: int | None) -> str:
+        if delta is None:
+            return "—"
+        if delta == 0:
+            return "0"
+        return f"{delta:+d}"
+
+    def _rank_delta_status(self, delta: int | None) -> str:
+        if delta is None:
+            return "нет данных"
+        if delta == 0:
+            return "совпадает"
+        if abs(delta) <= 1:
+            return "детальная перестановка"
+        if abs(delta) <= 3:
+            return "заметный сдвиг"
+        return "сильное расхождение"
+
+    def _agreement_text(self, agreement: Mapping[str, Any]) -> str:
+        if not agreement:
+            return "Согласованность ГА и AHP не рассчитана."
+        summary = str(agreement.get("summary") or "").strip()
+        warnings = agreement.get("warnings", [])
+        warning_text = ""
+        if isinstance(warnings, list) and warnings:
+            warning_text = " " + " ".join(str(item) for item in warnings[:2])
+        return (summary or "Согласованность ГА и AHP рассчитана.") + warning_text
 
     def _clear_tree(self, tree: ttk.Treeview) -> None:
         tree.delete(*tree.get_children())
