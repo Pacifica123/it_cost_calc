@@ -697,19 +697,17 @@ class GeneticOptimizationTab(BaseScrollableTab):
         )
 
     def _client_capacity(self, subset: Sequence[Any]) -> float:
-        return sum(
-            self._number(item.properties.get("quantity"), default=0.0)
-            for item in subset
-            if item.properties.get("source_category") == "client"
-            or item.properties.get("category") == "client"
-        )
+        return sum(self._item_client_capacity(item.properties) for item in subset)
 
     def _client_capacity_from_dicts(self, selected_items: Sequence[Mapping[str, Any]]) -> float:
-        return sum(
-            self._number(item.get("quantity"), default=0.0)
-            for item in selected_items
-            if item.get("source_category") == "client" or item.get("category") == "client"
-        )
+        return sum(self._item_client_capacity(item) for item in selected_items)
+
+    def _item_client_capacity(self, item: Mapping[str, Any]) -> float:
+        if "client_seats" in item:
+            return self._number(item.get("client_seats"), default=0.0)
+        if item.get("source_category") == "client" or item.get("category") == "client":
+            return self._number(item.get("quantity"), default=0.0)
+        return 0.0
 
     def _total_power(self, subset: Sequence[Any], power_lookup: Mapping[str, float]) -> float:
         return sum(self._item_power(item.properties, power_lookup) for item in subset)

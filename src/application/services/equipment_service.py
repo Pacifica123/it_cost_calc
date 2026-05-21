@@ -103,7 +103,13 @@ class EquipmentService:
         return rows
 
     def list_energy_relevant_rows(self) -> list[dict[str, Any]]:
-        return [to_plain_data(item) for item in self.list_energy_relevant_items()]
+        rows: list[dict[str, Any]] = []
+        for category in ("server", "client", "network"):
+            for row in self.repository.list(category):
+                payload = deepcopy(to_plain_data(row))
+                payload.setdefault("category", category)
+                rows.append(payload)
+        return rows
 
     def list_round_the_clock_equipment_names(self) -> set[str]:
         return {item.name for item in self.list_capital_items("server") if item.name}

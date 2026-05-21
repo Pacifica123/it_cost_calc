@@ -83,12 +83,16 @@ class EnergyTab(BaseScrollableTab):
         self.equipment_table.delete(*self.equipment_table.get_children())
 
         merged_rows: list[dict] = []
-        for row in self.equipment_service.list_energy_relevant_items():
-            name = row.name
+        for row in self.equipment_service.list_energy_relevant_rows():
+            name = str(row.get("name", ""))
+            saved_power = self.equipment_data.get(name, {}).get("max_power")
+            source_power = row.get("max_power", 0.0)
             payload = {
                 "name": name,
-                "quantity": float(row.quantity),
-                "max_power": float(self.equipment_data.get(name, {}).get("max_power", 0.0)),
+                "quantity": float(row.get("quantity", 0.0)),
+                "max_power": float(
+                    saved_power if saved_power is not None else source_power or 0.0
+                ),
             }
             self.equipment_data[name] = payload
             merged_rows.append(payload)
