@@ -155,6 +155,13 @@ class GeneticAhpRankingService:
             utility_matrix=utility_matrix,
             criterion_diagnostics=criterion_diagnostics,
         )
+        hybrid_assessment = self._build_hybrid_assessment(
+            candidates=candidates,
+            alt_ids=alt_ids,
+            ranked_indices=ranked_indices,
+            ahp_scores=final_scores_norm,
+            agreement=agreement,
+        )
 
         report = {
             "status": "ok",
@@ -199,6 +206,7 @@ class GeneticAhpRankingService:
                 "criterion_utilities": self._matrix_by_candidate(alt_ids, criteria, utility_matrix),
             },
             "agreement": agreement,
+            "hybrid_assessment": hybrid_assessment,
             "explanation": (
                 "ГА сформировал набор допустимых кандидатных конфигураций. "
                 "AHP затем независимо оценил этот же пул по значениям критериев кандидатов "
@@ -214,6 +222,8 @@ class GeneticAhpRankingService:
         export_payload["independent_assessment"] = deepcopy(
             ahp_report.get("independent_assessment", {})
         )
+        if "hybrid_assessment" in ahp_report:
+            export_payload["hybrid_assessment"] = deepcopy(ahp_report.get("hybrid_assessment", {}))
         return {
             "status": "ok" if ahp_report.get("status") == "ok" else "partial",
             "genetic_optimization": deepcopy(dict(genetic_summary)),
@@ -401,6 +411,181 @@ class GeneticAhpRankingService:
         ):
             return "independent_candidate_metrics"
         return "custom_ahp_criteria"
+
+    def _build_hybrid_assessment(
+        self,
+        *,
+        candidates: Sequence[Mapping[str, Any]],
+        alt_ids: Sequence[str],
+        ranked_indices: Sequence[int],
+        ahp_scores: np.ndarray,
+        agreement: Mapping[str, Any] | None,
+        lambda_value: float = 0.5,
+    ) -> dict[str, Any]:
+        """Build a neutral hybrid ranking over the same GA/AHP candidate pool.
+
+        Raw GA and AHP scores use different scales, so both score series are
+        first projected to 0..1 over the candidate pool. If a score series is
+        constant, its normalized contribution is set to 0.5 for every candidate:
+        the method is present in the report, but it does not distort the final
+        ranking when it cannot distinguish alternatives.
+        """
+        candidate_count = len(candidates)
+        if candidate_count == 0:
+            return {
+                "status": "skipped",
+                "reason": "No candidates are available for hybrid assessment.",
+                "candidate_count": 0,
+            }
+
+        lambda_value = self._bounded_lambda(lambda_value)
+        ga_scores = [self._finite_score_or_none(candidate.get("score")) for candidate in candidates]
+        ahp_score_values = [self._finite_score_or_none(value) for value in ahp_scores.tolist()]
+        ga_normalized, ga_norm_info = self._normalize_score_series(ga_scores)
+        ahp_normalized, ahp_norm_info = self._normalize_score_series(ahp_score_values)
+
+        ahp_rank_by_index = {candidate_index: rank for rank, candidate_index in enumerate(ranked_indices, start=1)}
+        hybrid_rows = []
+        for index, candidate in enumerate(candidates):
+            ga_part = lambda_value * ga_normalized[index]
+            ahp_part = (1.0 - lambda_value) * ahp_normalized[index]
+            hybrid_score = ga_part + ahp_part
+            hybrid_rows.append(
+                {
+                    "source_index": index,
+                    "id": alt_ids[index],
+                    "name": self._candidate_name(candidate, alt_ids[index]),
+                    "ga_rank": self._candidate_ga_rank(candidate, index),
+                    "ahp_rank": int(ahp_rank_by_index.get(index, index + 1)),
+                    "hybrid_score": float(hybrid_score),
+                    "ga_score": ga_scores[index],
+                    "ahp_score": ahp_score_values[index],
+                    "ga_score_normalized": float(ga_normalized[index]),
+                    "ahp_score_normalized": float(ahp_normalized[index]),
+                    "ga_contribution": float(ga_part),
+                    "ahp_contribution": float(ahp_part),
+                    "score_disagreement": float(abs(ga_normalized[index] - ahp_normalized[index])),
+                    "totals": deepcopy(candidate.get("totals", {})),
+                }
+            )
+
+        sorted_rows = sorted(
+            hybrid_rows,
+            key=lambda row: (
+                float(row["hybrid_score"]),
+                -int(row["ga_rank"]),
+                -int(row["ahp_rank"]),
+            ),
+            reverse=True,
+        )
+        ranking = []
+        for rank, row in enumerate(sorted_rows, start=1):
+            clean_row = dict(row)
+            clean_row.pop("source_index", None)
+            clean_row["rank"] = rank
+            ranking.append(clean_row)
+
+        warnings = self._hybrid_warnings(agreement=agreement, ga_norm_info=ga_norm_info, ahp_norm_info=ahp_norm_info)
+        winner = ranking[0] if ranking else None
+        return {
+            "status": "ok",
+            "method": "weighted_normalized_ga_ahp_score",
+            "lambda": float(lambda_value),
+            "lambda_label": self._lambda_label(lambda_value),
+            "candidate_count": candidate_count,
+            "normalization": {
+                "ga": "minmax_over_candidate_pool",
+                "ahp": "minmax_over_candidate_pool",
+                "ga_details": ga_norm_info,
+                "ahp_details": ahp_norm_info,
+            },
+            "ranking": ranking,
+            "winner_id": winner.get("id") if winner else None,
+            "winner_name": winner.get("name") if winner else None,
+            "winner": winner,
+            "warnings": warnings,
+            "explanation": (
+                "Hybrid score combines normalized GA and AHP scores: "
+                "H_i = λ × Ĝ_i + (1 - λ) × Â_i. "
+                "Agreement diagnostics are reported separately and do not change the formula."
+            ),
+        }
+
+    def _bounded_lambda(self, value: Any) -> float:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return 0.5
+        if not np.isfinite(numeric):
+            return 0.5
+        return min(1.0, max(0.0, numeric))
+
+    def _lambda_label(self, value: float) -> str:
+        if abs(value - 0.5) <= 1e-12:
+            return "нейтральный компромисс"
+        if value > 0.5:
+            return "с приоритетом GA"
+        return "с приоритетом AHP"
+
+    def _normalize_score_series(self, scores: Sequence[float | None]) -> tuple[list[float], dict[str, Any]]:
+        finite_values = [float(value) for value in scores if value is not None and np.isfinite(float(value))]
+        if not finite_values:
+            return [0.5 for _ in scores], {
+                "status": "no_finite_scores",
+                "min": None,
+                "max": None,
+                "constant_value": None,
+                "missing_count": len(scores),
+            }
+
+        min_value = min(finite_values)
+        max_value = max(finite_values)
+        missing_count = len(scores) - len(finite_values)
+        if abs(max_value - min_value) <= 1e-12:
+            return [0.5 for _ in scores], {
+                "status": "constant_score",
+                "min": min_value,
+                "max": max_value,
+                "constant_value": min_value,
+                "missing_count": missing_count,
+            }
+
+        normalized = []
+        for value in scores:
+            numeric = self._finite_score_or_none(value)
+            if numeric is None:
+                numeric = min_value
+            normalized.append(float((numeric - min_value) / (max_value - min_value)))
+        return normalized, {
+            "status": "ok",
+            "min": min_value,
+            "max": max_value,
+            "constant_value": None,
+            "missing_count": missing_count,
+        }
+
+    def _hybrid_warnings(
+        self,
+        *,
+        agreement: Mapping[str, Any] | None,
+        ga_norm_info: Mapping[str, Any],
+        ahp_norm_info: Mapping[str, Any],
+    ) -> list[str]:
+        warnings = []
+        agreement_status = agreement.get("status") if isinstance(agreement, Mapping) else None
+        if agreement_status == "conflict":
+            warnings.append(
+                "Гибридная оценка рассчитана как компромиссный ориентир, но GA и AHP находятся в конфликте."
+            )
+        if ga_norm_info.get("status") in {"constant_score", "no_finite_scores"}:
+            warnings.append(
+                "GA-score не различает кандидатов в гибридной нормализации; вклад GA задан одинаковым для всех вариантов."
+            )
+        if ahp_norm_info.get("status") in {"constant_score", "no_finite_scores"}:
+            warnings.append(
+                "AHP-score не различает кандидатов в гибридной нормализации; вклад AHP задан одинаковым для всех вариантов."
+            )
+        return warnings
 
     def _build_agreement_report(
         self,
