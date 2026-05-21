@@ -397,6 +397,11 @@ def _validate_params(params: Dict[str, Any]) -> Dict[str, Any]:
     if top_solutions_limit < 0:
         raise ValueError("top_solutions_limit must be >= 0")
 
+    quality_check_enabled = bool(params.get("quality_check_enabled", True))
+    quality_check_max_items = int(params.get("quality_check_max_items", 18))
+    if quality_check_max_items < 0:
+        raise ValueError("quality_check_max_items must be >= 0")
+
     init_mode = str(
         params.get("init_mode", params.get("initialization_mode", DEFAULT_INIT_MODE))
     )
@@ -421,6 +426,8 @@ def _validate_params(params: Dict[str, Any]) -> Dict[str, Any]:
         "stagnation_limit": stagnation_limit,
         "max_random_attempts": max_random_attempts,
         "top_solutions_limit": top_solutions_limit,
+        "quality_check_enabled": quality_check_enabled,
+        "quality_check_max_items": quality_check_max_items,
         "init_mode": init_mode,
         "allow_empty": allow_empty,
     }
@@ -554,6 +561,13 @@ def _empty_result(
         "top_solutions": [],
         "top_solutions_source": "unique_feasible_archive",
         "unique_feasible_solutions_seen": 0,
+        "quality_check": {
+            "status": "skipped",
+            "method": "exhaustive_enumeration",
+            "available": False,
+            "reason": error,
+            "item_count": 0,
+        },
         "allow_empty": allow_empty,
     }
 
@@ -653,6 +667,8 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
     stagnation_limit: int = validated["stagnation_limit"]
     max_random_attempts: int = validated["max_random_attempts"]
     top_solutions_limit: int = validated["top_solutions_limit"]
+    quality_check_enabled: bool = validated["quality_check_enabled"]
+    quality_check_max_items: int = validated["quality_check_max_items"]
     init_mode: str = validated["init_mode"]
     allow_empty: bool = validated["allow_empty"]
 
@@ -1097,6 +1113,120 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
         for rank, (_score, mask) in enumerate(scored_candidates[:top_solutions_limit], start=1)
     ]
 
+    def exact_quality_check() -> Dict[str, Any]:
+        """Проверяет GA на малом наборе полным перебором.
+
+        Это диагностический режим: он не влияет на выбор решения, а только
+        сравнивает найденный GA результат с точным эталоном, если число item-ов
+        достаточно маленькое.
+        """
+        item_count = len(items)
+        base_report: Dict[str, Any] = {
+            "method": "exhaustive_enumeration",
+            "enabled": quality_check_enabled,
+            "available": False,
+            "item_count": item_count,
+            "max_items": quality_check_max_items,
+        }
+        if not quality_check_enabled:
+            return {
+                **base_report,
+                "status": "skipped",
+                "reason": "disabled",
+            }
+        if item_count > quality_check_max_items:
+            return {
+                **base_report,
+                "status": "skipped",
+                "reason": "too_many_items",
+                "message": (
+                    "Полный перебор пропущен: число item-ов превышает "
+                    "quality_check_max_items."
+                ),
+            }
+
+        total_masks = 1 << item_count
+        exact_candidates: List[Tuple[float, Mask]] = []
+        for mask_number in range(total_masks):
+            mask = tuple((mask_number >> index) & 1 for index in range(item_count))
+            if not is_feasible(mask):
+                continue
+            exact_candidates.append((agg_fitness_from_raw(raw_scores_for_mask(mask)), mask))
+
+        exact_candidates.sort(key=lambda item: item[0], reverse=True)
+        if not exact_candidates:
+            return {
+                **base_report,
+                "status": "warning",
+                "available": True,
+                "reason": "no_feasible_solution",
+                "total_masks_checked": total_masks,
+                "feasible_count": 0,
+            }
+
+        exact_best_score, exact_best_mask = exact_candidates[0]
+        ga_best_mask = mask_to_tuple(best)
+        ga_best_score = float(best_score) if best is not None and math.isfinite(best_score) else None
+        exact_rank_by_mask = {candidate_mask: rank for rank, (_score, candidate_mask) in enumerate(exact_candidates, start=1)}
+        ga_best_exact_rank = exact_rank_by_mask.get(ga_best_mask)
+        ga_best_mask_matches_exact_best = bool(ga_best_mask == exact_best_mask)
+        ga_best_matches_exact_best = bool(
+            ga_best_score is not None
+            and math.isclose(float(ga_best_score), float(exact_best_score), rel_tol=0.0, abs_tol=1e-12)
+        )
+
+        comparison_limit = min(
+            top_solutions_limit if top_solutions_limit > 0 else 10,
+            len(exact_candidates),
+        )
+        exact_top_masks = [mask for _score, mask in exact_candidates[:comparison_limit]]
+        ga_top_masks = [mask_to_tuple(solution.get("mask")) for solution in top_solutions[:comparison_limit]]
+        overlap_count = len(set(exact_top_masks).intersection(ga_top_masks))
+        overlap_ratio = overlap_count / comparison_limit if comparison_limit else 0.0
+        ga_top_matches_exact_top = overlap_count == comparison_limit
+
+        warnings: List[str] = []
+        if not ga_best_matches_exact_best:
+            warnings.append(
+                "GA best не совпал с точным оптимумом на малом наборе; "
+                "проверьте параметры ГА или ограничения."
+            )
+        if not ga_top_matches_exact_top:
+            warnings.append(
+                "GA top_solutions не полностью совпадает с exact top-N; "
+                "пул кандидатов может быть неполным."
+            )
+
+        return {
+            **base_report,
+            "status": "ok" if not warnings else "warning",
+            "available": True,
+            "total_masks_checked": total_masks,
+            "feasible_count": len(exact_candidates),
+            "ga_best_matches_exact_best": ga_best_matches_exact_best,
+            "ga_best_mask_matches_exact_best": ga_best_mask_matches_exact_best,
+            "ga_best_exact_rank": ga_best_exact_rank,
+            "ga_best_score": ga_best_score,
+            "exact_best_score": float(exact_best_score),
+            "score_delta": (
+                float(ga_best_score - exact_best_score)
+                if ga_best_score is not None
+                else None
+            ),
+            "ga_best_mask": ga_best_mask,
+            "exact_best_mask": exact_best_mask,
+            "exact_best_solution": solution_payload(exact_best_mask, rank=1),
+            "top_solutions_limit": comparison_limit,
+            "ga_top_masks": ga_top_masks,
+            "exact_top_masks": exact_top_masks,
+            "top_overlap_count": overlap_count,
+            "top_overlap_ratio": overlap_ratio,
+            "ga_top_matches_exact_top": ga_top_matches_exact_top,
+            "warnings": warnings,
+        }
+
+    quality_check = exact_quality_check()
+
     best_solution = solution_payload(best) if best is not None else None
     best_subset = subset_from_mask(items, best) if best is not None else []
     best_raw = (
@@ -1155,6 +1285,7 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
         "top_solutions": top_solutions,
         "top_solutions_source": "unique_feasible_archive",
         "unique_feasible_solutions_seen": len(feasible_solution_archive),
+        "quality_check": quality_check,
         "allow_empty": allow_empty,
     }
     logger.info(

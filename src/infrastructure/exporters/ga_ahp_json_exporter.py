@@ -30,6 +30,8 @@ def build_ga_ahp_report_payload(result: Mapping[str, Any]) -> dict[str, Any]:
         or ahp_report.get("agreement")
     )
     final = _mapping(ahp_report.get("final"))
+    genetic_optimization = _mapping(export_payload.get("genetic_optimization"))
+    ga_quality_check = _mapping(genetic_optimization.get("quality_check"))
 
     payload = {
         "schema_version": GA_AHP_REPORT_SCHEMA_VERSION,
@@ -42,6 +44,7 @@ def build_ga_ahp_report_payload(result: Mapping[str, Any]) -> dict[str, Any]:
         "export_payload": export_payload,
         "ga_ahp_agreement": agreement,
         "independent_assessment": independent_assessment,
+        "ga_quality_check": ga_quality_check,
         "ranking": final.get("ranking", []),
         "candidate_pool": independent_assessment.get("candidate_pool", []),
         "criterion_values": independent_assessment.get("criterion_values", {}),

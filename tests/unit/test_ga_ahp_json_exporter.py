@@ -27,6 +27,13 @@ def _sample_result():
         "status": "ok",
         "ahp_report": ahp_report,
         "export_payload": {
+            "genetic_optimization": {
+                "quality_check": {
+                    "status": "ok",
+                    "method": "exhaustive_enumeration",
+                    "ga_best_matches_exact_best": True,
+                }
+            },
             "genetic_ahp_ranking": ahp_report,
             "ga_ahp_agreement": ahp_report["agreement"],
             "independent_assessment": ahp_report["independent_assessment"],
@@ -43,6 +50,7 @@ def test_build_ga_ahp_report_payload_exposes_key_sections():
     assert payload["ga_ahp_agreement"]["status"] == "moderate"
     assert payload["ranking"][0]["id"] == "GA-1"
     assert payload["candidate_pool"][1]["name"] == "B"
+    assert payload["ga_quality_check"]["ga_best_matches_exact_best"] is True
     assert payload["criterion_values"]["GA-1"]["cost"] == 100.0
     assert payload["criterion_utilities"]["GA-2"]["cost"] == 0.8
 
@@ -53,4 +61,5 @@ def test_export_ga_ahp_report_json_writes_utf8_file(tmp_path):
     assert path.exists()
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["ga_ahp_agreement"]["summary"] == "Согласованность рассчитана."
+    assert data["ga_quality_check"]["method"] == "exhaustive_enumeration"
     assert data["independent_assessment"]["candidate_pool"][0]["id"] == "GA-1"

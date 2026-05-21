@@ -50,6 +50,8 @@ class GeneticOptimizationService:
         "stagnation_limit": 25,
         "init_mode": "heuristic_init",
         "top_solutions_limit": 8,
+        "quality_check_enabled": True,
+        "quality_check_max_items": 18,
     }
 
     def __init__(
@@ -382,6 +384,7 @@ class GeneticOptimizationService:
                 "criteria": deepcopy(summary["criteria"]),
                 "constraints": deepcopy(summary["constraints"]),
                 "candidate_solutions": deepcopy(summary.get("candidate_solutions", [])),
+                "quality_check": deepcopy(summary["ga_result"].get("quality_check", {})),
                 "best_score": summary["ga_result"].get("best_agg"),
                 "termination_reason": summary["ga_result"].get("termination_reason"),
                 "generations_ran": summary["ga_result"].get("generations_ran"),
