@@ -1,3 +1,5 @@
+import pytest
+
 from application.services.genetic_ahp_ranking_service import GeneticAhpRankingService
 from application.services.genetic_optimization_service import GeneticOptimizationService
 from application.use_cases.run_genetic_ahp_ranking import RunGeneticAhpRankingUseCase
@@ -16,6 +18,12 @@ def _quality(subset):
 
 def _cost(subset):
     return sum(item.properties.get("total_cost", 0) for item in subset)
+
+
+def _assert_matrix_close(actual, expected, *, abs_tol=1e-9):
+    assert len(actual) == len(expected)
+    for actual_row, expected_row in zip(actual, expected):
+        assert actual_row == pytest.approx(expected_row, abs=abs_tol)
 
 
 def test_ga_returns_top_candidate_solutions_for_downstream_ahp():
@@ -120,3 +128,81 @@ def test_genetic_ahp_use_case_delegates_to_service():
 
     assert result["status"] == "ok"
     assert service.received == {"ahp_top_limit": 3}
+
+
+def test_genetic_ahp_default_mode_uses_independent_candidate_metrics_with_anchor_bounds():
+    class DummyGeneticService:
+        def run(self, **options):
+            return {
+                "status": "ok",
+                "candidate_solutions": [
+                    {
+                        "rank": 1,
+                        "score": 0.66,
+                        "selected_items": [{"name": "A"}],
+                        "totals": {"capital_cost": 900.0},
+                        "raw_scores_by_criterion": {"performance": 90.0, "cost": 900.0},
+                        "directed_scores_by_criterion": {"performance": 90.0, "cost": -900.0},
+                        "normalized_scores_by_criterion": {"performance": 1.0, "cost": 0.0},
+                    },
+                    {
+                        "rank": 2,
+                        "score": 0.64,
+                        "selected_items": [{"name": "B"}],
+                        "totals": {"capital_cost": 500.0},
+                        "raw_scores_by_criterion": {"performance": 80.0, "cost": 500.0},
+                        "directed_scores_by_criterion": {"performance": 80.0, "cost": -500.0},
+                        "normalized_scores_by_criterion": {"performance": 0.8, "cost": 0.5},
+                    },
+                    {
+                        "rank": 3,
+                        "score": 0.57,
+                        "selected_items": [{"name": "C"}],
+                        "totals": {"capital_cost": 300.0},
+                        "raw_scores_by_criterion": {"performance": 60.0, "cost": 300.0},
+                        "directed_scores_by_criterion": {"performance": 60.0, "cost": -300.0},
+                        "normalized_scores_by_criterion": {"performance": 0.6, "cost": 0.7},
+                    },
+                ],
+                "ga_result": {
+                    "criteria_metadata": [
+                        {"name": "performance", "direction": "max"},
+                        {"name": "cost", "direction": "min"},
+                    ],
+                    "criterion_names": ["performance", "cost"],
+                    "criterion_directions": ["max", "min"],
+                    "normalization_mins": [0.0, -1000.0],
+                    "normalization_maxs": [100.0, 0.0],
+                    "weights": [0.7, 0.3],
+                },
+                "export_payload": {"genetic_optimization": {"status": "ok"}},
+            }
+
+    service = GeneticAhpRankingService(DummyGeneticService())
+
+    result = service.run(ahp_top_limit=3, saaty_cap=False)
+
+    report = result["ahp_report"]
+    assert report["status"] == "ok"
+    assert report["assessment_mode"] == "independent_candidate_metrics"
+    assert report["criteria"]["weights_source"] == "ga_weights"
+    assert report["criteria"]["normalization_scope"] == ["ga_search_space", "ga_search_space"]
+
+    _assert_matrix_close(
+        report["alternatives"]["value_matrix"],
+        [
+            [90.0, 80.0, 60.0],
+            [900.0, 500.0, 300.0],
+        ],
+    )
+    _assert_matrix_close(
+        report["alternatives"]["utility_matrix"],
+        [
+            [0.9, 0.8, 0.6],
+            [0.1, 0.5, 0.7],
+        ],
+    )
+    assert report["independent_assessment"]["ga_scores"] == [0.66, 0.64, 0.57]
+    assert len(report["independent_assessment"]["ahp_scores"]) == 3
+    assert report["independent_assessment"]["candidate_pool"][0]["name"] == "A"
+    assert "genetic_ahp_ranking" in result["export_payload"]

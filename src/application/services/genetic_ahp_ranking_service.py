@@ -50,8 +50,9 @@ class GeneticAhpRankingService:
         """Generate candidate configurations with GA and rank them with AHP.
 
         All ``ga_options`` are passed through to ``GeneticOptimizationService``.
-        ``ahp_criteria`` is optional; by default AHP reuses the normalized GA
-        criteria so that the search and explanation use the same criterion set.
+        ``ahp_criteria`` is optional; by default AHP independently evaluates
+        the GA candidate pool by raw candidate criterion values and anchored
+        GA normalization bounds instead of reusing ready normalized GA scores.
         """
         ga_params = dict(ga_options.get("ga_params") or {})
         ga_params["top_solutions_limit"] = max(int(ahp_top_limit), int(ga_params.get("top_solutions_limit", 0) or 0), 1)
@@ -86,7 +87,8 @@ class GeneticAhpRankingService:
             return self._combined_result(genetic_summary, report)
 
         value_matrix = self._build_value_matrix(candidates, criteria)
-        normalized_value_matrix = self._normalize_value_matrix(value_matrix, criteria)
+        utility_matrix = self._build_utility_matrix(value_matrix, candidates, criteria)
+        assessment_mode = self._assessment_mode(criteria)
         criteria_weights, criteria_consistency, weights_source = self._criteria_weights(
             criteria,
             genetic_summary=genetic_summary,
@@ -100,8 +102,8 @@ class GeneticAhpRankingService:
         alt_pairwise_matrices = []
 
         for criterion_index, criterion in enumerate(criteria):
-            values = normalized_value_matrix[criterion_index, :]
-            pairwise = build_pairwise_matrix_from_scores(values.tolist(), saaty_cap=saaty_cap)
+            utilities = utility_matrix[criterion_index, :]
+            pairwise = build_pairwise_matrix_from_scores(utilities.tolist(), saaty_cap=saaty_cap)
             weights, lam, ci_value, cr_value = ahp_priority_and_consistency(pairwise)
             alt_pairwise_matrices.append(pairwise.tolist())
             alt_weights_per_criterion.append(weights.tolist())
@@ -141,6 +143,7 @@ class GeneticAhpRankingService:
         report = {
             "status": "ok",
             "method": "GA candidates ranked by AHP",
+            "assessment_mode": assessment_mode,
             "candidate_count": len(candidates),
             "criteria": {
                 "names": [criterion["name"] for criterion in criteria],
@@ -148,11 +151,17 @@ class GeneticAhpRankingService:
                 "weights": criteria_weights.tolist(),
                 "weights_source": weights_source,
                 "consistency": criteria_consistency,
+                "normalization_scope": [
+                    criterion.get("normalization_scope", "candidate_pool") for criterion in criteria
+                ],
+                "normalization_mins": [criterion.get("normalization_min") for criterion in criteria],
+                "normalization_maxs": [criterion.get("normalization_max") for criterion in criteria],
             },
             "alternatives": {
                 "ids": alt_ids,
                 "value_matrix": value_matrix.tolist(),
-                "normalized_value_matrix": normalized_value_matrix.tolist(),
+                "utility_matrix": utility_matrix.tolist(),
+                "normalized_value_matrix": utility_matrix.tolist(),
                 "pairwise_matrices": alt_pairwise_matrices,
                 "weights_per_criterion": alt_weights_per_criterion,
                 "consistency_per_criterion": alt_consistency_per_criterion,
@@ -165,9 +174,17 @@ class GeneticAhpRankingService:
                 "winner_name": ranking[0]["name"],
                 "winner": ranking[0],
             },
+            "independent_assessment": {
+                "candidate_pool": self._candidate_pool_snapshot(candidates, alt_ids),
+                "ga_scores": [candidate.get("score") for candidate in candidates],
+                "ahp_scores": final_scores_norm.tolist(),
+                "criterion_values": self._matrix_by_candidate(alt_ids, criteria, value_matrix),
+                "criterion_utilities": self._matrix_by_candidate(alt_ids, criteria, utility_matrix),
+            },
             "explanation": (
-                "ГА сформировал набор допустимых кандидатных конфигураций, "
-                "после чего AHP ранжировал эти альтернативы по согласованным критериям."
+                "ГА сформировал набор допустимых кандидатных конфигураций. "
+                "AHP затем независимо оценил этот же пул по значениям критериев кандидатов "
+                "и якорной нормализации из GA-результата, а не по готовому GA-score."
             ),
         }
         return self._combined_result(genetic_summary, report)
@@ -216,19 +233,46 @@ class GeneticAhpRankingService:
                 )
             return result
 
-        ga_result = genetic_summary.get("ga_result", {}) if isinstance(genetic_summary.get("ga_result"), Mapping) else {}
+        ga_result = (
+            genetic_summary.get("ga_result", {})
+            if isinstance(genetic_summary.get("ga_result"), Mapping)
+            else {}
+        )
         criteria_meta = list(ga_result.get("criteria_metadata", []))
+        criterion_names = [str(name) for name in ga_result.get("criterion_names", [])]
+        criterion_directions = list(ga_result.get("criterion_directions", []))
+        normalization_mins = list(ga_result.get("normalization_mins") or [])
+        normalization_maxs = list(ga_result.get("normalization_maxs") or [])
+
         result = []
         for index, meta in enumerate(criteria_meta):
             name = str(meta.get("name") or f"criterion_{index + 1}")
-            # Normalized GA scores are already transformed to "larger is better".
+            direction_label = str(
+                meta.get("direction")
+                or (criterion_directions[index] if index < len(criterion_directions) else "max")
+            )
+            direction = self._direction_to_int(direction_label, name)
+            try:
+                bounds_index = criterion_names.index(name)
+            except ValueError:
+                bounds_index = index
+            normalization_min = (
+                normalization_mins[bounds_index] if bounds_index < len(normalization_mins) else None
+            )
+            normalization_max = (
+                normalization_maxs[bounds_index] if bounds_index < len(normalization_maxs) else None
+            )
             result.append(
                 {
                     "name": name,
-                    "field": ("normalized_scores_by_criterion", name),
-                    "direction": 1,
-                    "direction_label": str(meta.get("direction") or "max"),
-                    "uses_ga_normalized_score": True,
+                    "field": ("raw_scores_by_criterion", name),
+                    "directed_field": ("directed_scores_by_criterion", name),
+                    "direction": direction,
+                    "direction_label": direction_label,
+                    "normalization_min": normalization_min,
+                    "normalization_max": normalization_max,
+                    "normalization_scope": "ga_search_space",
+                    "assessment_source": "independent_candidate_metrics",
                 }
             )
         return result
@@ -265,6 +309,32 @@ class GeneticAhpRankingService:
             return 0.0
         return numeric
 
+    def _build_utility_matrix(
+        self,
+        value_matrix: np.ndarray,
+        candidates: Sequence[Mapping[str, Any]],
+        criteria: Sequence[Mapping[str, Any]],
+    ) -> np.ndarray:
+        utilities = np.ones_like(value_matrix, dtype=float)
+        local_normalized = self._normalize_value_matrix(value_matrix, criteria)
+        for criterion_index, criterion in enumerate(criteria):
+            if criterion.get("assessment_source") != "independent_candidate_metrics":
+                utilities[criterion_index, :] = local_normalized[criterion_index, :]
+                continue
+
+            min_value = self._finite_float_or_none(criterion.get("normalization_min"))
+            max_value = self._finite_float_or_none(criterion.get("normalization_max"))
+            if min_value is None or max_value is None or abs(max_value - min_value) <= 1e-12:
+                utilities[criterion_index, :] = local_normalized[criterion_index, :]
+                continue
+
+            directed_values = np.array(
+                [self._directed_value_for_candidate(candidate, criterion) for candidate in candidates],
+                dtype=float,
+            )
+            utilities[criterion_index, :] = (directed_values - min_value) / (max_value - min_value)
+        return np.clip(utilities, 0.0, 1.0)
+
     def _normalize_value_matrix(
         self,
         values: np.ndarray,
@@ -282,6 +352,70 @@ class GeneticAhpRankingService:
             else:
                 normalized[index, :] = (row - min_value) / (max_value - min_value)
         return np.clip(normalized, 0.0, 1.0)
+
+    def _directed_value_for_candidate(
+        self, candidate: Mapping[str, Any], criterion: Mapping[str, Any]
+    ) -> float:
+        directed_field = criterion.get("directed_field")
+        if directed_field is not None:
+            directed_criterion = dict(criterion)
+            directed_criterion["field"] = directed_field
+            return self._value_for_candidate(candidate, directed_criterion)
+
+        value = self._value_for_candidate(candidate, criterion)
+        return value if int(criterion.get("direction", 1)) == 1 else -value
+
+    def _finite_float_or_none(self, value: Any) -> float | None:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        return numeric if np.isfinite(numeric) else None
+
+    def _assessment_mode(self, criteria: Sequence[Mapping[str, Any]]) -> str:
+        if criteria and all(
+            criterion.get("assessment_source") == "independent_candidate_metrics"
+            for criterion in criteria
+        ):
+            return "independent_candidate_metrics"
+        return "custom_ahp_criteria"
+
+    def _candidate_pool_snapshot(
+        self, candidates: Sequence[Mapping[str, Any]], alt_ids: Sequence[str]
+    ) -> list[dict[str, Any]]:
+        pool = []
+        for candidate, alt_id in zip(candidates, alt_ids):
+            pool.append(
+                {
+                    "id": alt_id,
+                    "name": self._candidate_name(candidate, alt_id),
+                    "ga_rank": candidate.get("rank"),
+                    "ga_score": candidate.get("score"),
+                    "totals": deepcopy(candidate.get("totals", {})),
+                    "selected_items": deepcopy(candidate.get("selected_items", [])),
+                }
+            )
+        return pool
+
+    def _matrix_by_candidate(
+        self,
+        alt_ids: Sequence[str],
+        criteria: Sequence[Mapping[str, Any]],
+        matrix: np.ndarray,
+    ) -> list[dict[str, Any]]:
+        names = [str(criterion.get("name")) for criterion in criteria]
+        by_candidate = []
+        for candidate_index, alt_id in enumerate(alt_ids):
+            by_candidate.append(
+                {
+                    "id": alt_id,
+                    "values": {
+                        name: float(matrix[criterion_index, candidate_index])
+                        for criterion_index, name in enumerate(names)
+                    },
+                }
+            )
+        return by_candidate
 
     def _criteria_weights(
         self,
@@ -313,7 +447,11 @@ class GeneticAhpRankingService:
         genetic_summary: Mapping[str, Any],
         criteria: Sequence[Mapping[str, Any]],
     ) -> np.ndarray | None:
-        ga_result = genetic_summary.get("ga_result", {}) if isinstance(genetic_summary.get("ga_result"), Mapping) else {}
+        ga_result = (
+            genetic_summary.get("ga_result", {})
+            if isinstance(genetic_summary.get("ga_result"), Mapping)
+            else {}
+        )
         ga_names = list(ga_result.get("criterion_names", []))
         ga_weights = list(ga_result.get("weights", []))
         if not ga_names or len(ga_names) != len(ga_weights):
