@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any, Mapping, Sequence
 
 from application.use_cases.run_genetic_optimization import RunGeneticOptimizationUseCase
 from application.use_cases.run_genetic_ahp_ranking import RunGeneticAhpRankingUseCase
+from infrastructure.exporters.ga_ahp_json_exporter import export_ga_ahp_report_json
 from shared.validation import parse_float, parse_int
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 
@@ -41,11 +43,14 @@ class GeneticOptimizationTab(BaseScrollableTab):
         *,
         run_genetic_ahp_ranking_use_case: RunGeneticAhpRankingUseCase | None = None,
         energy_tab: Any | None = None,
+        data_root: str | Path | None = None,
     ):
         super().__init__(parent, width=1180, height=620)
         self.run_genetic_optimization_use_case = run_genetic_optimization_use_case
         self.run_genetic_ahp_ranking_use_case = run_genetic_ahp_ranking_use_case
         self.energy_tab = energy_tab
+        self.generated_data_dir = self._resolve_generated_data_dir(data_root)
+        self.ga_ahp_report_path = self.generated_data_dir / "ga_ahp_report.json"
         self.last_result: dict[str, Any] | None = None
 
         self._build_variables()
@@ -341,6 +346,38 @@ class GeneticOptimizationTab(BaseScrollableTab):
         if isinstance(genetic_summary, Mapping):
             self._render_result(genetic_summary, power_lookup)
         self._render_ahp_report(result.get("ahp_report", {}))
+        self._export_ga_ahp_report(result)
+
+    def _resolve_generated_data_dir(self, data_root: str | Path | None) -> Path:
+        if data_root is not None:
+            return Path(data_root) / "generated"
+        return Path(__file__).resolve().parents[3] / "data" / "generated"
+
+    def _export_ga_ahp_report(self, result: Mapping[str, Any]) -> None:
+        try:
+            report_path = export_ga_ahp_report_json(result, self.ga_ahp_report_path)
+        except Exception as error:  # noqa: BLE001 - GUI должен предупредить о сбое экспорта
+            messagebox.showwarning(
+                "JSON-отчёт GA/AHP не сохранён",
+                str(error),
+                parent=self,
+            )
+            return
+
+        display_path = self._display_report_path(report_path)
+        current_status = self.status_var.get().strip()
+        suffix = f" JSON-отчёт: {display_path}."
+        if current_status:
+            self.status_var.set(current_status.rstrip(".") + "." + suffix)
+        else:
+            self.status_var.set(f"JSON-отчёт: {display_path}.")
+
+    def _display_report_path(self, path: Path) -> str:
+        project_root = Path(__file__).resolve().parents[3]
+        try:
+            return str(path.resolve().relative_to(project_root))
+        except ValueError:
+            return str(path)
 
     def _read_ga_params(self) -> dict[str, Any]:
         seed_value = self.seed_var.get().strip()

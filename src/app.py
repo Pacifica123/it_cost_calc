@@ -122,6 +122,7 @@ class CalculatorApp(tk.Tk):
             self.run_genetic_optimization_use_case,
             run_genetic_ahp_ranking_use_case=self.run_genetic_ahp_ranking_use_case,
             energy_tab=self.energy_tab,
+            data_root=self.data_root,
         )
         self.notebook.add(self.genetic_optimization_tab, text="Генетический подбор")
 
