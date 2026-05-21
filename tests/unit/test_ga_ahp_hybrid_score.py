@@ -117,3 +117,54 @@ def test_hybrid_assessment_handles_constant_score_series_without_crashing():
     assert [row["hybrid_score"] for row in hybrid["ranking"]] == pytest.approx([0.5, 0.5])
     assert any("GA-score не различает кандидатов" in warning for warning in hybrid["warnings"])
     assert any("AHP-score не различает кандидатов" in warning for warning in hybrid["warnings"])
+
+
+def test_hybrid_assessment_reports_lambda_sensitivity_and_winner_explanation():
+    service = GeneticAhpRankingService(
+        _DummyGeneticService(
+            [
+                _candidate(rank=1, score=10.0, cost=900.0),
+                _candidate(rank=2, score=8.0, cost=500.0),
+                _candidate(rank=3, score=6.0, cost=100.0),
+            ]
+        )
+    )
+
+    result = service.run(ahp_top_limit=3, saaty_cap=False)
+
+    hybrid = result["ahp_report"]["hybrid_assessment"]
+    sensitivity = hybrid["sensitivity"]
+    assert sensitivity["lambda_values"] == pytest.approx([0.4, 0.5, 0.6])
+    assert [row["lambda_label"] for row in sensitivity["winners"]] == [
+        "с приоритетом AHP",
+        "нейтральный компромисс",
+        "с приоритетом GA",
+    ]
+    assert sensitivity["stable_winner"] is False
+    assert "зависит от λ" in sensitivity["summary"]
+
+    explanation = hybrid["winner_explanation"]
+    assert explanation["winner_id"] == hybrid["winner_id"]
+    assert explanation["ga_winner_id"] == "GA-1"
+    assert explanation["ahp_winner_id"] == "GA-3"
+    assert explanation["stable_across_sensitivity"] is False
+    assert "Гибридная оценка выбрала" in explanation["summary"]
+
+
+def test_hybrid_assessment_reports_stable_lambda_sensitivity_for_same_winner():
+    service = GeneticAhpRankingService(
+        _DummyGeneticService(
+            [
+                _candidate(rank=1, score=0.95, cost=100.0),
+                _candidate(rank=2, score=0.80, cost=500.0),
+                _candidate(rank=3, score=0.70, cost=900.0),
+            ]
+        )
+    )
+
+    result = service.run(ahp_top_limit=3, saaty_cap=False)
+
+    sensitivity = result["ahp_report"]["hybrid_assessment"]["sensitivity"]
+    assert sensitivity["stable_winner"] is True
+    assert {row["winner_id"] for row in sensitivity["winners"]} == {"GA-1"}
+    assert "устойчив" in sensitivity["summary"]

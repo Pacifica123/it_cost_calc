@@ -785,6 +785,16 @@ class GeneticOptimizationTab(BaseScrollableTab):
             f"Гибридный лидер: {winner.get('id', '—')} — {winner.get('name', '—')} "
             f"со score={score}. Режим: {lambda_label}, λ={lambda_value}."
         )
+        explanation = hybrid.get("winner_explanation")
+        if isinstance(explanation, Mapping):
+            explanation_summary = str(explanation.get("summary") or "").strip()
+            if explanation_summary:
+                base += " " + explanation_summary
+        sensitivity = hybrid.get("sensitivity")
+        if isinstance(sensitivity, Mapping):
+            sensitivity_summary = str(sensitivity.get("summary") or "").strip()
+            if sensitivity_summary:
+                base += " " + sensitivity_summary
         if str(agreement.get("status")) == "conflict":
             base += " GA и AHP находятся в конфликте, поэтому результат является компромиссным ориентиром."
         warnings = hybrid.get("warnings", [])

@@ -445,10 +445,77 @@ class GeneticAhpRankingService:
         ahp_normalized, ahp_norm_info = self._normalize_score_series(ahp_score_values)
 
         ahp_rank_by_index = {candidate_index: rank for rank, candidate_index in enumerate(ranked_indices, start=1)}
+        ranking = self._hybrid_ranking_for_lambda(
+            candidates=candidates,
+            alt_ids=alt_ids,
+            ga_scores=ga_scores,
+            ahp_scores=ahp_score_values,
+            ga_normalized=ga_normalized,
+            ahp_normalized=ahp_normalized,
+            ahp_rank_by_index=ahp_rank_by_index,
+            lambda_value=lambda_value,
+        )
+        warnings = self._hybrid_warnings(agreement=agreement, ga_norm_info=ga_norm_info, ahp_norm_info=ahp_norm_info)
+        winner = ranking[0] if ranking else None
+        sensitivity = self._hybrid_lambda_sensitivity(
+            candidates=candidates,
+            alt_ids=alt_ids,
+            ga_scores=ga_scores,
+            ahp_scores=ahp_score_values,
+            ga_normalized=ga_normalized,
+            ahp_normalized=ahp_normalized,
+            ahp_rank_by_index=ahp_rank_by_index,
+            lambda_values=(0.4, 0.5, 0.6),
+        )
+        winner_explanation = self._hybrid_winner_explanation(
+            winner=winner,
+            ranking=ranking,
+            lambda_value=lambda_value,
+            sensitivity=sensitivity,
+        )
+        return {
+            "status": "ok",
+            "method": "weighted_normalized_ga_ahp_score",
+            "lambda": float(lambda_value),
+            "lambda_label": self._lambda_label(lambda_value),
+            "candidate_count": candidate_count,
+            "normalization": {
+                "ga": "minmax_over_candidate_pool",
+                "ahp": "minmax_over_candidate_pool",
+                "ga_details": ga_norm_info,
+                "ahp_details": ahp_norm_info,
+            },
+            "ranking": ranking,
+            "winner_id": winner.get("id") if winner else None,
+            "winner_name": winner.get("name") if winner else None,
+            "winner": winner,
+            "winner_explanation": winner_explanation,
+            "sensitivity": sensitivity,
+            "warnings": warnings,
+            "explanation": (
+                "Hybrid score combines normalized GA and AHP scores: "
+                "H_i = λ × Ĝ_i + (1 - λ) × Â_i. "
+                "Agreement diagnostics and λ-sensitivity are reported separately and do not change the formula."
+            ),
+        }
+
+    def _hybrid_ranking_for_lambda(
+        self,
+        *,
+        candidates: Sequence[Mapping[str, Any]],
+        alt_ids: Sequence[str],
+        ga_scores: Sequence[float | None],
+        ahp_scores: Sequence[float | None],
+        ga_normalized: Sequence[float],
+        ahp_normalized: Sequence[float],
+        ahp_rank_by_index: Mapping[int, int],
+        lambda_value: float,
+    ) -> list[dict[str, Any]]:
+        lambda_value = self._bounded_lambda(lambda_value)
         hybrid_rows = []
         for index, candidate in enumerate(candidates):
-            ga_part = lambda_value * ga_normalized[index]
-            ahp_part = (1.0 - lambda_value) * ahp_normalized[index]
+            ga_part = lambda_value * float(ga_normalized[index])
+            ahp_part = (1.0 - lambda_value) * float(ahp_normalized[index])
             hybrid_score = ga_part + ahp_part
             hybrid_rows.append(
                 {
@@ -459,12 +526,12 @@ class GeneticAhpRankingService:
                     "ahp_rank": int(ahp_rank_by_index.get(index, index + 1)),
                     "hybrid_score": float(hybrid_score),
                     "ga_score": ga_scores[index],
-                    "ahp_score": ahp_score_values[index],
+                    "ahp_score": ahp_scores[index],
                     "ga_score_normalized": float(ga_normalized[index]),
                     "ahp_score_normalized": float(ahp_normalized[index]),
                     "ga_contribution": float(ga_part),
                     "ahp_contribution": float(ahp_part),
-                    "score_disagreement": float(abs(ga_normalized[index] - ahp_normalized[index])),
+                    "score_disagreement": float(abs(float(ga_normalized[index]) - float(ahp_normalized[index]))),
                     "totals": deepcopy(candidate.get("totals", {})),
                 }
             )
@@ -484,31 +551,120 @@ class GeneticAhpRankingService:
             clean_row.pop("source_index", None)
             clean_row["rank"] = rank
             ranking.append(clean_row)
+        return ranking
 
-        warnings = self._hybrid_warnings(agreement=agreement, ga_norm_info=ga_norm_info, ahp_norm_info=ahp_norm_info)
-        winner = ranking[0] if ranking else None
+    def _hybrid_lambda_sensitivity(
+        self,
+        *,
+        candidates: Sequence[Mapping[str, Any]],
+        alt_ids: Sequence[str],
+        ga_scores: Sequence[float | None],
+        ahp_scores: Sequence[float | None],
+        ga_normalized: Sequence[float],
+        ahp_normalized: Sequence[float],
+        ahp_rank_by_index: Mapping[int, int],
+        lambda_values: Sequence[float],
+    ) -> dict[str, Any]:
+        winners = []
+        for raw_lambda in lambda_values:
+            lambda_value = self._bounded_lambda(raw_lambda)
+            ranking = self._hybrid_ranking_for_lambda(
+                candidates=candidates,
+                alt_ids=alt_ids,
+                ga_scores=ga_scores,
+                ahp_scores=ahp_scores,
+                ga_normalized=ga_normalized,
+                ahp_normalized=ahp_normalized,
+                ahp_rank_by_index=ahp_rank_by_index,
+                lambda_value=lambda_value,
+            )
+            winner = ranking[0] if ranking else {}
+            winners.append(
+                {
+                    "lambda": float(lambda_value),
+                    "lambda_label": self._lambda_label(lambda_value),
+                    "winner_id": winner.get("id"),
+                    "winner_name": winner.get("name"),
+                    "winner_ga_rank": winner.get("ga_rank"),
+                    "winner_ahp_rank": winner.get("ahp_rank"),
+                    "winner_hybrid_score": winner.get("hybrid_score"),
+                }
+            )
+
+        winner_ids = {str(item.get("winner_id")) for item in winners if item.get("winner_id")}
+        stable_winner = len(winner_ids) <= 1
+        if stable_winner:
+            summary = (
+                "Гибридный лидер устойчив при λ=0.4, 0.5 и 0.6; "
+                "небольшое изменение доверия к GA/AHP не меняет итоговый выбор."
+            )
+        else:
+            summary = (
+                "Гибридный лидер зависит от λ; результат следует трактовать осторожно "
+                "и показывать вместе с независимыми рейтингами GA и AHP."
+            )
         return {
-            "status": "ok",
-            "method": "weighted_normalized_ga_ahp_score",
-            "lambda": float(lambda_value),
-            "lambda_label": self._lambda_label(lambda_value),
-            "candidate_count": candidate_count,
-            "normalization": {
-                "ga": "minmax_over_candidate_pool",
-                "ahp": "minmax_over_candidate_pool",
-                "ga_details": ga_norm_info,
-                "ahp_details": ahp_norm_info,
-            },
-            "ranking": ranking,
-            "winner_id": winner.get("id") if winner else None,
-            "winner_name": winner.get("name") if winner else None,
-            "winner": winner,
-            "warnings": warnings,
-            "explanation": (
-                "Hybrid score combines normalized GA and AHP scores: "
-                "H_i = λ × Ĝ_i + (1 - λ) × Â_i. "
-                "Agreement diagnostics are reported separately and do not change the formula."
-            ),
+            "lambda_values": [float(self._bounded_lambda(value)) for value in lambda_values],
+            "winners": winners,
+            "stable_winner": stable_winner,
+            "summary": summary,
+        }
+
+    def _hybrid_winner_explanation(
+        self,
+        *,
+        winner: Mapping[str, Any] | None,
+        ranking: Sequence[Mapping[str, Any]],
+        lambda_value: float,
+        sensitivity: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if not winner or not ranking:
+            return {}
+
+        ga_winner = min(ranking, key=lambda row: int(row.get("ga_rank") or 10**9))
+        ahp_winner = min(ranking, key=lambda row: int(row.get("ahp_rank") or 10**9))
+        winner_id = str(winner.get("id") or "")
+        ga_winner_id = str(ga_winner.get("id") or "")
+        ahp_winner_id = str(ahp_winner.get("id") or "")
+        lambda_label = self._lambda_label(lambda_value)
+        score = winner.get("hybrid_score")
+        score_text = f"{float(score):.4f}" if isinstance(score, (int, float)) else "—"
+
+        if winner_id == ga_winner_id == ahp_winner_id:
+            reason = "он одновременно является лидером GA и AHP"
+        elif winner_id == ga_winner_id:
+            reason = (
+                f"он является лидером GA и остаётся на AHP-ранге {winner.get('ahp_rank')}; "
+                "AHP-преимущество другого варианта не перекрывает его GA-вклад"
+            )
+        elif winner_id == ahp_winner_id:
+            reason = (
+                f"он является лидером AHP и сохраняет GA-ранг {winner.get('ga_rank')}; "
+                "преимущество по AHP достаточно сильно влияет на компромиссную оценку"
+            )
+        else:
+            reason = (
+                "он не обязательно лидер отдельного метода, но получил лучший баланс "
+                "нормализованных вкладов GA и AHP"
+            )
+
+        stability = "устойчив" if sensitivity.get("stable_winner") else "чувствителен к λ"
+        summary = (
+            f"Гибридная оценка выбрала {winner_id} ({winner.get('name', '—')}) со score={score_text}, "
+            f"потому что {reason}. Режим: {lambda_label}; результат {stability}."
+        )
+        return {
+            "summary": summary,
+            "winner_id": winner_id,
+            "winner_name": winner.get("name"),
+            "hybrid_score": winner.get("hybrid_score"),
+            "ga_rank": winner.get("ga_rank"),
+            "ahp_rank": winner.get("ahp_rank"),
+            "ga_winner_id": ga_winner_id,
+            "ahp_winner_id": ahp_winner_id,
+            "lambda": float(self._bounded_lambda(lambda_value)),
+            "lambda_label": lambda_label,
+            "stable_across_sensitivity": bool(sensitivity.get("stable_winner")),
         }
 
     def _bounded_lambda(self, value: Any) -> float:
