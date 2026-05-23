@@ -13,6 +13,7 @@
 - `architecture/overview.md` — общий обзор решения;
 - `architecture/conceptual_cohesion_manifest.md` — манифест концептуальной связанности данных, сущностей и аналитических методов;
 - `architecture/conceptual_cohesion_roadmap.md` — дорожная карта дальнейших работ по связности модели, профилям ПО/ТО, TCO, аналитике и итоговому отчёту;
+- `architecture/roadmap_patch_sequence_status.md` — сверка первых трёх пунктов предложенной devctl-очередности с уже выполненными Этапами 1–3 перед переходом к Этапу 9;
 - `architecture/current_subject_schema.md` — переходная предметная схема текущих CAPEX/OPEX-категорий, будущих `scope`/`component_type` и связей вкладок с данными;
 - `architecture/analysis_scope_profiles.md` — прикладные профили анализа ПО/ТО: категории, критерии, ограничения, веса и правила объяснения;
 - `architecture/candidate_configurations.md` — единый формат кандидатных альтернатив для AHP, GA, GA + AHP, анализа важности критериев и будущего DecisionReport;
@@ -65,20 +66,21 @@
 2. `architecture/overview.md`
 3. `architecture/conceptual_cohesion_manifest.md`
 4. `architecture/conceptual_cohesion_roadmap.md`
-5. `architecture/current_subject_schema.md`
-6. `architecture/analysis_scope_profiles.md`
-7. `architecture/candidate_configurations.md`
-8. `architecture/tco_npv_bridge.md`
-9. `architecture/decision_report.md`
-10. `architecture/legacy_infrastructure_tab.md`
-11. `architecture/future_solution_component_editor_variant_c.md`
-12. `architecture/system_schema.md`
-13. `architecture/module_map.md`
-14. `architecture/data_map.md`
-15. `research/genetic_algorithm.md`
-16. `research/ideas/genetic_algorithm_plain_manifest.md`
-17. `research/ideas/future_independent_ga_ahp_assessment.md`
-18. `research/ideas/future_hybrid_ga_ahp_score.md`
-19. `demo/ga_ahp_defense_guide.md`
-20. `demo/demo_data_contract.md`
-21. `traceability.md`
+5. `architecture/roadmap_patch_sequence_status.md`
+6. `architecture/current_subject_schema.md`
+7. `architecture/analysis_scope_profiles.md`
+8. `architecture/candidate_configurations.md`
+9. `architecture/tco_npv_bridge.md`
+10. `architecture/decision_report.md`
+11. `architecture/legacy_infrastructure_tab.md`
+12. `architecture/future_solution_component_editor_variant_c.md`
+13. `architecture/system_schema.md`
+14. `architecture/module_map.md`
+15. `architecture/data_map.md`
+16. `research/genetic_algorithm.md`
+17. `research/ideas/genetic_algorithm_plain_manifest.md`
+18. `research/ideas/future_independent_ga_ahp_assessment.md`
+19. `research/ideas/future_hybrid_ga_ahp_score.md`
+20. `demo/ga_ahp_defense_guide.md`
+21. `demo/demo_data_contract.md`
+22. `traceability.md`
