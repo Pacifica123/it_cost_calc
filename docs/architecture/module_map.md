@@ -18,6 +18,7 @@ flowchart TB
 
     subgraph APP[Прикладной слой]
         ES[EquipmentService]
+        NORM[RuntimeEntityNormalizationService]
         CAS[CostAggregationService]
         ECS[ElectricityCostService]
         NPVS[NpvReportService]
@@ -53,6 +54,9 @@ flowchart TB
     AHPUI --> UC
     CIUI --> UC
 
+    ES --> NORM
+    CAS --> NORM
+    NORM --> MODELS
     ES --> REPO
     CAS --> REPO
     ECS --> ES
@@ -76,7 +80,7 @@ flowchart TB
 ## Практическое чтение карты
 
 - вкладки `CAPEX`, `OPEX`, `Электроэнергия`, `NPV`, `Экспорт`, `AHP` и `Анализ важности критериев` — это видимая часть системы;
-- `application` связывает пользовательские действия с расчётами и хранением данных;
+- `application` связывает пользовательские действия с расчётами и хранением данных; переходная нормализация `scope`/`component_type` выполняется здесь, а не в UI;
 - `domain` содержит математику и модели;
 - `infrastructure` хранит состояние и формирует выходные файлы;
 - `tools/catalog_parser` обслуживает внешний справочник оборудования и не входит в runtime GUI.

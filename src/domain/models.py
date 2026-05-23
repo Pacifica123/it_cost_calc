@@ -12,6 +12,26 @@ class ExpenseType(str, Enum):
     ELECTRICITY = "electricity"
 
 
+class AnalysisScope(str, Enum):
+    TECHNICAL = "technical"
+    SOFTWARE = "software"
+    IMPLEMENTATION = "implementation"
+    COMMON = "common"
+
+
+class ComponentType(str, Enum):
+    SERVER = "server"
+    WORKSTATION = "workstation"
+    PERIPHERAL = "peripheral"
+    NETWORK_DEVICE = "network_device"
+    SOFTWARE_LICENSE = "software_license"
+    SOFTWARE_SUBSCRIPTION = "software_subscription"
+    SOFTWARE_SERVICE = "software_service"
+    IMPLEMENTATION_SERVICE = "implementation_service"
+    SUPPORT_SERVICE = "support_service"
+    BACKUP_SERVICE = "backup_service"
+
+
 class EquipmentCategory(str, Enum):
     SERVER = "server"
     CLIENT = "client"
@@ -30,6 +50,10 @@ class CapitalItem:
     quantity: int
     price: float
     category: EquipmentCategory | None = None
+    max_power: float | None = None
+    client_seats: float | None = None
+    scope: AnalysisScope | None = None
+    component_type: ComponentType | None = None
     expense_type: ExpenseType = ExpenseType.CAPITAL
 
     @property
@@ -53,6 +77,14 @@ class CapitalItem:
             quantity=int(payload.get("quantity", 0)),
             price=float(payload.get("price", 0.0)),
             category=resolved_category,
+            max_power=_optional_float(payload.get("max_power")),
+            client_seats=_optional_float(payload.get("client_seats")),
+            scope=as_analysis_scope(payload["scope"]) if payload.get("scope") else None,
+            component_type=(
+                as_component_type(payload["component_type"])
+                if payload.get("component_type")
+                else None
+            ),
         )
 
 
@@ -61,6 +93,8 @@ class OperationalExpense:
     name: str
     monthly_cost: float = 0.0
     one_time_cost: float = 0.0
+    scope: AnalysisScope | None = None
+    component_type: ComponentType | None = None
     expense_type: ExpenseType = ExpenseType.OPERATIONAL
 
     @property
@@ -77,6 +111,12 @@ class OperationalExpense:
             name=str(payload.get("name", "")),
             monthly_cost=float(payload.get("monthly_cost", 0.0)),
             one_time_cost=float(payload.get("one_time_cost", 0.0)),
+            scope=as_analysis_scope(payload["scope"]) if payload.get("scope") else None,
+            component_type=(
+                as_component_type(payload["component_type"])
+                if payload.get("component_type")
+                else None
+            ),
         )
 
 
@@ -180,6 +220,24 @@ class AnalysisResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def as_analysis_scope(value: str | AnalysisScope) -> AnalysisScope:
+    if isinstance(value, AnalysisScope):
+        return value
+    return AnalysisScope(str(value))
+
+
+def as_component_type(value: str | ComponentType) -> ComponentType:
+    if isinstance(value, ComponentType):
+        return value
+    return ComponentType(str(value))
+
+
 def as_equipment_category(value: str | EquipmentCategory) -> EquipmentCategory:
     if isinstance(value, EquipmentCategory):
         return value
@@ -219,6 +277,10 @@ def ensure_capital_item(
                 quantity=value.quantity,
                 price=value.price,
                 category=as_equipment_category(category),
+                max_power=value.max_power,
+                client_seats=value.client_seats,
+                scope=value.scope,
+                component_type=value.component_type,
             )
         return value
     return CapitalItem.from_dict(value, category=category)

@@ -4,6 +4,7 @@ from copy import deepcopy
 from statistics import median
 from typing import Any, Iterable, Mapping
 
+from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from domain.decision.ahp.aggregation import aggregate_configuration
 from shared.constants import (
     ANALYSIS_SCOPE_SOFTWARE,
@@ -351,7 +352,11 @@ class DecisionDemoDataService:
     def _expand_category(
         self, rows: Iterable[Mapping[str, Any]], *, role: str
     ) -> list[dict[str, Any]]:
-        prepared_rows = [row for row in rows if float(row.get("price", 0.0) or 0.0) > 0]
+        prepared_rows = [
+            normalize_runtime_row(row, category=role)
+            for row in rows
+            if float(row.get("price", 0.0) or 0.0) > 0
+        ]
         if not prepared_rows:
             return []
 
@@ -374,7 +379,7 @@ class DecisionDemoDataService:
     def _expand_software_rows(self, entities: Mapping[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
         raw_rows: list[dict[str, Any]] = []
         for row in entities.get("licenses", []):
-            prepared = dict(row)
+            prepared = normalize_runtime_row(row, category="licenses")
             prepared["source_category"] = "licenses"
             prepared["price"] = float(prepared.get("price", 0.0) or 0.0)
             prepared["quantity"] = max(1, int(prepared.get("quantity", 1) or 1))
@@ -387,7 +392,7 @@ class DecisionDemoDataService:
                 monthly_cost = float(row.get("monthly_cost", 0.0) or 0.0)
                 if monthly_cost <= 0:
                     continue
-                prepared = dict(row)
+                prepared = normalize_runtime_row(row, category=category)
                 prepared["source_category"] = category
                 prepared["price"] = monthly_cost * 12.0
                 prepared["quantity"] = max(1, int(prepared.get("quantity", 1) or 1))
@@ -430,7 +435,12 @@ class DecisionDemoDataService:
         }
         if role == "client":
             quantity = max(1.0, float(row.get("quantity", 1) or 1))
-            seats_total = float(row.get("client_seats", quantity) or 0.0)
+            if "client_seats" in row:
+                seats_total = float(row.get("client_seats") or 0.0)
+            elif row.get("component_type") == "workstation":
+                seats_total = quantity
+            else:
+                seats_total = 0.0
             template["client_seats"] = seats_total / quantity
         return template
 

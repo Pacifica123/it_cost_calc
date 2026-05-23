@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 from application.ports import EntityRepository
+from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from domain import (
     CapitalItem,
     OperationalExpense,
@@ -31,7 +32,11 @@ class EquipmentService:
     def list_capital_items(self, category: str) -> list[CapitalItem]:
         self._validate_category(category, CAPITAL_COST_CATEGORIES)
         return [
-            ensure_capital_item(item, category=category) for item in self.repository.list(category)
+            ensure_capital_item(
+                normalize_runtime_row(item, category=category),
+                category=category,
+            )
+            for item in self.repository.list(category)
         ]
 
     def list_capital_item_rows(self, category: str) -> list[dict[str, Any]]:
@@ -39,14 +44,20 @@ class EquipmentService:
 
     def get_capital_item(self, category: str, index: int) -> CapitalItem:
         self._validate_category(category, CAPITAL_COST_CATEGORIES)
-        return ensure_capital_item(self.repository.get(category, index), category=category)
+        return ensure_capital_item(
+            normalize_runtime_row(self.repository.get(category, index), category=category),
+            category=category,
+        )
 
     def get_capital_item_row(self, category: str, index: int) -> dict[str, Any]:
         return to_plain_data(self.get_capital_item(category, index))
 
     def add_capital_item(self, category: str, item: CapitalItem | dict[str, Any]) -> CapitalItem:
         self._validate_category(category, CAPITAL_COST_CATEGORIES)
-        model = ensure_capital_item(item, category=category)
+        model = ensure_capital_item(
+            normalize_runtime_row(to_plain_data(item), category=category),
+            category=category,
+        )
         self.repository.add(category, model)
         return model
 
@@ -54,24 +65,35 @@ class EquipmentService:
         self, category: str, index: int, item: CapitalItem | dict[str, Any]
     ) -> CapitalItem:
         self._validate_category(category, CAPITAL_COST_CATEGORIES)
-        model = ensure_capital_item(item, category=category)
+        model = ensure_capital_item(
+            normalize_runtime_row(to_plain_data(item), category=category),
+            category=category,
+        )
         self.repository.update(category, index, model)
         return model
 
     def delete_capital_item(self, category: str, index: int) -> CapitalItem:
         self._validate_category(category, CAPITAL_COST_CATEGORIES)
-        return ensure_capital_item(self.repository.delete(category, index), category=category)
+        return ensure_capital_item(
+            normalize_runtime_row(self.repository.delete(category, index), category=category),
+            category=category,
+        )
 
     def list_operational_items(self, category: str) -> list[OperationalExpense]:
         self._validate_category(category, OPERATIONAL_COST_CATEGORIES)
-        return [ensure_operational_expense(item) for item in self.repository.list(category)]
+        return [
+            ensure_operational_expense(normalize_runtime_row(item, category=category))
+            for item in self.repository.list(category)
+        ]
 
     def list_operational_item_rows(self, category: str) -> list[dict[str, Any]]:
         return [to_plain_data(item) for item in self.list_operational_items(category)]
 
     def get_operational_item(self, category: str, index: int) -> OperationalExpense:
         self._validate_category(category, OPERATIONAL_COST_CATEGORIES)
-        return ensure_operational_expense(self.repository.get(category, index))
+        return ensure_operational_expense(
+            normalize_runtime_row(self.repository.get(category, index), category=category)
+        )
 
     def get_operational_item_row(self, category: str, index: int) -> dict[str, Any]:
         return to_plain_data(self.get_operational_item(category, index))
@@ -80,7 +102,9 @@ class EquipmentService:
         self, category: str, item: OperationalExpense | dict[str, Any]
     ) -> OperationalExpense:
         self._validate_category(category, OPERATIONAL_COST_CATEGORIES)
-        model = ensure_operational_expense(item)
+        model = ensure_operational_expense(
+            normalize_runtime_row(to_plain_data(item), category=category)
+        )
         self.repository.add(category, model)
         return model
 
@@ -88,13 +112,17 @@ class EquipmentService:
         self, category: str, index: int, item: OperationalExpense | dict[str, Any]
     ) -> OperationalExpense:
         self._validate_category(category, OPERATIONAL_COST_CATEGORIES)
-        model = ensure_operational_expense(item)
+        model = ensure_operational_expense(
+            normalize_runtime_row(to_plain_data(item), category=category)
+        )
         self.repository.update(category, index, model)
         return model
 
     def delete_operational_item(self, category: str, index: int) -> OperationalExpense:
         self._validate_category(category, OPERATIONAL_COST_CATEGORIES)
-        return ensure_operational_expense(self.repository.delete(category, index))
+        return ensure_operational_expense(
+            normalize_runtime_row(self.repository.delete(category, index), category=category)
+        )
 
     def list_energy_relevant_items(self) -> list[CapitalItem]:
         rows: list[CapitalItem] = []
@@ -106,8 +134,7 @@ class EquipmentService:
         rows: list[dict[str, Any]] = []
         for category in ("server", "client", "network"):
             for row in self.repository.list(category):
-                payload = deepcopy(to_plain_data(row))
-                payload.setdefault("category", category)
+                payload = normalize_runtime_row(to_plain_data(row), category=category)
                 rows.append(payload)
         return rows
 
@@ -118,4 +145,7 @@ class EquipmentService:
         self.repository.clear()
         for entity_name, rows in payload.items():
             for row in rows:
-                self.repository.add(entity_name, deepcopy(row))
+                if entity_name in CAPITAL_COST_CATEGORIES or entity_name in OPERATIONAL_COST_CATEGORIES:
+                    self.repository.add(entity_name, normalize_runtime_row(row, category=entity_name))
+                else:
+                    self.repository.add(entity_name, deepcopy(row))

@@ -5,11 +5,12 @@
 ```mermaid
 flowchart LR
     FIX[data/fixtures/demo_dataset.json] --> RUNTIME[data/generated/runtime_entities.json]
-    RUNTIME --> REPORTS[data/generated/*.csv]
+    RUNTIME --> RNORM[application: normalization scope/component_type]
+    RNORM --> REPORTS[data/generated/*.csv]
     RUNTIME --> LOGS[data/generated/logs/]
 
-    RAW[data/examples/parser/*.json] --> NORM[data/examples/catalog/normalized_dns_catalog.json]
-    NORM --> CATALOG[data/generated/catalog/equipment_catalog.json]
+    RAW[data/examples/parser/*.json] --> CNORM[data/examples/catalog/normalized_dns_catalog.json]
+    CNORM --> CATALOG[data/generated/catalog/equipment_catalog.json]
     CATALOG --> APP[Основное приложение]
 
     EXAHP[data/examples/ahp/*.json] --> TESTS[tests/integration + tests/regression]
@@ -45,6 +46,14 @@ flowchart LR
 | Пример каталога | `data/examples/catalog/normalized_dns_catalog.json` | подготовленный пример | тесты, документация |
 | Логи | `data/generated/logs/it_cost_calc.log` | приложение | разработчик |
 
+
+## Runtime-нормализация после этапа 2
+
+`data/generated/runtime_entities.json` и старые фикстуры могут не содержать явных полей `scope` и `component_type`. Прикладной слой достраивает эти признаки через `RuntimeEntityNormalizationService` перед тем, как записи попадут в сервисы стоимости, GA/AHP-сценарии или экспорт.
+
+Переходная логика не переносится во вкладки интерфейса: UI передаёт категорию и пользовательские поля, а application-слой решает, относится ли запись к `technical`, `software`, `implementation` или `common`, и какой `component_type` можно безопасно назначить.
+
+Особое правило действует для `client`: если у записи нет `client_seats` и явного `component_type=workstation`, она не считается рабочим местом автоматически. Поэтому периферия остаётся частью клиентского контура, но не закрывает ограничения по пользователям.
 
 ## Предметный контракт категорий
 

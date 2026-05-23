@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from domain import (
     CapitalItem,
     OperationalExpense,
@@ -41,7 +42,11 @@ class CostAggregationService:
         entities = self._extract_entities(source)
         self.capital_costs = {
             category: [
-                ensure_capital_item(item, category=category) for item in entities.get(category, [])
+                ensure_capital_item(
+                    normalize_runtime_row(item, category=category),
+                    category=category,
+                )
+                for item in entities.get(category, [])
             ]
             for category in CAPITAL_COST_CATEGORIES
         }
@@ -55,7 +60,10 @@ class CostAggregationService:
             return
         entities = self._extract_entities(source)
         self.operational_costs = {
-            category: [ensure_operational_expense(item) for item in entities.get(category, [])]
+            category: [
+                ensure_operational_expense(normalize_runtime_row(item, category=category))
+                for item in entities.get(category, [])
+            ]
             for category in OPERATIONAL_COST_CATEGORIES
         }
 

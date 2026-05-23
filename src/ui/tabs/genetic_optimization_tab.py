@@ -992,7 +992,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
     def _item_client_capacity(self, item: Mapping[str, Any]) -> float:
         if "client_seats" in item:
             return self._number(item.get("client_seats"), default=0.0)
-        if item.get("source_category") == "client" or item.get("category") == "client":
+        if item.get("component_type") == "workstation":
             return self._number(item.get("quantity"), default=0.0)
         return 0.0
 

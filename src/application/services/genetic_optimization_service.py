@@ -12,6 +12,7 @@ import logging
 from copy import deepcopy
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
+from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from shared.constants import CAPITAL_COST_CATEGORIES
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,7 @@ class GeneticOptimizationService:
         category: str,
         index: int,
     ) -> dict[str, Any]:
-        properties = dict(deepcopy(row))
+        properties = normalize_runtime_row(row, category=category)
         name = str(properties.get("name") or f"{category}_{index + 1}")
         quantity = self._number(properties.get("quantity", 1.0), default=1.0)
         unit_price = self._number(
@@ -228,6 +229,7 @@ class GeneticOptimizationService:
                 "total_cost": total_cost,
                 "capital_cost": total_cost,
                 "selected_count": 1.0,
+                "client_seats": self._number(properties.get("client_seats"), default=0.0),
             }
         )
         return properties
@@ -431,6 +433,10 @@ class GeneticOptimizationService:
             "capital_cost": total_capital_cost,
             "category_count": len(categories),
             "categories": categories,
+            "client_seats": sum(
+                self._number(item.get("client_seats"), default=0.0)
+                for item in selected_items
+            ),
         }
 
     def _sum_property(self, subset: Sequence[RuntimeOptimizationItem], property_name: str) -> float:

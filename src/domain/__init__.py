@@ -1,7 +1,9 @@
 from domain.models import (
     Alternative,
+    AnalysisScope,
     AnalysisResult,
     CapitalItem,
+    ComponentType,
     Criterion,
     ElectricityProfile,
     EquipmentCategory,
@@ -9,6 +11,8 @@ from domain.models import (
     OperationalExpense,
     Relation,
     RelationOperator,
+    as_analysis_scope,
+    as_component_type,
     as_equipment_category,
     as_relation_operator,
     ensure_alternative,
@@ -22,8 +26,10 @@ from domain.models import (
 
 __all__ = [
     "Alternative",
+    "AnalysisScope",
     "AnalysisResult",
     "CapitalItem",
+    "ComponentType",
     "Criterion",
     "ElectricityProfile",
     "EquipmentCategory",
@@ -31,6 +37,8 @@ __all__ = [
     "OperationalExpense",
     "Relation",
     "RelationOperator",
+    "as_analysis_scope",
+    "as_component_type",
     "as_equipment_category",
     "as_relation_operator",
     "ensure_alternative",
