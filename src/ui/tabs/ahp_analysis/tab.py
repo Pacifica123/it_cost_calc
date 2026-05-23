@@ -5,6 +5,11 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from shared.constants import (
+    ANALYSIS_SCOPE_LABELS,
+    ANALYSIS_SCOPE_SOFTWARE,
+    ANALYSIS_SCOPE_TECHNICAL,
+)
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 
 from .config_mixin import AHPConfigurationMixin
@@ -36,6 +41,8 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         super().__init__(parent)
         self.crud = crud
         self.configurations: dict[str, dict] = {}
+        self.analysis_scope_var = tk.StringVar(value=ANALYSIS_SCOPE_TECHNICAL)
+        self.scoped_demo_payloads: dict[str, dict] = {}
         self.soft_criteria_vars = {
             criterion_id: tk.BooleanVar(value=True) for criterion_id in DEFAULT_SOFT_CRITERIA
         }
@@ -72,6 +79,18 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         tk.Button(
             ctrl, text="Сохранить конфигурации в JSON...", command=self._save_configs_to_json
         ).pack(side="left")
+
+        scope_box = tk.Frame(ctrl)
+        scope_box.pack(side="left", padx=(12, 0))
+        tk.Label(scope_box, text="Область:").pack(side="left")
+        for value, label in ANALYSIS_SCOPE_LABELS.items():
+            ttk.Radiobutton(
+                scope_box,
+                text=label,
+                value=value,
+                variable=self.analysis_scope_var,
+                command=self._on_analysis_scope_changed,
+            ).pack(side="left")
 
         self.cfg_table = ttk.Treeview(
             root,
@@ -218,8 +237,20 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         self.summary_text.delete("1.0", "end")
         self.summary_text.insert(
             "1.0",
-            "Сначала загрузите конфигурации вручную из JSON или общей кнопкой \"Загрузить демо-данные\".",
+            "Сначала загрузите конфигурации вручную из JSON или общей кнопкой \"Загрузить демо-данные\". "
+            "Переключатель ТО/ПО определяет, какие подготовленные конфигурации анализируются.",
         )
+
+    def _analysis_scope(self) -> str:
+        value = self.analysis_scope_var.get() if hasattr(self, "analysis_scope_var") else ""
+        if value in ANALYSIS_SCOPE_LABELS:
+            return value
+        return ANALYSIS_SCOPE_TECHNICAL
+
+    def _on_analysis_scope_changed(self) -> None:
+        if not self.scoped_demo_payloads:
+            return
+        self._load_scope_payload(self._analysis_scope())
 
     def _format_soft_criterion_label(self, criterion_id: str) -> str:
         return SOFT_CRITERIA_LABELS.get(criterion_id, criterion_id)
@@ -395,12 +426,50 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
             self._on_select_config(None)
 
     def load_demo_configurations(self, configurations, *, constraints=None, message=None) -> None:
+        self.scoped_demo_payloads = {}
+        self._apply_demo_configurations(configurations, constraints=constraints, message=message)
+
+    def load_scoped_demo_payloads(
+        self,
+        scoped_payloads: dict[str, dict],
+        *,
+        default_scope: str = ANALYSIS_SCOPE_TECHNICAL,
+        message: str | None = None,
+    ) -> None:
+        self.scoped_demo_payloads = dict(scoped_payloads or {})
+        self.analysis_scope_var.set(
+            default_scope if default_scope in self.scoped_demo_payloads else ANALYSIS_SCOPE_TECHNICAL
+        )
+        self._load_scope_payload(self._analysis_scope(), message=message)
+
+    def _load_scope_payload(self, analysis_scope: str, *, message: str | None = None) -> None:
+        payload = self.scoped_demo_payloads.get(analysis_scope)
+        if not payload:
+            self.summary_text.delete("1.0", "end")
+            self.summary_text.insert("1.0", f"Нет подготовленного AHP-кейса для области {analysis_scope}.")
+            return
+        label = ANALYSIS_SCOPE_LABELS.get(analysis_scope, analysis_scope)
+        self._apply_demo_configurations(
+            payload.get("configurations", []),
+            constraints=payload.get("constraints", {}),
+            message=message
+            or (
+                f"Загружен демонстрационный AHP-кейс для области {label}. "
+                "При необходимости измените ограничения и запустите расчет."
+            ),
+        )
+
+    def _apply_demo_configurations(self, configurations, *, constraints=None, message=None) -> None:
         self._replace_configurations(configurations)
         if constraints:
             self._replace_entry_value(self.e_budget, constraints.get("max_budget"))
             self._replace_entry_value(self.e_energy, constraints.get("max_energy"))
             self._replace_entry_value(
-                self.e_tol, constraints.get("people_match_tolerance", DEFAULT_CONSTRAINTS["people_match_tolerance"])
+                self.e_tol,
+                constraints.get(
+                    "people_match_tolerance",
+                    DEFAULT_CONSTRAINTS["people_match_tolerance"],
+                ),
             )
 
         for criterion_id in DEFAULT_SOFT_CRITERIA:
@@ -465,6 +534,8 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
                 "max_energy": float(self.e_energy.get()),
                 "people_match_tolerance": float(self.e_tol.get()),
             }
+            if self._analysis_scope() == ANALYSIS_SCOPE_SOFTWARE:
+                constraints["capacity_role"] = "software"
         except Exception as exc:
             messagebox.showerror("Ошибка", f"Параметры constraints неверны: {exc}", parent=self)
             return

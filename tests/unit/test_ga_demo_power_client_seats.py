@@ -5,6 +5,7 @@ from application.services.equipment_service import EquipmentService
 from infrastructure.repositories.in_memory_entity_repository import InMemoryEntityRepository
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
 from application.services.genetic_optimization_service import RuntimeOptimizationItem
+from domain.decision.ahp.aggregation import aggregate_configuration
 
 
 def test_demo_dataset_contains_power_and_client_seats_for_ga():
@@ -60,3 +61,19 @@ def test_energy_relevant_rows_preserve_demo_power_fields():
     printer = next(row for row in rows if row["name"] == "Printer")
     assert printer["max_power"] == 850.0
     assert printer["client_seats"] == 0
+
+
+def test_ahp_aggregate_counts_client_seats_not_client_category_quantity():
+    config = {
+        "id": "cfg",
+        "devices": [
+            {"role": "client", "client_seats": 3, "cost": 100.0},
+            {"role": "client", "client_seats": 0, "cost": 50.0},
+            {"role": "network", "cost": 10.0},
+        ],
+        "meta": {"people": 3},
+    }
+
+    aggregate = aggregate_configuration(config)
+
+    assert aggregate["counts"]["client"] == 3

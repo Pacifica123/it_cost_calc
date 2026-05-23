@@ -26,6 +26,7 @@ from infrastructure.logging import configure_logging
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
 from infrastructure.repositories.treeview_crud_repository import TreeviewCrudRepository
 from infrastructure.storage import JsonFileStorage
+from shared.constants import ANALYSIS_SCOPE_TECHNICAL
 from ui.tabs import (
     capex_tab,
     configuration_selection_tab,
@@ -90,9 +91,15 @@ class CalculatorApp(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True)
 
-        self.capex_tab = capex_tab.CapexTab(self.notebook, self.equipment_service)
-        self.capital_costs_tab = self.capex_tab
-        self.notebook.add(self.capex_tab, text="Капитальные затраты")
+        self.technical_equipment_tab = capex_tab.TechnicalEquipmentTab(
+            self.notebook, self.equipment_service
+        )
+        self.capex_tab = self.technical_equipment_tab
+        self.capital_costs_tab = self.technical_equipment_tab
+        self.notebook.add(self.technical_equipment_tab, text="ТО")
+
+        self.software_tab = capex_tab.SoftwareTab(self.notebook, self.equipment_service)
+        self.notebook.add(self.software_tab, text="ПО")
 
         self.opex_tab = opex_tab.OpexTab(self.notebook, self.equipment_service)
         self.operational_costs_tab = self.opex_tab
@@ -157,7 +164,8 @@ class CalculatorApp(tk.Tk):
         return any(rows for rows in self.entity_repository.entities.values())
 
     def _refresh_runtime_views(self) -> None:
-        self.capex_tab.refresh_all()
+        self.technical_equipment_tab.refresh_all()
+        self.software_tab.refresh_all()
         self.opex_tab.refresh_all()
         self.energy_tab.update_equipment_table()
         self.update_total_costs()
@@ -189,18 +197,26 @@ class CalculatorApp(tk.Tk):
         self._refresh_runtime_views()
 
         demo_decision_payload = self.decision_demo_data_service.build(self.entity_repository.entities)
-        self.configuration_selection_tab.load_demo_configurations(
-            demo_decision_payload["configurations"],
-            constraints=demo_decision_payload["constraints"],
+        scoped_payloads = demo_decision_payload.get("scoped_payloads", {})
+        self.configuration_selection_tab.load_scoped_demo_payloads(
+            scoped_payloads,
+            default_scope=ANALYSIS_SCOPE_TECHNICAL,
             message=(
-                "Демо-конфигурации собраны из того же набора оборудования, который был загружен в капитальные затраты. "
-                "При желании переключите режим на экспертный и задайте собственную матрицу важности критериев."
+                "Демо-конфигурации собраны из того же набора данных, который был загружен "
+                "во вкладки ТО и ПО. Переключатель области позволяет отдельно анализировать "
+                "техническое и программное обеспечение."
             ),
         )
         self.criteria_importance_tab.load_case_data(
             demo_decision_payload["criteria_case"],
+            scoped_cases={
+                scope: payload.get("criteria_case", {})
+                for scope, payload in scoped_payloads.items()
+            },
+            analysis_scope=ANALYSIS_SCOPE_TECHNICAL,
             message=(
-                "Демонстрационный кейс обоснования выбора ИТ-решения сформирован на основе текущего демонстрационного набора оборудования."
+                "Демонстрационный кейс обоснования выбора ИТ-решения сформирован на основе текущего набора ТО. "
+                "Переключите область на ПО, чтобы применить Pareto/критериальный анализ к лицензиям."
             ),
         )
 

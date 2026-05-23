@@ -12,7 +12,7 @@ from domain.decision.criteria_importance.analysis import (
 from domain.decision.criteria_importance.importance_method import (
     run_importance_pipeline as legacy_importance_pipeline,
 )
-from ui.tabs.capex_tab import CapexTab, CapitalCostsTab
+from ui.tabs.capex_tab import CapexTab, CapitalCostsTab, SoftwareTab, TechnicalEquipmentTab
 from ui.tabs.opex_tab import OpexTab, OperationalCostsTab
 from ui.tabs.energy_tab import EnergyTab, ElectricityCostsTab
 from ui.tabs.configuration_selection_tab import (
@@ -26,6 +26,8 @@ def test_canonical_and_legacy_imports_point_to_same_objects():
     assert canonical_ahp_pipeline is legacy_ahp_pipeline
     assert canonical_importance_pipeline is legacy_importance_pipeline
     assert CapexTab is CapitalCostsTab
+    assert TechnicalEquipmentTab.ENTITY_CONFIG.keys() == {"server", "client", "network"}
+    assert SoftwareTab.ENTITY_CONFIG.keys() == {"licenses"}
     assert OpexTab is OperationalCostsTab
     assert EnergyTab is ElectricityCostsTab
     assert ConfigurationSelectionTab is AHPAnalysisTab

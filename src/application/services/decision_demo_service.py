@@ -5,6 +5,11 @@ from statistics import median
 from typing import Any, Iterable, Mapping
 
 from domain.decision.ahp.aggregation import aggregate_configuration
+from shared.constants import (
+    ANALYSIS_SCOPE_SOFTWARE,
+    ANALYSIS_SCOPE_TECHNICAL,
+    OPERATIONAL_COST_CATEGORIES,
+)
 
 CRITERIA_IMPORTANCE_CRITERIA = [
     {"id": "1", "name": "Надежность и отказоустойчивость"},
@@ -12,6 +17,14 @@ CRITERIA_IMPORTANCE_CRITERIA = [
     {"id": "3", "name": "Стоимость владения"},
     {"id": "4", "name": "Энергоэффективность"},
     {"id": "5", "name": "Потенциал развития и срок службы"},
+]
+
+SOFTWARE_CRITERIA_IMPORTANCE_CRITERIA = [
+    {"id": "1", "name": "Функциональное покрытие"},
+    {"id": "2", "name": "Лицензионная обеспеченность пользователей"},
+    {"id": "3", "name": "Стоимость владения ПО"},
+    {"id": "4", "name": "Простота сопровождения"},
+    {"id": "5", "name": "Потенциал развития и совместимость"},
 ]
 
 CRITERIA_IMPORTANCE_RELATIONS = [
@@ -23,6 +36,14 @@ CRITERIA_IMPORTANCE_RELATIONS = [
     {"left": "5", "op": "=", "factor": 1.0, "right": "2"},
     {"left": "5", "op": ">", "factor": 4.0 / 3.0, "right": "3"},
     {"left": "3", "op": ">", "factor": 4.0 / 3.0, "right": "4"},
+]
+
+SOFTWARE_CRITERIA_IMPORTANCE_RELATIONS = [
+    {"left": "1", "op": ">", "factor": 2.0, "right": "3"},
+    {"left": "2", "op": ">", "factor": 1.5, "right": "3"},
+    {"left": "1", "op": "=", "factor": 1.0, "right": "5"},
+    {"left": "5", "op": ">", "factor": 1.5, "right": "4"},
+    {"left": "4", "op": ">", "factor": 4.0 / 3.0, "right": "3"},
 ]
 
 _ROLE_PROFILES = {
@@ -50,23 +71,69 @@ _ROLE_PROFILES = {
         "rel_high": (0.9, 0.98),
         "lifespan": (4.0, 7.0),
     },
+    "software": {
+        "functionality": (2.0, 5.0),
+        "support": (2.4, 4.8),
+        "rel_low": (0.76, 0.9),
+        "rel_high": (0.86, 0.98),
+        "lifespan": (2.0, 5.0),
+    },
 }
 
 
 class DecisionDemoDataService:
     """Builds consistent demo data for AHP and criteria-importance tabs from runtime entities."""
 
-    def build(self, entities: Mapping[str, list[dict[str, Any]]]) -> dict[str, Any]:
-        configurations = self.build_ahp_configurations(entities)
-        constraints = self.build_recommended_constraints(configurations)
-        criteria_case = self.build_criteria_importance_case(configurations)
+    def build(
+        self,
+        entities: Mapping[str, list[dict[str, Any]]],
+        *,
+        analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
+    ) -> dict[str, Any]:
+        scoped_payloads = {
+            ANALYSIS_SCOPE_TECHNICAL: self.build_scope_payload(
+                entities, analysis_scope=ANALYSIS_SCOPE_TECHNICAL
+            ),
+            ANALYSIS_SCOPE_SOFTWARE: self.build_scope_payload(
+                entities, analysis_scope=ANALYSIS_SCOPE_SOFTWARE
+            ),
+        }
+        selected = scoped_payloads.get(analysis_scope, scoped_payloads[ANALYSIS_SCOPE_TECHNICAL])
+        result = deepcopy(selected)
+        result["scoped_payloads"] = scoped_payloads
+        return result
+
+    def build_scope_payload(
+        self,
+        entities: Mapping[str, list[dict[str, Any]]],
+        *,
+        analysis_scope: str,
+    ) -> dict[str, Any]:
+        configurations = self.build_ahp_configurations(entities, analysis_scope=analysis_scope)
+        constraints = self.build_recommended_constraints(
+            configurations, analysis_scope=analysis_scope
+        )
+        criteria_case = self.build_criteria_importance_case(
+            configurations, analysis_scope=analysis_scope
+        )
         return {
+            "analysis_scope": analysis_scope,
             "configurations": configurations,
             "constraints": constraints,
             "criteria_case": criteria_case,
         }
 
     def build_ahp_configurations(
+        self,
+        entities: Mapping[str, list[dict[str, Any]]],
+        *,
+        analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
+    ) -> list[dict[str, Any]]:
+        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
+            return self._build_software_configurations(entities)
+        return self._build_technical_configurations(entities)
+
+    def _build_technical_configurations(
         self, entities: Mapping[str, list[dict[str, Any]]]
     ) -> list[dict[str, Any]]:
         servers = self._expand_category(entities.get("server", []), role="server")
@@ -75,56 +142,111 @@ class DecisionDemoDataService:
 
         if not servers or not clients:
             raise ValueError(
-                "Для подготовки демонстрационных конфигураций нужны серверы и клиентские устройства"
+                "Для подготовки демонстрационных конфигураций ТО нужны серверы и клиентские устройства"
             )
 
-        client_target = max(2, len(clients))
+        client_target = max(2, self._client_seat_capacity(clients) or len(clients))
         configs = [
             self._make_config(
-                config_id="cfg_budget",
-                name="Экономичная конфигурация",
+                config_id="to_budget",
+                name="ТО: экономичная конфигурация",
                 people=max(2, client_target - 1),
-                servers=self._pick_units(servers, 1, "low"),
-                clients=self._pick_units(clients, max(2, client_target - 1), "low"),
-                networks=self._pick_units(networks, 1, "low"),
+                devices=[
+                    *self._pick_units(servers, 1, "low"),
+                    *self._pick_units(clients, max(2, client_target - 1), "low"),
+                    *self._pick_units(networks, 1, "low"),
+                ],
             ),
             self._make_config(
-                config_id="cfg_compact",
-                name="Компактная конфигурация",
+                config_id="to_compact",
+                name="ТО: компактная конфигурация",
                 people=client_target,
-                servers=self._pick_units(servers, 1, "mid"),
-                clients=self._pick_units(clients, client_target, "low_mid"),
-                networks=self._pick_units(networks, 1, "mid"),
+                devices=[
+                    *self._pick_units(servers, 1, "mid"),
+                    *self._pick_units(clients, client_target, "low_mid"),
+                    *self._pick_units(networks, 1, "mid"),
+                ],
             ),
             self._make_config(
-                config_id="cfg_balanced",
-                name="Сбалансированная конфигурация",
+                config_id="to_balanced",
+                name="ТО: сбалансированная конфигурация",
                 people=client_target,
-                servers=self._pick_units(servers, 1, "mid"),
-                clients=self._pick_units(clients, client_target, "mid"),
-                networks=self._pick_units(networks, min(2, max(len(networks), 1)), "mid"),
+                devices=[
+                    *self._pick_units(servers, 1, "mid"),
+                    *self._pick_units(clients, client_target, "mid"),
+                    *self._pick_units(networks, min(2, max(len(networks), 1)), "mid"),
+                ],
             ),
             self._make_config(
-                config_id="cfg_growth",
-                name="Конфигурация с запасом роста",
+                config_id="to_growth",
+                name="ТО: конфигурация с запасом роста",
                 people=client_target,
-                servers=self._pick_units(servers, min(2, len(servers)), "high"),
-                clients=self._pick_units(clients, client_target, "high"),
-                networks=self._pick_units(networks, min(2, max(len(networks), 1)), "high"),
+                devices=[
+                    *self._pick_units(servers, min(2, len(servers)), "high"),
+                    *self._pick_units(clients, client_target, "high"),
+                    *self._pick_units(networks, min(2, max(len(networks), 1)), "high"),
+                ],
             ),
             self._make_config(
-                config_id="cfg_reserve",
-                name="Резервоустойчивая конфигурация",
+                config_id="to_reserve",
+                name="ТО: резервоустойчивая конфигурация",
                 people=client_target,
-                servers=self._pick_units(servers, max(1, min(2, len(servers))), "high"),
-                clients=self._pick_units(clients, client_target + 1, "mid_high"),
-                networks=self._pick_units(networks, max(1, min(2, len(networks))), "high"),
+                devices=[
+                    *self._pick_units(servers, max(1, min(2, len(servers))), "high"),
+                    *self._pick_units(clients, client_target + 1, "mid_high"),
+                    *self._pick_units(networks, max(1, min(2, len(networks))), "high"),
+                ],
+            ),
+        ]
+        return configs
+
+    def _build_software_configurations(
+        self, entities: Mapping[str, list[dict[str, Any]]]
+    ) -> list[dict[str, Any]]:
+        licenses = self._expand_software_rows(entities)
+        if not licenses:
+            raise ValueError("Для подготовки демонстрационных конфигураций ПО нужны лицензии")
+
+        license_target = max(1, min(5, self._license_units(licenses) or len(licenses)))
+        configs = [
+            self._make_config(
+                config_id="po_basic",
+                name="ПО: базовый набор лицензий",
+                people=0,
+                devices=self._pick_units(licenses, max(1, license_target - 1), "low"),
+            ),
+            self._make_config(
+                config_id="po_user_pack",
+                name="ПО: пользовательский пакет",
+                people=0,
+                devices=self._pick_units(licenses, license_target, "low_mid"),
+            ),
+            self._make_config(
+                config_id="po_balanced",
+                name="ПО: сбалансированный набор",
+                people=0,
+                devices=self._pick_units(licenses, license_target + 1, "mid"),
+            ),
+            self._make_config(
+                config_id="po_extended",
+                name="ПО: расширенный функциональный набор",
+                people=0,
+                devices=self._pick_units(licenses, license_target + 2, "mid_high"),
+            ),
+            self._make_config(
+                config_id="po_growth",
+                name="ПО: набор с запасом развития",
+                people=0,
+                devices=self._pick_units(licenses, license_target + 3, "high"),
             ),
         ]
         return configs
 
     def build_recommended_constraints(
-        self, configurations: Iterable[dict[str, Any]]
+        self,
+        configurations: Iterable[dict[str, Any]],
+        *,
+        analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
     ) -> dict[str, float]:
         aggregates = [aggregate_configuration(config) for config in configurations]
         costs = sorted(float(item["total_cost"]) for item in aggregates)
@@ -134,14 +256,28 @@ class DecisionDemoDataService:
 
         pivot_index = min(len(costs) - 1, 3)
         max_budget = round(costs[pivot_index] * 1.05, 2)
-        max_energy = round(energies[pivot_index] * 1.08, 2)
-        return {
+        max_energy = round(max(energies[pivot_index] * 1.08, 0.0), 2)
+        result: dict[str, float] = {
             "max_budget": max_budget,
             "max_energy": max_energy,
-            "people_match_tolerance": 0.25,
         }
+        if analysis_scope == ANALYSIS_SCOPE_TECHNICAL:
+            result["people_match_tolerance"] = 0.25
+        else:
+            result["people_match_tolerance"] = 1.0
+        return result
 
     def build_criteria_importance_case(
+        self,
+        configurations: Iterable[dict[str, Any]],
+        *,
+        analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
+    ) -> dict[str, Any]:
+        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
+            return self._build_software_criteria_importance_case(configurations)
+        return self._build_technical_criteria_importance_case(configurations)
+
+    def _build_technical_criteria_importance_case(
         self, configurations: Iterable[dict[str, Any]]
     ) -> dict[str, Any]:
         configs = list(configurations)
@@ -160,20 +296,57 @@ class DecisionDemoDataService:
             "5": self._scaled_scores([aggregates[alt["id"]]["lifespan"] for alt in alternatives]),
         }
 
+        scores = self._scores_by_alternative(alternatives, scores_map)
+        return {
+            "name": "ТО: выбор конфигурации технического обеспечения",
+            "analysis_scope": ANALYSIS_SCOPE_TECHNICAL,
+            "criteria": deepcopy(CRITERIA_IMPORTANCE_CRITERIA),
+            "alternatives": alternatives,
+            "scores": scores,
+            "relations": deepcopy(CRITERIA_IMPORTANCE_RELATIONS),
+        }
+
+    def _build_software_criteria_importance_case(
+        self, configurations: Iterable[dict[str, Any]]
+    ) -> dict[str, Any]:
+        configs = list(configurations)
+        aggregates = {config["id"]: aggregate_configuration(config) for config in configs}
+        alternatives = [{"id": config["id"], "name": config.get("name", config["id"])} for config in configs]
+        license_units = [self._license_units(config.get("devices", [])) for config in configs]
+        support_scores = [self._software_support_score(config.get("devices", [])) for config in configs]
+        functionality_scores = [aggregates[alt["id"]]["total_performance"] for alt in alternatives]
+
+        scores_map = {
+            "1": self._scaled_scores(functionality_scores),
+            "2": self._scaled_scores(license_units),
+            "3": self._scaled_scores(
+                [aggregates[alt["id"]]["total_cost"] for alt in alternatives], reverse=True
+            ),
+            "4": self._scaled_scores(support_scores),
+            "5": self._scaled_scores([aggregates[alt["id"]]["lifespan"] for alt in alternatives]),
+        }
+        scores = self._scores_by_alternative(alternatives, scores_map)
+        return {
+            "name": "ПО: выбор набора программного обеспечения",
+            "analysis_scope": ANALYSIS_SCOPE_SOFTWARE,
+            "criteria": deepcopy(SOFTWARE_CRITERIA_IMPORTANCE_CRITERIA),
+            "alternatives": alternatives,
+            "scores": scores,
+            "relations": deepcopy(SOFTWARE_CRITERIA_IMPORTANCE_RELATIONS),
+        }
+
+    def _scores_by_alternative(
+        self,
+        alternatives: list[dict[str, str]],
+        scores_map: dict[str, list[float]],
+    ) -> dict[str, dict[str, float]]:
         scores: dict[str, dict[str, float]] = {}
         for idx, alt in enumerate(alternatives):
             scores[alt["id"]] = {
                 criterion_id: scores_values[idx]
                 for criterion_id, scores_values in scores_map.items()
             }
-
-        return {
-            "name": "Выбор конфигурации ИТ-инфраструктуры",
-            "criteria": deepcopy(CRITERIA_IMPORTANCE_CRITERIA),
-            "alternatives": alternatives,
-            "scores": scores,
-            "relations": deepcopy(CRITERIA_IMPORTANCE_RELATIONS),
-        }
+        return scores
 
     def _expand_category(
         self, rows: Iterable[Mapping[str, Any]], *, role: str
@@ -198,11 +371,49 @@ class DecisionDemoDataService:
         expanded.sort(key=lambda item: (float(item.get("cost", 0.0)), str(item.get("source_name", ""))))
         return expanded
 
+    def _expand_software_rows(self, entities: Mapping[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+        raw_rows: list[dict[str, Any]] = []
+        for row in entities.get("licenses", []):
+            prepared = dict(row)
+            prepared["source_category"] = "licenses"
+            prepared["price"] = float(prepared.get("price", 0.0) or 0.0)
+            prepared["quantity"] = max(1, int(prepared.get("quantity", 1) or 1))
+            raw_rows.append(prepared)
+
+        for category in OPERATIONAL_COST_CATEGORIES:
+            if category != "subscription_licenses":
+                continue
+            for row in entities.get(category, []):
+                monthly_cost = float(row.get("monthly_cost", 0.0) or 0.0)
+                if monthly_cost <= 0:
+                    continue
+                prepared = dict(row)
+                prepared["source_category"] = category
+                prepared["price"] = monthly_cost * 12.0
+                prepared["quantity"] = max(1, int(prepared.get("quantity", 1) or 1))
+                raw_rows.append(prepared)
+
+        if not raw_rows:
+            return []
+
+        prices = [float(row.get("price", 0.0) or 0.0) for row in raw_rows]
+        min_price = min(prices)
+        max_price = max(prices)
+        span = max(max_price - min_price, 1.0)
+        expanded: list[dict[str, Any]] = []
+        for row in raw_rows:
+            quality = (float(row.get("price", 0.0) or 0.0) - min_price) / span if span else 0.5
+            template = self._software_template(row, quality=float(quality))
+            for _ in range(max(1, int(row.get("quantity", 1) or 1))):
+                expanded.append(deepcopy(template))
+        expanded.sort(key=lambda item: (float(item.get("cost", 0.0)), str(item.get("source_name", ""))))
+        return expanded
+
     def _device_template(self, row: Mapping[str, Any], *, role: str, quality: float) -> dict[str, Any]:
         profile = _ROLE_PROFILES[role]
         name = str(row.get("name", role)).strip() or role
         vendor = name.split()[0]
-        return {
+        template = {
             "role": role,
             "vendor": vendor,
             "source_name": name,
@@ -215,6 +426,37 @@ class DecisionDemoDataService:
                 "high": self._lerp(profile["rel_high"], quality, digits=3),
             },
             "lifespan": self._lerp(profile["lifespan"], quality),
+            "client_seats": 0.0,
+        }
+        if role == "client":
+            quantity = max(1.0, float(row.get("quantity", 1) or 1))
+            seats_total = float(row.get("client_seats", quantity) or 0.0)
+            template["client_seats"] = seats_total / quantity
+        return template
+
+    def _software_template(self, row: Mapping[str, Any], *, quality: float) -> dict[str, Any]:
+        profile = _ROLE_PROFILES["software"]
+        name = str(row.get("name", "ПО")).strip() or "ПО"
+        vendor = name.split()[0]
+        functionality = self._lerp(profile["functionality"], quality)
+        support = self._lerp(profile["support"], 1.0 - quality * 0.35)
+        return {
+            "role": "software",
+            "vendor": vendor,
+            "source_name": name,
+            "cpu_score": functionality,
+            "ram_score": support,
+            "perf": functionality,
+            "energy": 0.0,
+            "cost": round(float(row.get("price", 0.0) or 0.0), 2),
+            "reliability": {
+                "low": self._lerp(profile["rel_low"], quality, digits=3),
+                "high": self._lerp(profile["rel_high"], quality, digits=3),
+            },
+            "lifespan": self._lerp(profile["lifespan"], quality),
+            "license_units": 1.0,
+            "support_score": support,
+            "source_category": row.get("source_category", "licenses"),
         }
 
     def _make_config(
@@ -223,19 +465,12 @@ class DecisionDemoDataService:
         config_id: str,
         name: str,
         people: int,
-        servers: list[dict[str, Any]],
-        clients: list[dict[str, Any]],
-        networks: list[dict[str, Any]],
+        devices: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        devices = [
-            *(deepcopy(device) for device in servers),
-            *(deepcopy(device) for device in clients),
-            *(deepcopy(device) for device in networks),
-        ]
         return {
             "id": config_id,
             "name": name,
-            "devices": devices,
+            "devices": [deepcopy(device) for device in devices],
             "meta": {"people": people},
         }
 
@@ -298,6 +533,22 @@ class DecisionDemoDataService:
                 norm = 1.0 - norm
             scaled.append(round(2.0 + norm * 3.0, 2))
         return scaled
+
+    def _client_seat_capacity(self, devices: Iterable[Mapping[str, Any]]) -> int:
+        total = 0
+        for device in devices:
+            total += int(float(device.get("client_seats", 0.0) or 0.0))
+        return total
+
+    def _license_units(self, devices: Iterable[Mapping[str, Any]]) -> int:
+        total = 0
+        for device in devices:
+            total += max(1, int(float(device.get("license_units", 1.0) or 1.0)))
+        return total
+
+    def _software_support_score(self, devices: Iterable[Mapping[str, Any]]) -> float:
+        values = [float(device.get("support_score", 0.0) or 0.0) for device in devices]
+        return float(median(values)) if values else 0.0
 
     def _lerp(self, bounds: tuple[float, float], position: float, digits: int = 2) -> float:
         lo, hi = bounds

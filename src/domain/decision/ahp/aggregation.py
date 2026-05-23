@@ -48,7 +48,12 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
     counts = {}
     for d in devs:
         role = d.get("role", "unknown")
-        counts[role] = counts.get(role, 0) + 1
+        if role == "client" and "client_seats" in d:
+            counts[role] = counts.get(role, 0.0) + float(d.get("client_seats", 0.0) or 0.0)
+        elif role == "software" and "license_units" in d:
+            counts[role] = counts.get(role, 0.0) + float(d.get("license_units", 1.0) or 0.0)
+        else:
+            counts[role] = counts.get(role, 0.0) + 1.0
         total_cost += float(d.get("cost", 0.0))
         total_energy += float(d.get("energy", 0.0))
         # производительность — суммируем поля, если они есть
@@ -119,19 +124,21 @@ def filter_hard_constraints(
             and a["total_energy"] > float(constraints["max_energy"]) + 1e-9
         ):
             fail_reasons.append("energy")
-        # people vs client pcs
+        # people vs client seats for technical equipment.
+        # client_seats allows rows like MFP/printer to stay in the client category
+        # without pretending that they replace a human workplace.
         people = int(a.get("people", 0))
-        clients = int(a.get("counts", {}).get("client", 0))
+        capacity_role = str(constraints.get("capacity_role", "client"))
+        capacity = float(a.get("counts", {}).get(capacity_role, 0.0))
         tol = float(constraints.get("people_match_tolerance", 0.2))
-        # требуем clients >= people; и клиенты сверх людей не должны превышать tol*people
-        if people > 0:
-            if clients < people:
+        if people > 0 and capacity_role == "client":
+            if capacity < people:
                 fail_reasons.append("not_enough_clients")
             else:
-                excess = clients - people
+                excess = capacity - people
                 if excess > math.ceil(tol * people):
                     fail_reasons.append("too_many_clients")
-        # если люди == 0 — допускаем любые клиенты
+        # if people == 0 or the scope is software-only, user/workplace matching is skipped.
         if len(fail_reasons) == 0:
             passed.append(a)
         else:

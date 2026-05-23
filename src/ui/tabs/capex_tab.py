@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from tkinter import messagebox
+from typing import ClassVar, Mapping
 
 from application.services.equipment_service import EquipmentService
 from shared.validation import parse_float, parse_int, require_text
@@ -11,28 +12,54 @@ from ui.tabs.base_scrollable_tab import BaseScrollableTab
 from ui.widgets import EntityTableSection
 
 
+EntityConfig = Mapping[str, tuple[str, tuple[str, ...]]]
+
+
 class CapexTab(BaseScrollableTab):
-    COLUMN_NAMES = {
+    COLUMN_NAMES: ClassVar[dict[str, str]] = {
         "name": "Наименование",
         "quantity": "Количество",
         "price": "Цена",
     }
-    ENTITY_CONFIG = {
+    ENTITY_CONFIG: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
         "server": ("Серверное оборудование", ("name", "quantity", "price")),
         "client": ("Клиентское оборудование", ("name", "quantity", "price")),
         "network": ("Сетевое оборудование", ("name", "quantity", "price")),
         "licenses": ("Лицензии ПО", ("name", "quantity", "price")),
     }
 
-    def __init__(self, parent, equipment_service: EquipmentService):
+    def __init__(
+        self,
+        parent,
+        equipment_service: EquipmentService,
+        *,
+        entity_config: EntityConfig | None = None,
+        intro_text: str | None = None,
+    ):
         super().__init__(parent)
         self.equipment_service = equipment_service
+        self.entity_config = dict(entity_config or self.ENTITY_CONFIG)
 
         self.inner_frame.columnconfigure(0, weight=1)
         self.inner_frame.columnconfigure(1, weight=1)
 
+        if intro_text:
+            import tkinter as tk
+
+            label = tk.Label(
+                self.inner_frame,
+                text=intro_text,
+                anchor="w",
+                justify="left",
+                wraplength=1080,
+            )
+            label.grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 0), sticky="ew")
+            row_offset = 1
+        else:
+            row_offset = 0
+
         self.tables: dict[str, EntityTableSection] = {}
-        for index, (entity_name, (title, columns)) in enumerate(self.ENTITY_CONFIG.items()):
+        for index, (entity_name, (title, columns)) in enumerate(self.entity_config.items()):
             section = EntityTableSection(
                 self.inner_frame,
                 title=title,
@@ -42,7 +69,13 @@ class CapexTab(BaseScrollableTab):
                 on_edit=lambda e=entity_name: self.edit_row(e),
                 on_delete=lambda e=entity_name: self.delete_row(e),
             )
-            section.grid(row=index // 2, column=index % 2, padx=10, pady=10, sticky="nsew")
+            section.grid(
+                row=row_offset + index // 2,
+                column=index % 2,
+                padx=10,
+                pady=10,
+                sticky="nsew",
+            )
             self.tables[entity_name] = section
 
         self.refresh_all()
@@ -97,6 +130,43 @@ class CapexTab(BaseScrollableTab):
         self.refresh_table(entity_name)
 
 
+class TechnicalEquipmentTab(CapexTab):
+    ENTITY_CONFIG: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "server": ("Серверное оборудование", ("name", "quantity", "price")),
+        "client": ("Клиентское оборудование", ("name", "quantity", "price")),
+        "network": ("Сетевое оборудование", ("name", "quantity", "price")),
+    }
+
+    def __init__(self, parent, equipment_service: EquipmentService):
+        super().__init__(
+            parent,
+            equipment_service,
+            entity_config=self.ENTITY_CONFIG,
+            intro_text=(
+                "ТО — техническое обеспечение: серверы, клиентские устройства и сеть. "
+                "Именно эта область участвует в расчётах мощности и клиентских мест."
+            ),
+        )
+
+
+class SoftwareTab(CapexTab):
+    ENTITY_CONFIG: ClassVar[dict[str, tuple[str, tuple[str, ...]]]] = {
+        "licenses": ("Лицензии ПО", ("name", "quantity", "price")),
+    }
+
+    def __init__(self, parent, equipment_service: EquipmentService):
+        super().__init__(
+            parent,
+            equipment_service,
+            entity_config=self.ENTITY_CONFIG,
+            intro_text=(
+                "ПО — программное обеспечение: лицензии и программные позиции. "
+                "Для этой области анализы используют стоимость и количество лицензий, "
+                "без расчёта мощности и клиентских ПК."
+            ),
+        )
+
+
 CapitalCostsTab = CapexTab
 
-__all__ = ["CapexTab", "CapitalCostsTab"]
+__all__ = ["CapexTab", "CapitalCostsTab", "TechnicalEquipmentTab", "SoftwareTab"]

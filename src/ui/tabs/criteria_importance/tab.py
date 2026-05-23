@@ -4,6 +4,7 @@ import json
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+from shared.constants import ANALYSIS_SCOPE_LABELS, ANALYSIS_SCOPE_TECHNICAL
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 
 from .data_mixin import CriteriaImportanceDataMixin
@@ -34,6 +35,8 @@ class CriteriaImportanceTab(
         super().__init__(parent)
         self.crud = crud
         self.case_data = None
+        self.scoped_cases = {}
+        self.analysis_scope_var = tk.StringVar(value=ANALYSIS_SCOPE_TECHNICAL)
         self.analysis_report = None
         self._build_ui()
         self._reset_case()
@@ -50,6 +53,17 @@ class CriteriaImportanceTab(
         tk.Button(toolbar, text="Рассчитать", command=self._run_analysis).pack(
             side="left", padx=(12, 0)
         )
+        scope_box = tk.Frame(toolbar)
+        scope_box.pack(side="left", padx=(12, 0))
+        tk.Label(scope_box, text="Область:").pack(side="left")
+        for value, label in ANALYSIS_SCOPE_LABELS.items():
+            ttk.Radiobutton(
+                scope_box,
+                text=label,
+                value=value,
+                variable=self.analysis_scope_var,
+                command=self._on_analysis_scope_changed,
+            ).pack(side="left")
 
         top_label = tk.Label(
             root,
@@ -236,13 +250,45 @@ class CriteriaImportanceTab(
             "Загрузите JSON вручную или используйте общую кнопку \"Загрузить демо-данные\"."
         )
 
-    def load_case_data(self, case_data, *, message=None):
+    def load_case_data(
+        self,
+        case_data,
+        *,
+        message=None,
+        scoped_cases=None,
+        analysis_scope=None,
+    ):
+        self.scoped_cases = dict(scoped_cases or {})
+        if analysis_scope:
+            self.analysis_scope_var.set(analysis_scope)
         self.case_data = case_data
         self.analysis_report = None
         self._refresh_scores_tree()
         self._refresh_relations_tree()
         self._clear_result_tables()
         self._set_result(message or "Демо-сценарий для обоснования выбора ИТ-решения загружен.")
+
+    def _analysis_scope(self):
+        value = self.analysis_scope_var.get() if hasattr(self, "analysis_scope_var") else ""
+        if value in ANALYSIS_SCOPE_LABELS:
+            return value
+        return ANALYSIS_SCOPE_TECHNICAL
+
+    def _on_analysis_scope_changed(self):
+        if not self.scoped_cases:
+            return
+        scope = self._analysis_scope()
+        case_data = self.scoped_cases.get(scope)
+        if not case_data:
+            self._set_result(f"Нет подготовленного Pareto/критериального кейса для области {scope}.")
+            return
+        label = ANALYSIS_SCOPE_LABELS.get(scope, scope)
+        self.load_case_data(
+            case_data,
+            message=f"Загружен демонстрационный Pareto-кейс для области {label}.",
+            scoped_cases=self.scoped_cases,
+            analysis_scope=scope,
+        )
 
     def _load_default_case(self):
         if load_default_budgeting_case is None:
@@ -268,6 +314,7 @@ class CriteriaImportanceTab(
         try:
             with open(path, "r", encoding="utf-8") as fh:
                 self.case_data = json.load(fh)
+            self.scoped_cases = {}
             self.analysis_report = None
             self._refresh_scores_tree()
             self._refresh_relations_tree()

@@ -10,6 +10,12 @@ from typing import Any, Mapping, Sequence
 from application.use_cases.run_genetic_optimization import RunGeneticOptimizationUseCase
 from application.use_cases.run_genetic_ahp_ranking import RunGeneticAhpRankingUseCase
 from infrastructure.exporters.ga_ahp_json_exporter import export_ga_ahp_report_json
+from shared.constants import (
+    ANALYSIS_SCOPE_CAPITAL_CATEGORIES,
+    ANALYSIS_SCOPE_LABELS,
+    ANALYSIS_SCOPE_SOFTWARE,
+    ANALYSIS_SCOPE_TECHNICAL,
+)
 from shared.validation import parse_float, parse_int
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 
@@ -61,6 +67,9 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.generations_var = tk.StringVar(value="80")
         self.mutation_rate_var = tk.StringVar(value="0.04")
         self.seed_var = tk.StringVar(value="42")
+
+        self.analysis_scope_var = tk.StringVar(value=ANALYSIS_SCOPE_TECHNICAL)
+        self.scope_hint_var = tk.StringVar()
 
         self.max_budget_var = tk.StringVar(value="600000")
         self.max_power_var = tk.StringVar(value="")
@@ -121,6 +130,23 @@ class GeneticOptimizationTab(BaseScrollableTab):
             ttk.Checkbutton(required_box, text=text, variable=variable).grid(
                 row=index // 2, column=index % 2, padx=6, pady=4, sticky="w"
             )
+
+        scope_box = ttk.LabelFrame(settings, text="Область анализа")
+        scope_box.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        for index, (value, label) in enumerate(ANALYSIS_SCOPE_LABELS.items()):
+            ttk.Radiobutton(
+                scope_box,
+                text=label,
+                value=value,
+                variable=self.analysis_scope_var,
+                command=self._sync_scope_hint,
+            ).grid(row=0, column=index, padx=6, pady=4, sticky="w")
+        ttk.Label(
+            settings,
+            textvariable=self.scope_hint_var,
+            wraplength=360,
+            justify="left",
+        ).grid(row=10, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
         weights = ttk.LabelFrame(self.inner_frame, text="Веса критериев")
         weights.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
@@ -262,6 +288,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
             },
         )
 
+        self._sync_scope_hint()
         self.update_scrollregion()
 
     def _add_entry(
@@ -306,18 +333,26 @@ class GeneticOptimizationTab(BaseScrollableTab):
             target_users = self._optional_float(
                 self.target_users_var.get(), "Минимум пользователей/клиентских мест"
             )
-            weights = self._read_weights()
+            analysis_scope = self._analysis_scope()
+            weights = self._read_weights(analysis_scope=analysis_scope)
         except ValueError as error:
             messagebox.showerror("Ошибка ввода", str(error), parent=self)
             return
 
         power_lookup = self._power_lookup()
-        criteria = self._build_criteria(power_lookup)
-        constraints = self._build_constraints(power_lookup, max_power=max_power, target_users=target_users)
-        required_categories = self._required_categories()
+        criteria = self._build_criteria(power_lookup, analysis_scope=analysis_scope)
+        constraints = self._build_constraints(
+            power_lookup,
+            max_power=max_power,
+            target_users=target_users,
+            analysis_scope=analysis_scope,
+        )
+        required_categories = self._required_categories(analysis_scope=analysis_scope)
+        self._last_analysis_scope = analysis_scope
 
         try:
             result = self.run_genetic_optimization_use_case.execute(
+                categories=self._scope_categories(analysis_scope),
                 criteria=criteria,
                 constraints=constraints,
                 weights=weights,
@@ -349,18 +384,26 @@ class GeneticOptimizationTab(BaseScrollableTab):
             target_users = self._optional_float(
                 self.target_users_var.get(), "Минимум пользователей/клиентских мест"
             )
-            weights = self._read_weights()
+            analysis_scope = self._analysis_scope()
+            weights = self._read_weights(analysis_scope=analysis_scope)
         except ValueError as error:
             messagebox.showerror("Ошибка ввода", str(error), parent=self)
             return
 
         power_lookup = self._power_lookup()
-        criteria = self._build_criteria(power_lookup)
-        constraints = self._build_constraints(power_lookup, max_power=max_power, target_users=target_users)
-        required_categories = self._required_categories()
+        criteria = self._build_criteria(power_lookup, analysis_scope=analysis_scope)
+        constraints = self._build_constraints(
+            power_lookup,
+            max_power=max_power,
+            target_users=target_users,
+            analysis_scope=analysis_scope,
+        )
+        required_categories = self._required_categories(analysis_scope=analysis_scope)
+        self._last_analysis_scope = analysis_scope
 
         try:
             result = self.run_genetic_ahp_ranking_use_case.execute(
+                categories=self._scope_categories(analysis_scope),
                 criteria=criteria,
                 constraints=constraints,
                 weights=weights,
@@ -424,7 +467,13 @@ class GeneticOptimizationTab(BaseScrollableTab):
             params["seed"] = parse_int(seed_value, "Seed")
         return params
 
-    def _read_weights(self) -> list[float]:
+    def _read_weights(self, *, analysis_scope: str) -> list[float]:
+        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
+            return [
+                parse_float(self.coverage_weight_var.get(), "Вес разнообразия ПО"),
+                parse_float(self.client_weight_var.get(), "Вес количества лицензий"),
+                parse_float(self.cost_weight_var.get(), "Вес стоимости"),
+            ]
         return [
             parse_float(self.coverage_weight_var.get(), "Вес покрытия категорий"),
             parse_float(self.client_weight_var.get(), "Вес клиентских мест"),
@@ -437,7 +486,47 @@ class GeneticOptimizationTab(BaseScrollableTab):
             return None
         return parse_float(value, field_name)
 
-    def _required_categories(self) -> list[str]:
+    def _analysis_scope(self) -> str:
+        value = self.analysis_scope_var.get() if hasattr(self, "analysis_scope_var") else ""
+        if value in ANALYSIS_SCOPE_CAPITAL_CATEGORIES:
+            return value
+        return ANALYSIS_SCOPE_TECHNICAL
+
+    def _scope_categories(self, analysis_scope: str | None = None) -> tuple[str, ...]:
+        scope = analysis_scope or self._analysis_scope()
+        return tuple(
+            ANALYSIS_SCOPE_CAPITAL_CATEGORIES.get(
+                scope,
+                ANALYSIS_SCOPE_CAPITAL_CATEGORIES[ANALYSIS_SCOPE_TECHNICAL],
+            )
+        )
+
+    def _sync_scope_hint(self) -> None:
+        scope = self._analysis_scope()
+        if scope == ANALYSIS_SCOPE_SOFTWARE:
+            self.require_server_var.set(False)
+            self.require_client_var.set(False)
+            self.require_network_var.set(False)
+            self.require_licenses_var.set(True)
+            self.scope_hint_var.set(
+                "Режим ПО: анализируются только лицензии. Мощность не учитывается; "
+                "поле минимума трактуется как минимум лицензий/пользовательских лицензий."
+            )
+            return
+
+        self.require_server_var.set(True)
+        self.require_client_var.set(True)
+        self.require_network_var.set(True)
+        self.require_licenses_var.set(False)
+        self.scope_hint_var.set(
+            "Режим ТО: анализируются серверы, клиентские устройства и сеть. "
+            "Клиентская ёмкость считается по client_seats, поэтому МФУ не заменяет рабочее место."
+        )
+
+    def _required_categories(self, *, analysis_scope: str) -> list[str]:
+        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
+            return ["licenses"] if self.require_licenses_var.get() else []
+
         result = []
         if self.require_server_var.get():
             result.append("server")
@@ -445,8 +534,6 @@ class GeneticOptimizationTab(BaseScrollableTab):
             result.append("client")
         if self.require_network_var.get():
             result.append("network")
-        if self.require_licenses_var.get():
-            result.append("licenses")
         return result
 
     def _power_lookup(self) -> dict[str, float]:
@@ -462,7 +549,31 @@ class GeneticOptimizationTab(BaseScrollableTab):
                 lookup[str(name)] = 0.0
         return lookup
 
-    def _build_criteria(self, power_lookup: Mapping[str, float]) -> list[dict[str, Any]]:
+    def _build_criteria(
+        self,
+        power_lookup: Mapping[str, float],
+        *,
+        analysis_scope: str,
+    ) -> list[dict[str, Any]]:
+        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
+            return [
+                {
+                    "name": "selected_software_items",
+                    "func": lambda subset: float(len(subset)),
+                    "direction": "max",
+                },
+                {
+                    "name": "software_license_quantity",
+                    "func": self._software_quantity,
+                    "direction": "max",
+                },
+                {
+                    "name": "capital_cost",
+                    "func": lambda subset: self._sum_property(subset, "total_cost"),
+                    "direction": "min",
+                },
+            ]
+
         return [
             {
                 "name": "category_coverage",
@@ -492,8 +603,21 @@ class GeneticOptimizationTab(BaseScrollableTab):
         *,
         max_power: float | None,
         target_users: float | None,
+        analysis_scope: str,
     ) -> list[dict[str, Any]]:
         constraints: list[dict[str, Any]] = []
+        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
+            if target_users is not None and target_users > 0:
+                constraints.append(
+                    {
+                        "name": "software_license_quantity_required",
+                        "func": self._software_quantity,
+                        "operator": ">=",
+                        "bound": target_users,
+                    }
+                )
+            return constraints
+
         if max_power is not None:
             constraints.append(
                 {
@@ -598,13 +722,22 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.status_var.set(
             f"Найдено элементов: {totals.get('selected_count', 0)}; score={self._format_number(score, digits=4)}."
         )
-        self.explanation_var.set(
-            "Выбрана конфигурация с максимальной нормализованной оценкой по заданным весам. "
-            f"Итоговая стоимость: {self._format_money(totals.get('capital_cost'))}; "
-            f"клиентских мест: {self._format_number(self._client_capacity_from_dicts(selected_items))}; "
-            f"мощность: {self._format_number(sum(self._item_power(item, power_lookup) for item in selected_items))} Вт; "
-            f"причина остановки: {termination}."
-        )
+        scope = getattr(self, "_last_analysis_scope", self._analysis_scope())
+        if scope == ANALYSIS_SCOPE_SOFTWARE:
+            self.explanation_var.set(
+                "Выбран набор ПО с максимальной нормализованной оценкой по заданным весам. "
+                f"Итоговая стоимость: {self._format_money(totals.get('capital_cost'))}; "
+                f"лицензий: {self._format_number(self._software_quantity_from_dicts(selected_items))}; "
+                f"причина остановки: {termination}."
+            )
+        else:
+            self.explanation_var.set(
+                "Выбрана конфигурация ТО с максимальной нормализованной оценкой по заданным весам. "
+                f"Итоговая стоимость: {self._format_money(totals.get('capital_cost'))}; "
+                f"клиентских мест: {self._format_number(self._client_capacity_from_dicts(selected_items))}; "
+                f"мощность: {self._format_number(sum(self._item_power(item, power_lookup) for item in selected_items))} Вт; "
+                f"причина остановки: {termination}."
+            )
         self.update_scrollregion()
 
     def _render_ahp_report(self, report: Any) -> None:
@@ -847,6 +980,15 @@ class GeneticOptimizationTab(BaseScrollableTab):
     def _client_capacity_from_dicts(self, selected_items: Sequence[Mapping[str, Any]]) -> float:
         return sum(self._item_client_capacity(item) for item in selected_items)
 
+    def _software_quantity(self, subset: Sequence[Any]) -> float:
+        return sum(self._item_software_quantity(item.properties) for item in subset)
+
+    def _software_quantity_from_dicts(self, selected_items: Sequence[Mapping[str, Any]]) -> float:
+        return sum(self._item_software_quantity(item) for item in selected_items)
+
+    def _item_software_quantity(self, item: Mapping[str, Any]) -> float:
+        return self._number(item.get("quantity", item.get("license_units", 1.0)), default=1.0)
+
     def _item_client_capacity(self, item: Mapping[str, Any]) -> float:
         if "client_seats" in item:
             return self._number(item.get("client_seats"), default=0.0)
@@ -892,6 +1034,8 @@ class GeneticOptimizationTab(BaseScrollableTab):
             "client_capacity": "Клиентские места",
             "total_power_watts": "Энергопотребление",
             "capital_cost": "Стоимость",
+            "selected_software_items": "Разнообразие ПО",
+            "software_license_quantity": "Количество лицензий",
         }.get(name, name)
 
     def _constraint_label(self, name: str) -> str:
@@ -904,6 +1048,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
             "max_selected_items": "Максимум выбранных элементов",
             "power_limit": "Лимит мощности",
             "client_capacity_required": "Минимум клиентских мест",
+            "software_license_quantity_required": "Минимум лицензий",
         }.get(name, name)
 
 

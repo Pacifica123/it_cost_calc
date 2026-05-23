@@ -5,8 +5,7 @@ from pathlib import Path
 
 from .catalog_builder import save_catalog
 from .paths import DEFAULT_OUTPUT_PATH
-from .sources import build_catalog_from_example_snapshots, build_catalog_from_live_dns
-
+from .sources.dns_examples import build_catalog_from_example_snapshots
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,7 +30,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     output_path = Path(args.output)
@@ -39,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.mode == "examples":
         payload = build_catalog_from_example_snapshots()
     else:
+        from .sources.dns_live import build_catalog_from_live_dns
+
         payload = build_catalog_from_live_dns()
 
     save_catalog(payload, output_path)

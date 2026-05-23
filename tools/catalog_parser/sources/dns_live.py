@@ -7,16 +7,14 @@ from pathlib import Path
 
 from ..catalog_builder import build_catalog_payload, deduplicate_items, normalize_dns_snapshot
 from ..catalog_schema import CatalogSourceInfo
-from ..legacy import main as run_legacy_dns_parser
-
-
-
 def build_catalog_from_live_dns() -> dict:
     """Запускает legacy-парсер DNS во временной директории и нормализует результат.
 
     Этот режим оставлен как техническая заготовка на будущее и не используется
     в стандартном тестовом контуре проекта.
     """
+
+    from ..legacy import main as run_legacy_dns_parser
 
     with tempfile.TemporaryDirectory(prefix="dns_live_") as temp_dir:
         temp_path = Path(temp_dir)
