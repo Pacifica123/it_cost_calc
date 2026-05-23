@@ -100,6 +100,7 @@ pytest
 - карта модулей: `docs/architecture/module_map.md`
 - карта данных: `docs/architecture/data_map.md`
 - сверка первых трёх пунктов devctl-очередности roadmap: `docs/architecture/roadmap_patch_sequence_status.md`
+- итоговая сводка roadmap концептуальной связанности: `docs/architecture/conceptual_cohesion_completion_summary.md`
 - текущая предметная схема CAPEX/OPEX и будущих признаков `scope`/`component_type`: `docs/architecture/current_subject_schema.md`
 - профили анализа ПО/ТО, критерии и ограничения прикладного слоя: `docs/architecture/analysis_scope_profiles.md`
 - единый формат кандидатных альтернатив: `docs/architecture/candidate_configurations.md`
@@ -139,3 +140,13 @@ pytest
 - основной лог-файл: `data/generated/logs/it_cost_calc.log`;
 - уровень консольного вывода задаётся переменной окружения `IT_COST_LOG_LEVEL`;
 - отладочные логи не пишутся в корень репозитория.
+
+## Текущая архитектурная логика после roadmap
+
+После завершения roadmap проект следует читать как связанную систему поддержки выбора ИТ-решения:
+
+```text
+runtime-записи → scope/component_type → AnalysisScopeProfile → CandidateConfiguration → TCO/NPV → DecisionReport
+```
+
+Это означает, что вкладки CAPEX, OPEX, электроэнергии, NPV, AHP, GA и экспорта больше не описываются как независимые калькуляторы. Они остаются отдельными пользовательскими экранами, но работают вокруг общей предметной цепочки: компоненты нормализуются, превращаются в альтернативы, получают стоимость владения, анализируются разными методами и попадают в итоговый отчёт выбора.

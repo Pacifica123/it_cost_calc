@@ -104,3 +104,17 @@ flowchart TB
 - `domain` содержит математику и модели;
 - `infrastructure` хранит состояние и формирует выходные файлы, включая JSON/Markdown/CSV-представления `DecisionReport`;
 - `tools/catalog_parser` обслуживает внешний справочник оборудования и не входит в runtime GUI.
+
+## Где находятся ключевые связующие сервисы
+
+| Сервис | Слой | Роль в общей цепочке |
+|---|---|---|
+| `RuntimeEntityNormalizationService` | `application` | Достраивает `scope`, `component_type`, `client_seats` и legacy-признаки. |
+| `AnalysisScopeProfileService` | `application` | Хранит профили ПО/ТО: критерии, ограничения, категории и подсказки. |
+| `CandidateConfigurationService` | `application` | Приводит runtime-записи и результаты методов к единому формату альтернатив. |
+| `TCOModelService` | `application` | Собирает стоимость владения и финансовую базу NPV. |
+| `DecisionReportService` | `application` | Формирует единый итоговый отчёт выбора. |
+| `DemoControlScenarioService` | `application` | Проверяет, что демонстрационный набор проходит всю цепочку без отдельной смысловой модели. |
+| `decision_report_exporter` | `infrastructure` | Записывает отчёт в JSON, Markdown и CSV-срез альтернатив. |
+
+Эти сервисы являются главной причиной, почему предметная логика больше не размазана по вкладкам интерфейса.

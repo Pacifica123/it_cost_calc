@@ -14,6 +14,7 @@
 | Связка ГА + AHP | Поиск кандидатных конфигураций ГА и их объяснимое ранжирование методом AHP | `src/application/services/genetic_ahp_ranking_service.py`, `src/application/use_cases/run_genetic_ahp_ranking.py`, `src/ui/tabs/genetic_optimization_tab.py` | вкладка «Генетический подбор», тест `tests/unit/test_genetic_ahp_ranking_service.py` |
 | Экспорт результатов | Выгрузка сводных расчётов в CSV и подготовка payload для результатов ГА | `src/ui/tabs/export_tab.py`, `src/application/use_cases/export_cost_report.py`, `src/infrastructure/exporters/csv_exporter.py`, `src/application/services/genetic_optimization_service.py` | `data/fixtures/demo_dataset.json` |
 | Demo/control-сценарий | Проверка, что демонстрационный набор проходит `scope/component_type`, `CandidateConfiguration`, TCO и `DecisionReport` | `src/application/services/demo_control_scenario_service.py`, `scripts/run_demo_control_scenario.py` | `data/fixtures/demo_dataset.json`, `data/fixtures/regression/demo_control_invariants.json` |
+| Итоговый отчёт выбора | Сведение компонентов, стоимости, альтернатив, аналитики, NPV, рисков и предупреждений в единый DecisionReport | `src/application/services/decision_report_service.py`, `src/application/use_cases/build_decision_report.py`, `src/infrastructure/exporters/decision_report_exporter.py`, `src/ui/tabs/export_tab.py` | `data/fixtures/demo_dataset.json`, `scripts/run_demo_control_scenario.py --check-only` |
 | Каталог оборудования и его актуализация | Нормализация данных о реально существующем оборудовании | `tools/catalog_parser/`, `scripts/update_equipment_catalog.py` | `data/examples/parser/`, `data/examples/catalog/normalized_dns_catalog.json` |
 | Оптимизационные эвристики | Универсальное ядро поиска подмножества item-ов, нормализованная fitness-функция, top-solutions и демонстрационный knapsack-сценарий | `src/domain/optimization/` | `data/examples/optimization/`, `scripts/run_ga_demo.py`, `tests/regression/test_ga_demo_pipeline_regression.py` |
 
@@ -22,3 +23,13 @@
 - для пояснения на защите, какой раздел работы опирается на какой код;
 - для навигации по репозиторию без долгого чтения всех каталогов;
 - для связи между текстом работы, демонстрационными данными и инженерной реализацией.
+
+## Связь с итоговой архитектурной цепочкой
+
+Для дипломного описания удобно показывать не отдельные вкладки, а сквозной поток:
+
+```text
+CAPEX/OPEX/энергия → scope/component_type → CandidateConfiguration → TCO → AHP/GA/NPV → DecisionReport
+```
+
+Таблица выше помогает связать каждый участок этого потока с кодом и воспроизводимыми входными данными.
