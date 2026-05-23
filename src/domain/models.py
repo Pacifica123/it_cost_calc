@@ -197,6 +197,71 @@ class Alternative:
 
 
 @dataclass(slots=True)
+class CostModel:
+    """Cost breakdown for one component or a whole candidate configuration.
+
+    The model keeps one-time investment costs separate from recurring monthly
+    costs.  This lets application services build TCO summaries and NPV cash
+    flows without guessing which value came from CAPEX, OPEX or electricity.
+    """
+
+    purchase_cost: float = 0.0
+    implementation_cost: float = 0.0
+    testing_cost: float = 0.0
+    migration_cost: float = 0.0
+    subscription_cost: float = 0.0
+    support_cost: float = 0.0
+    electricity_cost: float = 0.0
+
+    @property
+    def one_time_costs(self) -> float:
+        return (
+            float(self.purchase_cost)
+            + float(self.implementation_cost)
+            + float(self.testing_cost)
+            + float(self.migration_cost)
+        )
+
+    @property
+    def monthly_costs(self) -> float:
+        return (
+            float(self.subscription_cost)
+            + float(self.support_cost)
+            + float(self.electricity_cost)
+        )
+
+    @property
+    def annual_costs(self) -> float:
+        return self.monthly_costs * 12.0
+
+    def total_for_months(self, horizon_months: int | float) -> float:
+        return self.one_time_costs + self.monthly_costs * float(horizon_months)
+
+    def plus(self, other: "CostModel") -> "CostModel":
+        return CostModel(
+            purchase_cost=self.purchase_cost + other.purchase_cost,
+            implementation_cost=self.implementation_cost + other.implementation_cost,
+            testing_cost=self.testing_cost + other.testing_cost,
+            migration_cost=self.migration_cost + other.migration_cost,
+            subscription_cost=self.subscription_cost + other.subscription_cost,
+            support_cost=self.support_cost + other.support_cost,
+            electricity_cost=self.electricity_cost + other.electricity_cost,
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CostModel":
+        return cls(
+            purchase_cost=float(payload.get("purchase_cost", 0.0)),
+            implementation_cost=float(payload.get("implementation_cost", 0.0)),
+            testing_cost=float(payload.get("testing_cost", 0.0)),
+            migration_cost=float(payload.get("migration_cost", 0.0)),
+            subscription_cost=float(payload.get("subscription_cost", 0.0)),
+            support_cost=float(payload.get("support_cost", 0.0)),
+            electricity_cost=float(payload.get("electricity_cost", 0.0)),
+        )
+
+
+@dataclass(slots=True)
 class CandidateConfiguration:
     """Common candidate alternative format for AHP, GA and reports.
 
@@ -387,6 +452,11 @@ def ensure_candidate_configuration(
     if isinstance(value, CandidateConfiguration):
         return value
     return CandidateConfiguration.from_dict(value)
+
+def ensure_cost_model(value: CostModel | Mapping[str, Any]) -> CostModel:
+    if isinstance(value, CostModel):
+        return value
+    return CostModel.from_dict(value)
 
 
 def ensure_relation(value: Relation | Mapping[str, Any]) -> Relation:

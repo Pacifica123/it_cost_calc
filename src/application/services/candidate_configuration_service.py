@@ -12,6 +12,7 @@ from copy import deepcopy
 from typing import Any, Iterable, Mapping, Sequence
 
 from application.services.runtime_entity_normalization_service import normalize_runtime_row
+from application.services.tco_model_service import TCOModelService
 from domain import (
     AnalysisScope,
     CandidateConfiguration,
@@ -32,6 +33,9 @@ class CandidateConfigurationService:
     canonical contract, while old UI and exporter code can continue to consume
     JSON-like structures.
     """
+
+    def __init__(self, tco_model_service: TCOModelService | None = None):
+        self.tco_model_service = tco_model_service or TCOModelService()
 
     def from_ahp_configurations(
         self,
@@ -62,7 +66,7 @@ class CandidateConfigurationService:
             "legacy_meta": deepcopy(config.get("meta", {})),
             "aggregate": deepcopy(aggregate),
         }
-        return CandidateConfiguration(
+        candidate = CandidateConfiguration(
             id=str(config.get("id") or config.get("name") or "candidate"),
             name=str(config.get("name") or config.get("id") or "Кандидатная конфигурация"),
             scope=self._scope(scope),
@@ -72,6 +76,7 @@ class CandidateConfigurationService:
             source=self._source(source),
             metadata=metadata,
         )
+        return self._with_tco(candidate)
 
     def from_ga_candidate_solutions(
         self,
@@ -112,7 +117,7 @@ class CandidateConfigurationService:
                 item.get("normalized_scores_by_criterion", {})
             ),
         }
-        return CandidateConfiguration(
+        candidate = CandidateConfiguration(
             id=str(item.get("id") or f"GA-{rank}"),
             name=str(item.get("name") or f"GA-кандидат {rank}"),
             scope=self._scope(scope),
@@ -129,6 +134,7 @@ class CandidateConfigurationService:
                 "constraints": deepcopy(item.get("constraints", [])),
             },
         )
+        return self._with_tco(candidate)
 
     def from_runtime_entities(
         self,
@@ -147,7 +153,7 @@ class CandidateConfigurationService:
                 component.setdefault("source_category", str(category))
                 components.append(component)
         totals = self._totals_from_components(components)
-        return CandidateConfiguration(
+        candidate = CandidateConfiguration(
             id=candidate_id,
             name=name,
             scope=self._scope(scope),
@@ -157,6 +163,7 @@ class CandidateConfigurationService:
             source=self._source(source),
             metadata={"legacy_format": "runtime_entities"},
         )
+        return self._with_tco(candidate)
 
     def to_ahp_configurations(
         self,
@@ -256,6 +263,9 @@ class CandidateConfigurationService:
         if "energy" not in device and "max_power" in device:
             device["energy"] = self._number(device.get("max_power"), default=0.0)
         return device
+
+    def _with_tco(self, candidate: CandidateConfiguration) -> CandidateConfiguration:
+        return self.tco_model_service.attach_to_candidate(candidate)
 
     def _scope(self, value: str | AnalysisScope | None) -> AnalysisScope | None:
         if value is None:

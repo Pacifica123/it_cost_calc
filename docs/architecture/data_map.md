@@ -8,8 +8,10 @@ flowchart LR
     RUNTIME --> RNORM[application: normalization scope/component_type]
     RNORM --> PROFILE[application: AnalysisScopeProfileService]
     PROFILE --> CAND[application: CandidateConfigurationService]
+    CAND --> TCO[application: TCOModelService]
+    TCO --> NPV[application: NPVReportService]
     CAND --> ANALYTICS[GA / GA+AHP / AHP / Pareto]
-    CAND --> REPORTS[data/generated/*.csv + JSON reports]
+    TCO --> REPORTS[data/generated/*.csv + JSON reports]
     RUNTIME --> LOGS[data/generated/logs/]
 
     RAW[data/examples/parser/*.json] --> CNORM[data/examples/catalog/normalized_dns_catalog.json]
@@ -91,6 +93,20 @@ runtime_entities.json
 | `metadata` | источник, legacy-формат, параметры GA/AHP и диагностические поля |
 
 Подробный контракт описан в `candidate_configurations.md`.
+
+
+## TCO и финансовая база NPV после этапа 5
+
+После формирования общего пула альтернатив прикладной слой может собрать стоимость владения. `TCOModelService` принимает `CandidateConfiguration` или текущие итоги CAPEX/OPEX/электроэнергии и формирует блок `tco`: стартовые инвестиции, ежемесячные и годовые расходы, стоимость электроэнергии за период и итоговую стоимость владения.
+
+```text
+CandidateConfiguration / current cost totals
+  → TCOModelService
+  → totals.tco
+  → NPVReportService
+```
+
+NPV больше не обязан начинаться с пустого ручного ввода. Вкладка NPV может подставить рассчитанные CAPEX/OPEX/электроэнергию как финансовую базу, а пользователь затем добавляет ожидаемый эффект или экономию в денежные потоки. Это сохраняет объяснимость: сервис показывает, какие суммы попали в NPV, и предупреждает, если эффект не задан. Подробности описаны в `tco_npv_bridge.md`.
 
 ## Предметный контракт категорий
 

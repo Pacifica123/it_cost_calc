@@ -126,7 +126,11 @@ class CalculatorApp(tk.Tk):
         self.export_tab = export_tab.ExportTab(self.notebook, self)
         self.notebook.add(self.export_tab, text="Экспорт")
 
-        self.npv_tab = npv_tab.NPVTab(self.notebook, self.build_npv_report_use_case)
+        self.npv_tab = npv_tab.NPVTab(
+            self.notebook,
+            self.build_npv_report_use_case,
+            cost_summary_provider=self.update_total_costs,
+        )
         self.notebook.add(self.npv_tab, text="NPV-анализ")
 
         self.genetic_optimization_tab = genetic_optimization_tab.GeneticOptimizationTab(

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from application.services.runtime_entity_normalization_service import normalize_runtime_row
+from application.services.tco_model_service import TCOModelService
 from domain import (
     CapitalItem,
     OperationalExpense,
@@ -17,8 +18,13 @@ from shared.constants import CAPITAL_COST_CATEGORIES, OPERATIONAL_COST_CATEGORIE
 
 
 class CostAggregationService:
-    def __init__(self, exporter: TotalCostsCsvExporter | None = None):
+    def __init__(
+        self,
+        exporter: TotalCostsCsvExporter | None = None,
+        tco_model_service: TCOModelService | None = None,
+    ):
         self.exporter = exporter or TotalCostsCsvExporter()
+        self.tco_model_service = tco_model_service or TCOModelService()
         self.capital_costs: dict[str, list[CapitalItem]] = {}
         self.operational_costs: dict[str, list[OperationalExpense]] = {}
         self.electricity_costs = 0.0
@@ -70,7 +76,7 @@ class CostAggregationService:
     def update_electricity_costs(self, electricity_cost: float) -> None:
         self.electricity_costs = float(electricity_cost)
 
-    def calculate_totals(self) -> dict[str, float]:
+    def calculate_totals(self) -> dict[str, Any]:
         total_capital = sum(
             item.total_cost for items in self.capital_costs.values() for item in items
         )
@@ -80,12 +86,14 @@ class CostAggregationService:
         total_operational_monthly = sum(
             item.monthly_cost for items in self.operational_costs.values() for item in items
         )
-        return {
+        totals: dict[str, Any] = {
             "total_capital": total_capital,
             "total_operational_one_time": total_operational_one_time,
             "total_operational_monthly": total_operational_monthly,
             "electricity_costs": self.electricity_costs,
         }
+        totals["tco"] = self.tco_model_service.from_cost_totals(totals)
+        return totals
 
     def export_to_csv(self, filename: str | Path) -> None:
         self.exporter.export(

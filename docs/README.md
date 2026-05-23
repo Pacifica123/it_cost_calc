@@ -16,6 +16,7 @@
 - `architecture/current_subject_schema.md` — переходная предметная схема текущих CAPEX/OPEX-категорий, будущих `scope`/`component_type` и связей вкладок с данными;
 - `architecture/analysis_scope_profiles.md` — прикладные профили анализа ПО/ТО: категории, критерии, ограничения, веса и правила объяснения;
 - `architecture/candidate_configurations.md` — единый формат кандидатных альтернатив для AHP, GA, GA + AHP, анализа важности критериев и будущего DecisionReport;
+- `architecture/tco_npv_bridge.md` — TCO-модель и финансовый мост между CAPEX/OPEX/электроэнергией и NPV;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -63,12 +64,13 @@
 5. `architecture/current_subject_schema.md`
 6. `architecture/analysis_scope_profiles.md`
 7. `architecture/candidate_configurations.md`
-8. `architecture/system_schema.md`
-9. `architecture/module_map.md`
-10. `architecture/data_map.md`
-11. `research/genetic_algorithm.md`
-12. `research/ideas/genetic_algorithm_plain_manifest.md`
-13. `research/ideas/future_independent_ga_ahp_assessment.md`
-14. `research/ideas/future_hybrid_ga_ahp_score.md`
-15. `demo/ga_ahp_defense_guide.md`
-16. `traceability.md`
+8. `architecture/tco_npv_bridge.md`
+9. `architecture/system_schema.md`
+10. `architecture/module_map.md`
+11. `architecture/data_map.md`
+12. `research/genetic_algorithm.md`
+13. `research/ideas/genetic_algorithm_plain_manifest.md`
+14. `research/ideas/future_independent_ga_ahp_assessment.md`
+15. `research/ideas/future_hybrid_ga_ahp_score.md`
+16. `demo/ga_ahp_defense_guide.md`
+17. `traceability.md`

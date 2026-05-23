@@ -92,6 +92,7 @@ pytest
 - текущая предметная схема CAPEX/OPEX и будущих признаков `scope`/`component_type`: `docs/architecture/current_subject_schema.md`
 - профили анализа ПО/ТО, критерии и ограничения прикладного слоя: `docs/architecture/analysis_scope_profiles.md`
 - единый формат кандидатных альтернатив: `docs/architecture/candidate_configurations.md`
+- TCO-модель и связь CAPEX/OPEX/электроэнергии с NPV: `docs/architecture/tco_npv_bridge.md`
 - подробное описание модулей: `docs/architecture/modules.md`
 - продуктовая идея: `docs/product/vision.md`
 - генетический алгоритм: `docs/research/genetic_algorithm.md`

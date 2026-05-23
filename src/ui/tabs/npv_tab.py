@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from tkinter import BOTH, LEFT, RIGHT, W, X, scrolledtext
+from typing import Any, Callable, Mapping
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -30,9 +31,16 @@ def _bootstyle_kwargs(value: str) -> dict[str, str]:
 
 
 class NPVTab(BaseScrollableTab):
-    def __init__(self, parent, build_npv_report_use_case: BuildNpvReportUseCase):
+    def __init__(
+        self,
+        parent,
+        build_npv_report_use_case: BuildNpvReportUseCase,
+        cost_summary_provider: Callable[[], Mapping[str, Any]] | None = None,
+    ):
         super().__init__(parent)
         self.build_npv_report_use_case = build_npv_report_use_case
+        self.cost_summary_provider = cost_summary_provider
+        self.loaded_financial_basis: dict[str, Any] | None = None
 
         root = self.inner_frame
         main_frame = ttk.Frame(root)
@@ -86,6 +94,14 @@ class NPVTab(BaseScrollableTab):
             **_bootstyle_kwargs(SUCCESS),
         ).pack(pady=10, padx=10, fill=X)
 
+        if self.cost_summary_provider is not None:
+            ttk.Button(
+                left_frame,
+                text="↙ Подставить CAPEX/OPEX/электроэнергию из расчётов",
+                command=self.load_financial_basis_from_costs,
+                **_bootstyle_kwargs(INFO),
+            ).pack(pady=(0, 10), padx=10, fill=X)
+
         self.result_text = scrolledtext.ScrolledText(
             left_frame, height=18, width=60, font=("Consolas", 9)
         )
@@ -109,6 +125,7 @@ class NPVTab(BaseScrollableTab):
                 investment=investment,
                 discount_rate=discount_rate,
                 cash_flows=cash_flows,
+                financial_basis=self.loaded_financial_basis,
             )
 
             debug_lines = [
@@ -128,6 +145,21 @@ class NPVTab(BaseScrollableTab):
                 )
             debug_lines.append("-" * 70)
             debug_lines.append(f"Итоговый NPV: {report['npv']:.2f}")
+            if report.get("financial_basis"):
+                basis = report["financial_basis"]
+                sources = basis.get("cost_sources", {})
+                debug_lines.extend(
+                    [
+                        "",
+                        "Финансовая база из TCO:",
+                        f"  CAPEX: {sources.get('capex', 0.0):.2f}",
+                        f"  Разовые расходы: {sources.get('one_time_costs', 0.0):.2f}",
+                        f"  Ежемесячные OPEX: {sources.get('monthly_opex', 0.0):.2f}",
+                        f"  Электроэнергия в месяц: {sources.get('electricity_monthly_cost', 0.0):.2f}",
+                    ]
+                )
+            for warning in report.get("warnings", []):
+                debug_lines.append(f"Предупреждение: {warning}")
 
             self.result_text.delete("1.0", "end")
             self.result_text.insert("end", "\n".join(debug_lines))
@@ -152,6 +184,48 @@ class NPVTab(BaseScrollableTab):
         except Exception as error:
             self.result_text.delete("1.0", "end")
             self.result_text.insert("end", f"Ошибка: {error}")
+
+    def load_financial_basis_from_costs(self) -> None:
+        if self.cost_summary_provider is None:
+            return
+        try:
+            totals = self.cost_summary_provider()
+            discount_rate = float(self.r_entry.get() or 0.1)
+            basis = self.build_npv_report_use_case.prepare_from_totals(
+                totals,
+                horizon_years=5,
+                annual_effect=0.0,
+                discount_rate=discount_rate,
+            )
+            self.loaded_financial_basis = basis
+
+            self.invest_entry.delete(0, "end")
+            self.invest_entry.insert(0, f"{basis['investment']:.2f}")
+            self.cf_entry.delete(0, "end")
+            self.cf_entry.insert(
+                0,
+                ", ".join(f"{float(value):.2f}" for value in basis["cash_flows"]),
+            )
+            self.r_entry.delete(0, "end")
+            self.r_entry.insert(0, f"{discount_rate:.4f}")
+
+            sources = basis.get("cost_sources", {})
+            lines = [
+                "Финансовая база подставлена из текущих расчётов CAPEX/OPEX/электроэнергии.",
+                f"Начальные инвестиции: {basis['investment']:.2f}",
+                f"Годовые регулярные расходы: {basis['annual_opex']:.2f}",
+                f"CAPEX: {sources.get('capex', 0.0):.2f}",
+                f"Разовые расходы: {sources.get('one_time_costs', 0.0):.2f}",
+                f"Ежемесячные OPEX: {sources.get('monthly_opex', 0.0):.2f}",
+                f"Электроэнергия в месяц: {sources.get('electricity_monthly_cost', 0.0):.2f}",
+                "Добавьте ожидаемую экономию или эффект вручную в денежные потоки, если она известна.",
+            ]
+            lines.extend(f"Предупреждение: {warning}" for warning in basis.get("warnings", []))
+            self.result_text.delete("1.0", "end")
+            self.result_text.insert("end", "\n".join(lines))
+        except Exception as error:
+            self.result_text.delete("1.0", "end")
+            self.result_text.insert("end", f"Ошибка подготовки TCO-базы: {error}")
 
     def shutdown(self) -> None:
         try:
