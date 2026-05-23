@@ -34,3 +34,7 @@ ANALYSIS_SCOPE_CAPITAL_CATEGORIES = {
     ANALYSIS_SCOPE_TECHNICAL: TECHNICAL_CAPITAL_CATEGORIES,
     ANALYSIS_SCOPE_SOFTWARE: SOFTWARE_CAPITAL_CATEGORIES,
 }
+# Namespaced storage for the legacy free-form infrastructure tab.
+# These rows are auxiliary sandbox data and should not be treated as strict
+# CAPEX/OPEX/analysis entities unless a dedicated normalizer explicitly opts in.
+LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX = "legacy_infrastructure:"

@@ -18,6 +18,7 @@
 - `architecture/candidate_configurations.md` — единый формат кандидатных альтернатив для AHP, GA, GA + AHP, анализа важности критериев и будущего DecisionReport;
 - `architecture/tco_npv_bridge.md` — TCO-модель и финансовый мост между CAPEX/OPEX/электроэнергией и NPV;
 - `architecture/decision_report.md` — единый итоговый отчёт выбора: JSON/Markdown/CSV, объяснение победителя, риски и защитный сценарий;
+- `architecture/legacy_infrastructure_tab.md` — роль старой вкладки ИТ-инфраструктуры как вспомогательной песочницы, namespace `legacy_infrastructure:` и границы участия в аналитике;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -67,12 +68,13 @@
 7. `architecture/candidate_configurations.md`
 8. `architecture/tco_npv_bridge.md`
 9. `architecture/decision_report.md`
-10. `architecture/system_schema.md`
-11. `architecture/module_map.md`
-12. `architecture/data_map.md`
-13. `research/genetic_algorithm.md`
-14. `research/ideas/genetic_algorithm_plain_manifest.md`
-15. `research/ideas/future_independent_ga_ahp_assessment.md`
-16. `research/ideas/future_hybrid_ga_ahp_score.md`
-17. `demo/ga_ahp_defense_guide.md`
-18. `traceability.md`
+10. `architecture/legacy_infrastructure_tab.md`
+11. `architecture/system_schema.md`
+12. `architecture/module_map.md`
+13. `architecture/data_map.md`
+14. `research/genetic_algorithm.md`
+15. `research/ideas/genetic_algorithm_plain_manifest.md`
+16. `research/ideas/future_independent_ga_ahp_assessment.md`
+17. `research/ideas/future_hybrid_ga_ahp_score.md`
+18. `demo/ga_ahp_defense_guide.md`
+19. `traceability.md`

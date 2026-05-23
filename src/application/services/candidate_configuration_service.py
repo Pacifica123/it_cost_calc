@@ -22,7 +22,7 @@ from domain import (
     to_plain_data,
 )
 from domain.decision.ahp.aggregation import aggregate_configuration
-from shared.constants import ANALYSIS_SCOPE_TECHNICAL
+from shared.constants import ANALYSIS_SCOPE_TECHNICAL, LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX
 
 
 class CandidateConfigurationService:
@@ -147,10 +147,13 @@ class CandidateConfigurationService:
     ) -> CandidateConfiguration:
         components: list[dict[str, Any]] = []
         for category, rows in entities.items():
+            category_name = str(category)
+            if category_name.startswith(LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX):
+                continue
             for index, row in enumerate(rows):
-                component = normalize_runtime_row(row, category=str(category))
-                component.setdefault("id", f"{category}:{index}")
-                component.setdefault("source_category", str(category))
+                component = normalize_runtime_row(row, category=category_name)
+                component.setdefault("id", f"{category_name}:{index}")
+                component.setdefault("source_category", category_name)
                 components.append(component)
         totals = self._totals_from_components(components)
         candidate = CandidateConfiguration(

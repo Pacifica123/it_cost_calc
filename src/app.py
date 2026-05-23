@@ -123,7 +123,7 @@ class CalculatorApp(tk.Tk):
         self.it_infrastructure_tab = infrastructure_tab.ITInfrastructureTab(
             self.notebook, self.crud
         )
-        self.notebook.add(self.it_infrastructure_tab, text="ИТ-инфраструктура")
+        self.notebook.add(self.it_infrastructure_tab, text="ИТ-песочница")
 
         self.energy_tab = energy_tab.EnergyTab(
             self.notebook,

@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from application.services.candidate_configuration_service import CandidateConfigurationService
 from domain import DecisionReport, to_plain_data
+from shared.constants import LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX
 
 
 class DecisionReportService:
@@ -123,11 +124,16 @@ class DecisionReportService:
     ) -> list[dict[str, Any]]:
         components: list[dict[str, Any]] = []
         for category, rows in dict(entities).items():
+            category_name = str(category)
+            is_legacy_sandbox = category_name.startswith(LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX)
             for index, row in enumerate(rows):
                 component = {str(key): deepcopy(value) for key, value in dict(row).items()}
-                component.setdefault("id", f"{category}:{index}")
-                component.setdefault("source_category", str(category))
+                component.setdefault("id", f"{category_name}:{index}")
+                component.setdefault("source_category", category_name)
                 component.setdefault("name", component.get("Наименование") or component.get("name") or component["id"])
+                if is_legacy_sandbox:
+                    component.setdefault("role", "legacy_infrastructure_sandbox")
+                    component.setdefault("strict_analysis_participation", False)
                 components.append(component)
         return components
 
