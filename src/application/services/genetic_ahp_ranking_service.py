@@ -69,6 +69,7 @@ class GeneticAhpRankingService:
 
         candidates = list(genetic_summary.get("candidate_solutions", []))
         candidates = [candidate for candidate in candidates if candidate.get("selected_items")]
+        candidate_configurations = list(genetic_summary.get("candidate_configurations", []))
         if not candidates:
             report = {
                 "status": "skipped",
@@ -198,8 +199,10 @@ class GeneticAhpRankingService:
                 "winner_name": ranking[0]["name"],
                 "winner": ranking[0],
             },
+            "candidate_configurations": deepcopy(candidate_configurations),
             "independent_assessment": {
                 "candidate_pool": self._candidate_pool_snapshot(candidates, alt_ids),
+                "candidate_configurations": deepcopy(candidate_configurations),
                 "ga_scores": [candidate.get("score") for candidate in candidates],
                 "ahp_scores": final_scores_norm.tolist(),
                 "criterion_values": self._matrix_by_candidate(alt_ids, criteria, value_matrix),
@@ -218,6 +221,10 @@ class GeneticAhpRankingService:
     def _combined_result(self, genetic_summary: Mapping[str, Any], ahp_report: Mapping[str, Any]) -> dict[str, Any]:
         export_payload = deepcopy(genetic_summary.get("export_payload", {}))
         export_payload["genetic_ahp_ranking"] = deepcopy(ahp_report)
+        if ahp_report.get("candidate_configurations"):
+            export_payload["candidate_configurations"] = deepcopy(
+                ahp_report.get("candidate_configurations", [])
+            )
         export_payload["ga_ahp_agreement"] = deepcopy(ahp_report.get("agreement", {}))
         export_payload["independent_assessment"] = deepcopy(
             ahp_report.get("independent_assessment", {})

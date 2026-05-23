@@ -57,6 +57,8 @@ def build_ga_ahp_report_payload(result: Mapping[str, Any]) -> dict[str, Any]:
         "hybrid_assessment": hybrid_assessment,
         "ranking": final.get("ranking", []),
         "candidate_pool": independent_assessment.get("candidate_pool", []),
+        "candidate_configurations": export_payload.get("candidate_configurations")
+        or genetic_optimization.get("candidate_configurations", []),
         "criterion_values": independent_assessment.get("criterion_values", {}),
         "criterion_utilities": independent_assessment.get("criterion_utilities", {}),
     }

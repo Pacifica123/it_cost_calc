@@ -40,6 +40,8 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
     - people (из meta или 0)
     """
     devs = cfg.get("devices", [])
+    if not devs and isinstance(cfg.get("components"), list):
+        devs = cfg.get("components", [])
     total_cost = 0.0
     total_energy = 0.0
     perf_sum = 0.0
@@ -47,15 +49,17 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
     lifespan_vals = []
     counts = {}
     for d in devs:
-        role = d.get("role", "unknown")
+        role = d.get("role") or d.get("source_category") or d.get("category") or d.get("component_type") or "unknown"
         if role == "client" and "client_seats" in d:
             counts[role] = counts.get(role, 0.0) + float(d.get("client_seats", 0.0) or 0.0)
         elif role == "software" and "license_units" in d:
             counts[role] = counts.get(role, 0.0) + float(d.get("license_units", 1.0) or 0.0)
         else:
             counts[role] = counts.get(role, 0.0) + 1.0
-        total_cost += float(d.get("cost", 0.0))
-        total_energy += float(d.get("energy", 0.0))
+        quantity = float(d.get("quantity", 1.0) or 1.0)
+        unit_price = float(d.get("price", d.get("unit_price", 0.0)) or 0.0)
+        total_cost += float(d.get("cost", d.get("total_cost", quantity * unit_price)) or 0.0)
+        total_energy += float(d.get("energy", d.get("max_power", 0.0)) or 0.0)
         # производительность — суммируем поля, если они есть
         # допустим поля cpu_score и ram_score и custom perf
         perf_sum += (
@@ -86,15 +90,20 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
                 pass
     avg_reliability = float(np.mean(rel_vals)) if len(rel_vals) > 0 else 0.0
     avg_lifespan = float(np.mean(lifespan_vals)) if len(lifespan_vals) > 0 else 0.0
+    totals = cfg.get("totals", {}) if isinstance(cfg.get("totals"), dict) else {}
+    metrics = cfg.get("metrics", {}) if isinstance(cfg.get("metrics"), dict) else {}
+    candidate_meta = cfg.get("metadata", {}) if isinstance(cfg.get("metadata"), dict) else {}
+    legacy_meta = candidate_meta.get("legacy_meta", {}) if isinstance(candidate_meta.get("legacy_meta"), dict) else {}
+    meta = cfg.get("meta", {}) if isinstance(cfg.get("meta"), dict) else legacy_meta
     res = {
         "id": cfg.get("id", None),
-        "total_cost": total_cost,
-        "total_energy": total_energy,
-        "total_performance": perf_sum,
-        "avg_reliability": avg_reliability,
-        "counts": counts,
-        "people": int(cfg.get("meta", {}).get("people", cfg.get("people", 0))),
-        "lifespan": avg_lifespan,
+        "total_cost": float(totals.get("total_cost", totals.get("capital_cost", total_cost)) or 0.0),
+        "total_energy": float(totals.get("total_energy", totals.get("energy", total_energy)) or 0.0),
+        "total_performance": float(metrics.get("total_performance", perf_sum) or 0.0),
+        "avg_reliability": float(metrics.get("avg_reliability", avg_reliability) or 0.0),
+        "counts": dict(metrics.get("counts", counts) or {}),
+        "people": int(metrics.get("people", meta.get("people", cfg.get("people", 0))) or 0),
+        "lifespan": float(metrics.get("lifespan", avg_lifespan) or 0.0),
     }
     return res
 

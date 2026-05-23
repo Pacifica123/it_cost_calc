@@ -16,6 +16,7 @@ from application.services.analysis_scope_profile_service import (
     AnalysisScopeProfile,
     AnalysisScopeProfileService,
 )
+from application.services.candidate_configuration_service import CandidateConfigurationService
 from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from shared.constants import CAPITAL_COST_CATEGORIES
 
@@ -69,6 +70,7 @@ class GeneticOptimizationService:
         self.source = source
         self.ga_runner = ga_runner or self._default_ga_runner
         self.profile_service = profile_service or AnalysisScopeProfileService()
+        self.candidate_configuration_service = CandidateConfigurationService()
 
     def _default_ga_runner(self, params: dict[str, Any]) -> dict[str, Any]:
         from domain.optimization.ga import run_ga_mvp
@@ -378,6 +380,13 @@ class GeneticOptimizationService:
             self._format_candidate_solution(solution)
             for solution in ga_result.get("top_solutions", [])
         ]
+        candidate_configurations = self.candidate_configuration_service.from_ga_candidate_solutions(
+            candidate_solutions,
+            scope=self._result_scope(ga_params),
+        )
+        candidate_configuration_payload = self.candidate_configuration_service.payload(
+            candidate_configurations
+        )
 
         summary = {
             "status": status,
@@ -388,6 +397,7 @@ class GeneticOptimizationService:
             "criteria": deepcopy(ga_result.get("criteria", [])),
             "constraints": deepcopy(ga_result.get("constraints", [])),
             "candidate_solutions": candidate_solutions,
+            "candidate_configurations": candidate_configuration_payload,
             "parameters": {
                 "candidate_count": len(candidates),
                 "categories": list(categories),
@@ -403,6 +413,15 @@ class GeneticOptimizationService:
         }
         summary["export_payload"] = self._export_payload(summary)
         return summary
+
+    def _result_scope(self, ga_params: Mapping[str, Any]) -> str | None:
+        profile = ga_params.get("analysis_profile")
+        if isinstance(profile, AnalysisScopeProfile):
+            return profile.scope
+        if isinstance(profile, Mapping) and profile.get("scope"):
+            return str(profile.get("scope"))
+        scope = ga_params.get("analysis_scope")
+        return str(scope) if scope is not None else None
 
     def _profile_metadata(self, ga_params: Mapping[str, Any]) -> dict[str, Any] | None:
         profile = ga_params.get("analysis_profile")
@@ -442,6 +461,7 @@ class GeneticOptimizationService:
                 "criteria": deepcopy(summary["criteria"]),
                 "constraints": deepcopy(summary["constraints"]),
                 "candidate_solutions": deepcopy(summary.get("candidate_solutions", [])),
+                "candidate_configurations": deepcopy(summary.get("candidate_configurations", [])),
                 "quality_check": deepcopy(summary["ga_result"].get("quality_check", {})),
                 "best_score": summary["ga_result"].get("best_agg"),
                 "termination_reason": summary["ga_result"].get("termination_reason"),

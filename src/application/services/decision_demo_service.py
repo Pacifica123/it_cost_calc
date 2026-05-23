@@ -5,6 +5,7 @@ from statistics import median
 from typing import Any, Iterable, Mapping
 
 from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
+from application.services.candidate_configuration_service import CandidateConfigurationService
 from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from domain.decision.ahp.aggregation import aggregate_configuration
 from shared.constants import (
@@ -88,6 +89,7 @@ class DecisionDemoDataService:
 
     def __init__(self, profile_service: AnalysisScopeProfileService | None = None):
         self.profile_service = profile_service or AnalysisScopeProfileService()
+        self.candidate_configuration_service = CandidateConfigurationService()
 
     def build(
         self,
@@ -112,16 +114,26 @@ class DecisionDemoDataService:
         analysis_scope: str,
     ) -> dict[str, Any]:
         configurations = self.build_ahp_configurations(entities, analysis_scope=analysis_scope)
+        candidate_configurations = self.candidate_configuration_service.from_ahp_configurations(
+            configurations,
+            scope=analysis_scope,
+        )
+        candidate_payload = self.candidate_configuration_service.payload(candidate_configurations)
         constraints = self.build_recommended_constraints(
             configurations, analysis_scope=analysis_scope
         )
         criteria_case = self.build_criteria_importance_case(
             configurations, analysis_scope=analysis_scope
         )
+        criteria_case = self.candidate_configuration_service.attach_to_criteria_case(
+            criteria_case,
+            candidate_configurations,
+        )
         return {
             "analysis_scope": analysis_scope,
             "analysis_profile": self.profile_service.profile_metadata(analysis_scope),
             "configurations": configurations,
+            "candidate_configurations": candidate_payload,
             "constraints": constraints,
             "criteria_case": criteria_case,
         }

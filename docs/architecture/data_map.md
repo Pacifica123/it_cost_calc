@@ -7,8 +7,9 @@ flowchart LR
     FIX[data/fixtures/demo_dataset.json] --> RUNTIME[data/generated/runtime_entities.json]
     RUNTIME --> RNORM[application: normalization scope/component_type]
     RNORM --> PROFILE[application: AnalysisScopeProfileService]
-    PROFILE --> ANALYTICS[GA / GA+AHP / AHP / Pareto]
-    PROFILE --> REPORTS[data/generated/*.csv + JSON reports]
+    PROFILE --> CAND[application: CandidateConfigurationService]
+    CAND --> ANALYTICS[GA / GA+AHP / AHP / Pareto]
+    CAND --> REPORTS[data/generated/*.csv + JSON reports]
     RUNTIME --> LOGS[data/generated/logs/]
 
     RAW[data/examples/parser/*.json] --> CNORM[data/examples/catalog/normalized_dns_catalog.json]
@@ -66,6 +67,30 @@ runtime_entities.json → RuntimeEntityNormalizationService → AnalysisScopePro
 ```
 
 Благодаря этому вкладки больше не являются главным источником знаний о различиях ПО и ТО: они выбирают `scope`, а прикладной слой возвращает правила анализа. Подробности описаны в `analysis_scope_profiles.md`.
+
+
+## Единый пул альтернатив после этапа 4
+
+После профилей анализа прикладной слой формирует общий пул `candidate_configurations`. Это переходный формат между runtime-компонентами и аналитическими методами. Он не заменяет старые поля мгновенно: `configurations`, `candidate_solutions`, `alternatives` и `scores` сохраняются, но рядом с ними появляется единый контракт альтернативы.
+
+```text
+runtime_entities.json
+  → RuntimeEntityNormalizationService
+  → AnalysisScopeProfileService
+  → CandidateConfigurationService
+  → AHP / GA / GA+AHP / анализ важности критериев / будущий DecisionReport
+```
+
+В `CandidateConfiguration` исходные компоненты лежат отдельно от агрегированных итогов и метрик:
+
+| Блок | Что содержит |
+|---|---|
+| `components` | исходные позиции оборудования, ПО или услуг |
+| `totals` | стоимость и агрегированные суммы |
+| `metrics` | производительность, надёжность, лицензии, места, оценки критериев |
+| `metadata` | источник, legacy-формат, параметры GA/AHP и диагностические поля |
+
+Подробный контракт описан в `candidate_configurations.md`.
 
 ## Предметный контракт категорий
 

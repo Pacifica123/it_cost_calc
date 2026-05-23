@@ -52,12 +52,17 @@
 ### `src/application/services/genetic_optimization_service.py`
 **Ответственность:** прикладная адаптация runtime-данных к универсальному ядру ГА.  
 **На вход получает:** репозиторий runtime-сущностей, категории, критерии, ограничения, веса и параметры запуска.  
-**На выходе формирует:** выбранные элементы, группировку по категориям, totals, критерии, ограничения, кандидатные решения и `export_payload`.
+**На выходе формирует:** выбранные элементы, группировку по категориям, totals, критерии, ограничения, `candidate_solutions`, общий пул `candidate_configurations` и `export_payload`.
 
 ### `src/application/services/genetic_ahp_ranking_service.py`
 **Ответственность:** связка найденных ГА кандидатных конфигураций с AHP-ранжированием.  
 **На вход получает:** результат генетического подбора, AHP-критерии/веса или переиспользует нормализованные критерии ГА.  
-**На выходе формирует:** рейтинг кандидатных конфигураций, победителя, веса критериев и объяснение выбора.
+**На выходе формирует:** рейтинг кандидатных конфигураций, победителя, веса критериев, общий пул `candidate_configurations` и объяснение выбора.
+
+### `src/application/services/candidate_configuration_service.py`
+**Ответственность:** переходные адаптеры к общему формату `CandidateConfiguration`.  
+**На вход получает:** AHP-конфигурации, GA candidate solutions, критерийные кейсы или runtime-сущности CAPEX/OPEX.  
+**На выходе формирует:** общий пул альтернатив с разделением `components`, `totals`, `metrics`, `source` и `metadata`, а также совместимые legacy-представления для старых алгоритмов.
 
 ### `src/application/services/npv_report_service.py`
 **Ответственность:** сборка отчёта по NPV в UI-дружественном формате.  
@@ -93,7 +98,7 @@
 ### `src/domain/models.py`
 **Ответственность:** типизированные предметные модели и функции нормализации.  
 **На вход получает:** словари, enum-значения и уже созданные модели.  
-**На выходе формирует:** `CapitalItem`, `OperationalExpense`, `ElectricityProfile`, `Alternative`, `Criterion`, `Relation`, `AnalysisResult`.
+**На выходе формирует:** `CapitalItem`, `OperationalExpense`, `ElectricityProfile`, `CandidateConfiguration`, `Alternative`, `Criterion`, `Relation`, `AnalysisResult`.
 
 ### `src/domain/finance/`
 **Ответственность:** финансовые расчёты.  

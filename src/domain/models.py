@@ -19,6 +19,14 @@ class AnalysisScope(str, Enum):
     COMMON = "common"
 
 
+class CandidateConfigurationSource(str, Enum):
+    MANUAL = "manual"
+    DEMO = "demo"
+    GA = "ga"
+    CATALOG = "catalog"
+    IMPORTED = "imported"
+
+
 class ComponentType(str, Enum):
     SERVER = "server"
     WORKSTATION = "workstation"
@@ -186,6 +194,50 @@ class Alternative:
         )
 
 
+
+
+@dataclass(slots=True)
+class CandidateConfiguration:
+    """Common candidate alternative format for AHP, GA and reports.
+
+    The model separates original components from aggregated totals and metrics.
+    It is intentionally permissive: old AHP dictionaries and GA solutions can be
+    adapted into this shape without forcing their legacy fields to disappear.
+    """
+
+    id: str
+    name: str
+    scope: AnalysisScope | None = None
+    components: list[dict[str, Any]] = field(default_factory=list)
+    totals: dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
+    source: CandidateConfigurationSource = CandidateConfigurationSource.MANUAL
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CandidateConfiguration":
+        return cls(
+            id=str(payload.get("id", "")),
+            name=str(payload.get("name", payload.get("id", ""))),
+            scope=as_analysis_scope(payload["scope"]) if payload.get("scope") else None,
+            components=[
+                {str(key): deepcopy(value) for key, value in dict(component).items()}
+                for component in payload.get("components", [])
+                if isinstance(component, Mapping)
+            ],
+            totals={str(key): deepcopy(value) for key, value in dict(payload.get("totals", {})).items()},
+            metrics={str(key): deepcopy(value) for key, value in dict(payload.get("metrics", {})).items()},
+            source=as_candidate_configuration_source(payload.get("source", CandidateConfigurationSource.MANUAL.value)),
+            metadata={
+                str(key): deepcopy(value)
+                for key, value in dict(payload.get("metadata", {})).items()
+            },
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain_data(self)
+
+
 @dataclass(slots=True)
 class Relation:
     left: str
@@ -230,6 +282,14 @@ def as_analysis_scope(value: str | AnalysisScope) -> AnalysisScope:
     if isinstance(value, AnalysisScope):
         return value
     return AnalysisScope(str(value))
+
+
+def as_candidate_configuration_source(
+    value: str | CandidateConfigurationSource,
+) -> CandidateConfigurationSource:
+    if isinstance(value, CandidateConfigurationSource):
+        return value
+    return CandidateConfigurationSource(str(value))
 
 
 def as_component_type(value: str | ComponentType) -> ComponentType:
@@ -319,6 +379,14 @@ def ensure_alternative(value: Alternative | Mapping[str, Any]) -> Alternative:
     if isinstance(value, Alternative):
         return value
     return Alternative.from_dict(value)
+
+
+def ensure_candidate_configuration(
+    value: CandidateConfiguration | Mapping[str, Any],
+) -> CandidateConfiguration:
+    if isinstance(value, CandidateConfiguration):
+        return value
+    return CandidateConfiguration.from_dict(value)
 
 
 def ensure_relation(value: Relation | Mapping[str, Any]) -> Relation:

@@ -288,6 +288,7 @@ def run_importance_pipeline(case_data: Dict[str, Any]) -> Dict[str, Any]:
 
     report = {
         "case_name": case_copy.get("name", "Без названия"),
+        "candidate_configurations": copy.deepcopy(case_copy.get("candidate_configurations", [])),
         "raw_vectors": raw_vectors,
         "raw_dominance": raw_dominance,
         "raw_nondominated": raw_nondominated,
