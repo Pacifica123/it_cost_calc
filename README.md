@@ -98,6 +98,7 @@ pytest
 - TCO-модель и связь CAPEX/OPEX/электроэнергии с NPV: `docs/architecture/tco_npv_bridge.md`
 - единый итоговый отчёт выбора DecisionReport: `docs/architecture/decision_report.md`
 - роль старой вкладки ИТ-инфраструктуры как песочницы: `docs/architecture/legacy_infrastructure_tab.md`
+- будущая идея варианта C как универсального редактора компонентов: `docs/architecture/future_solution_component_editor_variant_c.md`
 - подробное описание модулей: `docs/architecture/modules.md`
 - продуктовая идея: `docs/product/vision.md`
 - генетический алгоритм: `docs/research/genetic_algorithm.md`
