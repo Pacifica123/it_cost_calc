@@ -26,6 +26,7 @@ flowchart TB
         ECS[ElectricityCostService]
         NPVS[NpvReportService]
         DRS[DecisionReportService]
+        DCTRL[DemoControlScenarioService]
         UC[Use cases]
     end
 
@@ -69,6 +70,9 @@ flowchart TB
     CAND --> OPT
     CAND --> MODELS
     CAND --> DRS
+    DCTRL --> NORM
+    DCTRL --> CAND
+    DCTRL --> DRS
     NORM --> MODELS
     ES --> REPO
     CAS --> REPO
@@ -96,7 +100,7 @@ flowchart TB
 
 - вкладки `CAPEX`/`ТО`/`ПО`, `OPEX`, `Электроэнергия`, `NPV`, `Экспорт`, `AHP` и `Анализ важности критериев` — это видимая часть основного аналитического сценария;
 - `ИТ-песочница` остаётся вспомогательной legacy-вкладкой: она пишет свободные статьи в runtime-хранилище с префиксом `legacy_infrastructure:`, но не является источником строгой предметной модели;
-- `application` связывает пользовательские действия с расчётами и хранением данных; переходная нормализация `scope`/`component_type`, профили ПО/ТО, адаптация к `CandidateConfiguration` и сборка `DecisionReport` выполняются здесь, а не в UI;
+- `application` связывает пользовательские действия с расчётами и хранением данных; переходная нормализация `scope`/`component_type`, профили ПО/ТО, адаптация к `CandidateConfiguration`, demo/control-сценарий и сборка `DecisionReport` выполняются здесь, а не в UI;
 - `domain` содержит математику и модели;
 - `infrastructure` хранит состояние и формирует выходные файлы, включая JSON/Markdown/CSV-представления `DecisionReport`;
 - `tools/catalog_parser` обслуживает внешний справочник оборудования и не входит в runtime GUI.

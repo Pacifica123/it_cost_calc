@@ -64,6 +64,11 @@
 **На вход получает:** AHP-конфигурации, GA candidate solutions, критерийные кейсы или runtime-сущности CAPEX/OPEX.  
 **На выходе формирует:** общий пул альтернатив с разделением `components`, `totals`, `metrics`, `source` и `metadata`, а также совместимые legacy-представления для старых алгоритмов.
 
+### `src/application/services/demo_control_scenario_service.py`
+**Ответственность:** контрольный demo-сценарий после этапа 8.  
+**На вход получает:** `entities` из `data/fixtures/demo_dataset.json`.  
+**На выходе формирует:** нормализованные строки, профильные `candidate_configurations`, TCO-инварианты, результаты анализа важности и частичный `DecisionReport` для smoke-проверки без `pytest`.
+
 ### `src/application/services/npv_report_service.py`
 **Ответственность:** сборка отчёта по NPV в UI-дружественном формате.  
 **На вход получает:** инвестиции, ставку дисконтирования и денежные потоки.  
@@ -87,6 +92,7 @@
 - `calculate_electricity_costs.py`
 - `build_npv_report.py`
 - `load_demo_dataset.py`
+- `scripts/run_demo_control_scenario.py` как CLI-smoke для demo/control-контракта
 - `run_genetic_optimization.py`
 - `run_genetic_ahp_ranking.py`
 

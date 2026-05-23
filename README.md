@@ -56,6 +56,13 @@ python scripts/update_equipment_catalog.py --mode examples
 python scripts/run_ga_demo.py
 ```
 
+### Проверка сквозного demo/control-сценария
+```bash
+python -B scripts/run_demo_control_scenario.py --check-only
+```
+
+Эта команда не использует `pytest`, не пишет cache-файлы и проверяет, что `data/fixtures/demo_dataset.json` проходит цепочку `scope/component_type → CandidateConfiguration → TCO → DecisionReport`.
+
 ### Запуск тестов
 ```bash
 pytest
@@ -81,7 +88,7 @@ pytest
 - `src/` — основной код приложения;
 - `docs/` — инженерная, продуктовая, исследовательская и дипломная документация;
 - `data/examples/` — воспроизводимые примеры данных;
-- `data/fixtures/` — демонстрационные фикстуры;
+- `data/fixtures/` — демонстрационные фикстуры, реестр ролей и регрессионные инварианты demo/control-сценария;
 - `data/generated/` — генерируемые артефакты: каталоги, логи, отчёты;
 - `tools/catalog_parser/` — отдельный инструмент обновления каталога оборудования.
 - `src/it_cost_calc/` — только слой совместимости старого namespace; основная реализация не дублируется и хранится в `src/application`, `src/domain`, `src/infrastructure`, `src/shared`, `src/ui`.
@@ -103,6 +110,7 @@ pytest
 - продуктовая идея: `docs/product/vision.md`
 - генетический алгоритм: `docs/research/genetic_algorithm.md`
 - сценарий демонстрации ГА + AHP: `docs/demo/ga_ahp_defense_guide.md`
+- контракт демо-данных: `docs/demo/demo_data_contract.md`
 - трассировка разделов работы и модулей кода: `docs/traceability.md`
 - скриншоты интерфейса: `docs/screenshots.md`
 

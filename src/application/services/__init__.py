@@ -12,6 +12,7 @@ _EXPORTS = {
     "CostAggregationService": "application.services.cost_aggregation_service",
     "CostSummaryService": "application.services.cost_summary_service",
     "DecisionReportService": "application.services.decision_report_service",
+    "DemoControlScenarioService": "application.services.demo_control_scenario_service",
     "ElectricityCostService": "application.services.electricity_cost_service",
     "EntityCatalogService": "application.services.entity_catalog_service",
     "EquipmentService": "application.services.equipment_service",

@@ -39,7 +39,8 @@
 
 ### Демонстрация и защита
 - `demo/README.md` — обзор демонстрационных сценариев;
-- `demo/ga_ahp_defense_guide.md` — сценарий показа генетического подбора и связки ГА + AHP, текст выступления и ответы на вопросы.
+- `demo/ga_ahp_defense_guide.md` — сценарий показа генетического подбора и связки ГА + AHP, текст выступления и ответы на вопросы;
+- `demo/demo_data_contract.md` — контракт демо-данных, учебных примеров и регрессионных инвариантов после этапа 8.
 
 ### Исследовательские материалы
 - `research/README.md` — обзор исследовательской зоны;
@@ -79,4 +80,5 @@
 17. `research/ideas/future_independent_ga_ahp_assessment.md`
 18. `research/ideas/future_hybrid_ga_ahp_score.md`
 19. `demo/ga_ahp_defense_guide.md`
-20. `traceability.md`
+20. `demo/demo_data_contract.md`
+21. `traceability.md`

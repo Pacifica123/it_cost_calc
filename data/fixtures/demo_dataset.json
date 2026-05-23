@@ -1,4 +1,14 @@
 {
+  "schema_version": 2,
+  "scenario_id": "it_solution_demo_control_v1",
+  "dataset_role": "demonstration",
+  "description": "Сквозной демонстрационный набор для CAPEX/OPEX/энергии, CandidateConfiguration, TCO и DecisionReport.",
+  "reproducibility": {
+    "ga_seed": 42,
+    "ga_init_mode": "heuristic_init",
+    "ahp_weights_source": "AnalysisScopeProfileService.default_weights",
+    "candidate_pool_source": "DecisionDemoDataService.scoped_payloads"
+  },
   "entities": {
     "server": [
       {
@@ -125,10 +135,50 @@
       }
     ],
     "server_rental": [],
-    "migration": [],
-    "testing": [],
-    "backup": [],
-    "labor_costs": [],
-    "server_administration": []
+    "migration": [
+      {
+        "name": "Миграция пользовательских данных и профилей",
+        "one_time_cost": 42000.0,
+        "category": "migration",
+        "scope": "implementation",
+        "component_type": "implementation_service"
+      }
+    ],
+    "testing": [
+      {
+        "name": "Приёмочное тестирование рабочих мест и сервисов",
+        "one_time_cost": 28000.0,
+        "category": "testing",
+        "scope": "implementation",
+        "component_type": "implementation_service"
+      }
+    ],
+    "backup": [
+      {
+        "name": "Облачное резервное копирование критичных данных",
+        "monthly_cost": 6900.0,
+        "category": "backup",
+        "scope": "common",
+        "component_type": "backup_service"
+      }
+    ],
+    "labor_costs": [
+      {
+        "name": "Регламентное сопровождение пользователей",
+        "monthly_cost": 14500.0,
+        "category": "labor_costs",
+        "scope": "common",
+        "component_type": "support_service"
+      }
+    ],
+    "server_administration": [
+      {
+        "name": "Администрирование серверного и сетевого контура",
+        "monthly_cost": 18500.0,
+        "category": "server_administration",
+        "scope": "technical",
+        "component_type": "support_service"
+      }
+    ]
   }
 }

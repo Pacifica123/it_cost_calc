@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "it_solution_demo_control_v1",
+  "expected": {
+    "required_scopes": ["technical", "software", "implementation", "common"],
+    "required_component_types": [
+      "server",
+      "workstation",
+      "peripheral",
+      "network_device",
+      "software_license",
+      "software_subscription",
+      "implementation_service",
+      "backup_service",
+      "support_service"
+    ],
+    "candidate_count_by_scope_min": {
+      "technical": 5,
+      "software": 5
+    },
+    "combined_candidate_count_min": 10,
+    "tco_candidate_count_min": 10,
+    "decision_report_candidate_count_min": 10,
+    "ga_seed": 42
+  }
+}

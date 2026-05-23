@@ -4,7 +4,9 @@
 
 ```mermaid
 flowchart LR
-    FIX[data/fixtures/demo_dataset.json] --> RUNTIME[data/generated/runtime_entities.json]
+    MAN[data/fixtures/demo_scenarios.json] --> FIX[data/fixtures/demo_dataset.json]
+    REG[data/fixtures/regression/demo_control_invariants.json] --> DCTRL[DemoControlScenarioService]
+    FIX --> RUNTIME[data/generated/runtime_entities.json]
     RUNTIME --> RNORM[application: normalization scope/component_type]
     RNORM --> PROFILE[application: AnalysisScopeProfileService]
     PROFILE --> CAND[application: CandidateConfigurationService]
@@ -21,16 +23,19 @@ flowchart LR
     CNORM --> CATALOG[data/generated/catalog/equipment_catalog.json]
     CATALOG --> APP[Основное приложение]
 
-    EXAHP[data/examples/ahp/*.json] --> TESTS[tests/integration + tests/regression]
-    FIX --> TESTS
+    EXAHP[data/examples/ahp/*.json] --> EDU[Учебные сценарии методик]
+    FIX --> DCTRL
+    DCTRL --> DREPORT
 ```
 
 ## Группы данных
 
-### 1. Демонстрационные и эталонные данные
-- `data/fixtures/demo_dataset.json` — демонстрационный набор для ручной загрузки;
-- `data/examples/ahp/` — эталонные наборы для AHP;
-- `data/examples/optimization/` — примеры для оптимизационных сценариев;
+### 1. Демонстрационные, учебные и регрессионные данные
+- `data/fixtures/demo_scenarios.json` — реестр ролей данных: учебные, демонстрационные и регрессионные;
+- `data/fixtures/demo_dataset.json` — сквозной демонстрационный набор для ручной загрузки и demo/control-сценария;
+- `data/fixtures/regression/demo_control_invariants.json` — инварианты контрольного сценария без `pytest`;
+- `data/examples/ahp/` — учебные и эталонные наборы для AHP;
+- `data/examples/optimization/` — учебные примеры для оптимизационных сценариев;
 - `data/examples/parser/` — сохранённые снимки парсинга.
 
 ### 2. Рабочие runtime-данные
@@ -47,7 +52,9 @@ flowchart LR
 
 | Артефакт | Где лежит | Кто создаёт | Кто использует |
 |---|---|---|---|
-| Демонстрационный набор | `data/fixtures/demo_dataset.json` | разработчик/исходная фикстура | GUI, тесты, CLI загрузки |
+| Реестр demo-ролей | `data/fixtures/demo_scenarios.json` | разработчик | документация, smoke-проверки, будущая автоматизация |
+| Демонстрационный набор | `data/fixtures/demo_dataset.json` | разработчик/исходная фикстура | GUI, CLI загрузки, `DemoControlScenarioService` |
+| Регрессионные инварианты demo | `data/fixtures/regression/demo_control_invariants.json` | разработчик | `scripts/run_demo_control_scenario.py --check-only` |
 | Runtime-сущности | `data/generated/runtime_entities.json` | приложение | GUI, сервисы, экспорт |
 | CSV-отчёт | `data/generated/` или пользовательский путь | сценарий экспорта | пользователь |
 | Каталог оборудования | `data/generated/catalog/equipment_catalog.json` | `tools/catalog_parser` | основное приложение, тесты |
@@ -139,6 +146,28 @@ JSON остаётся полным машинным отчётом, Markdown —
 ```
 
 `CandidateConfigurationService` пропускает такие группы при построении строгого runtime-кандидата. Поэтому свободные заметки остаются видимыми для инспекции, но не подмешиваются в GA/AHP, TCO и NPV без отдельного решения о нормализации. Подробности описаны в `legacy_infrastructure_tab.md`.
+
+
+## Демо-контроль после этапа 8
+
+Демонстрационный набор теперь является частью общей модели, а не отдельным набором строк для заполнения вкладок. Верхнеуровневые metadata-поля в `demo_dataset.json` описывают роль набора, сценарий и воспроизводимость; runtime-загрузчик по-прежнему берёт только блок `entities`, поэтому совместимость сохранена.
+
+```text
+data/fixtures/demo_dataset.json
+  → RuntimeEntityNormalizationService
+  → DecisionDemoDataService
+  → CandidateConfigurationService
+  → TCOModelService
+  → DecisionReportService
+```
+
+`DemoControlScenarioService` проверяет, что известные CAPEX/OPEX-строки имеют `scope` и `component_type`, что для ТО и ПО строятся `candidate_configurations`, что каждая альтернатива получает `totals.tco`, а `DecisionReport` видит тот же пул альтернатив. Проверка запускается без тестового раннера:
+
+```bash
+python -B scripts/run_demo_control_scenario.py --check-only
+```
+
+Подробный контракт описан в `docs/demo/demo_data_contract.md`.
 
 ## Предметный контракт категорий
 
