@@ -89,6 +89,7 @@ pytest
 - архитектурная схема: `docs/architecture/system_schema.md`
 - карта модулей: `docs/architecture/module_map.md`
 - карта данных: `docs/architecture/data_map.md`
+- текущая предметная схема CAPEX/OPEX и будущих признаков `scope`/`component_type`: `docs/architecture/current_subject_schema.md`
 - подробное описание модулей: `docs/architecture/modules.md`
 - продуктовая идея: `docs/product/vision.md`
 - генетический алгоритм: `docs/research/genetic_algorithm.md`

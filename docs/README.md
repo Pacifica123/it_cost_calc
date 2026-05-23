@@ -13,6 +13,7 @@
 - `architecture/overview.md` — общий обзор решения;
 - `architecture/conceptual_cohesion_manifest.md` — манифест концептуальной связанности данных, сущностей и аналитических методов;
 - `architecture/conceptual_cohesion_roadmap.md` — дорожная карта дальнейших работ по связности модели, профилям ПО/ТО, TCO, аналитике и итоговому отчёту;
+- `architecture/current_subject_schema.md` — переходная предметная схема текущих CAPEX/OPEX-категорий, будущих `scope`/`component_type` и связей вкладок с данными;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -57,12 +58,13 @@
 2. `architecture/overview.md`
 3. `architecture/conceptual_cohesion_manifest.md`
 4. `architecture/conceptual_cohesion_roadmap.md`
-5. `architecture/system_schema.md`
-6. `architecture/module_map.md`
-7. `architecture/data_map.md`
-8. `research/genetic_algorithm.md`
-9. `research/ideas/genetic_algorithm_plain_manifest.md`
-10. `research/ideas/future_independent_ga_ahp_assessment.md`
-11. `research/ideas/future_hybrid_ga_ahp_score.md`
-12. `demo/ga_ahp_defense_guide.md`
-13. `traceability.md`
+5. `architecture/current_subject_schema.md`
+6. `architecture/system_schema.md`
+7. `architecture/module_map.md`
+8. `architecture/data_map.md`
+9. `research/genetic_algorithm.md`
+10. `research/ideas/genetic_algorithm_plain_manifest.md`
+11. `research/ideas/future_independent_ga_ahp_assessment.md`
+12. `research/ideas/future_hybrid_ga_ahp_score.md`
+13. `demo/ga_ahp_defense_guide.md`
+14. `traceability.md`
