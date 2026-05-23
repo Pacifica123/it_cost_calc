@@ -14,6 +14,7 @@ flowchart TB
         AHPUI[AHP-анализ]
         CIUI[Анализ важности критериев]
         EXPORTUI[Экспорт]
+        DRUI[DecisionReport export]
     end
 
     subgraph APP[Прикладной слой]
@@ -24,6 +25,7 @@ flowchart TB
         CAS[CostAggregationService]
         ECS[ElectricityCostService]
         NPVS[NpvReportService]
+        DRS[DecisionReportService]
         UC[Use cases]
     end
 
@@ -39,6 +41,7 @@ flowchart TB
         REPO[Runtime-репозитории]
         STORE[JSON storage]
         CSV[CSV exporter]
+        DREXP[DecisionReport exporters]
         LOG[Logging]
     end
 
@@ -52,6 +55,7 @@ flowchart TB
     ENERGY --> ECS
     NPV --> NPVS
     EXPORTUI --> UC
+    DRUI --> UC
     INFRA --> UC
     AHPUI --> UC
     CIUI --> UC
@@ -64,17 +68,20 @@ flowchart TB
     CAND --> CID
     CAND --> OPT
     CAND --> MODELS
+    CAND --> DRS
     NORM --> MODELS
     ES --> REPO
     CAS --> REPO
     ECS --> ES
     NPVS --> FIN
+    NPVS --> DRS
     UC --> AHPD
     UC --> CID
     UC --> CAS
 
     REPO --> STORE
     UC --> CSV
+    UC --> DREXP
     UC --> LOG
 
     PARSER --> CATALOG
@@ -88,7 +95,7 @@ flowchart TB
 ## Практическое чтение карты
 
 - вкладки `CAPEX`, `OPEX`, `Электроэнергия`, `NPV`, `Экспорт`, `AHP` и `Анализ важности критериев` — это видимая часть системы;
-- `application` связывает пользовательские действия с расчётами и хранением данных; переходная нормализация `scope`/`component_type`, профили ПО/ТО и адаптация к `CandidateConfiguration` выполняются здесь, а не в UI;
+- `application` связывает пользовательские действия с расчётами и хранением данных; переходная нормализация `scope`/`component_type`, профили ПО/ТО, адаптация к `CandidateConfiguration` и сборка `DecisionReport` выполняются здесь, а не в UI;
 - `domain` содержит математику и модели;
-- `infrastructure` хранит состояние и формирует выходные файлы;
+- `infrastructure` хранит состояние и формирует выходные файлы, включая JSON/Markdown/CSV-представления `DecisionReport`;
 - `tools/catalog_parser` обслуживает внешний справочник оборудования и не входит в runtime GUI.

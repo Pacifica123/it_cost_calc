@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 
 from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.services.cost_aggregation_service import CostAggregationService
+from application.services.decision_report_service import DecisionReportService
 from application.services.decision_demo_service import DecisionDemoDataService
 from application.services.electricity_cost_service import ElectricityCostService
 from application.services.equipment_service import EquipmentService
@@ -15,6 +16,7 @@ from application.services.genetic_optimization_service import GeneticOptimizatio
 from application.services.genetic_ahp_ranking_service import GeneticAhpRankingService
 from application.services.npv_report_service import NPVReportService
 from application.use_cases import (
+    BuildDecisionReportUseCase,
     BuildNpvReportUseCase,
     CalculateElectricityCostsUseCase,
     ExportCostReportUseCase,
@@ -22,6 +24,11 @@ from application.use_cases import (
     RunGeneticAhpRankingUseCase,
     LoadDemoDatasetUseCase,
     PrepareCostSummaryUseCase,
+)
+from infrastructure.exporters.decision_report_exporter import (
+    export_decision_report_csv,
+    export_decision_report_json,
+    export_decision_report_markdown,
 )
 from infrastructure.logging import configure_logging
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
@@ -77,6 +84,9 @@ class CalculatorApp(tk.Tk):
             ElectricityCostService()
         )
         self.build_npv_report_use_case = BuildNpvReportUseCase(NPVReportService())
+        self.build_decision_report_use_case = BuildDecisionReportUseCase(
+            DecisionReportService()
+        )
         self.genetic_optimization_service = GeneticOptimizationService(
             self.entity_repository,
             profile_service=self.analysis_scope_profile_service,
@@ -268,6 +278,50 @@ class CalculatorApp(tk.Tk):
         self.export_tab.update_summary()
         logger.info("CSV-экспорт завершён: %s", export_path)
         return totals
+
+    def export_decision_report(self) -> dict[str, Path]:
+        export_root = self.data_root / "generated"
+        report_path = export_root / "decision_report.json"
+        markdown_path = export_root / "decision_report.md"
+        csv_path = export_root / "decision_report_candidates.csv"
+
+        last_genetic_result = getattr(self.genetic_optimization_tab, "last_result", None)
+        genetic_result = None
+        genetic_ahp_result = None
+        if isinstance(last_genetic_result, dict):
+            if "ahp_report" in last_genetic_result and "genetic_optimization" in last_genetic_result:
+                genetic_ahp_result = last_genetic_result
+            else:
+                genetic_result = last_genetic_result
+
+        report = self.build_decision_report_use_case.execute(
+            project={
+                "id": "current-it-solution-choice",
+                "title": "Итоговый отчёт выбора ИТ-решения",
+                "goal": (
+                    "Объяснить выбор ИТ-решения через компоненты, стоимость владения, "
+                    "альтернативы, AHP, GA, GA + AHP и NPV."
+                ),
+            },
+            entities=self.entity_repository.entities,
+            cost_totals=self.update_total_costs(),
+            criteria_importance_result=getattr(self.criteria_importance_tab, "analysis_report", None),
+            genetic_result=genetic_result,
+            genetic_ahp_result=genetic_ahp_result,
+            npv_report=getattr(self.npv_tab, "last_report", None),
+            metadata={"source": "desktop_export_tab"},
+        )
+
+        json_path = export_decision_report_json(report, report_path)
+        md_path = export_decision_report_markdown(report, markdown_path)
+        table_path = export_decision_report_csv(report, csv_path)
+        logger.info(
+            "DecisionReport экспортирован: json=%s markdown=%s csv=%s",
+            json_path,
+            md_path,
+            table_path,
+        )
+        return {"json": json_path, "markdown": md_path, "csv": table_path}
 
     def shutdown(self) -> None:
         if self._is_shutting_down:

@@ -41,6 +41,7 @@ class NPVTab(BaseScrollableTab):
         self.build_npv_report_use_case = build_npv_report_use_case
         self.cost_summary_provider = cost_summary_provider
         self.loaded_financial_basis: dict[str, Any] | None = None
+        self.last_report: dict[str, Any] | None = None
 
         root = self.inner_frame
         main_frame = ttk.Frame(root)
@@ -132,6 +133,8 @@ class NPVTab(BaseScrollableTab):
                 f"{'Год':>3} | {'I':>10} | {'CFt':>10} | {'DiscF':>10} | {'PVt':>10} | {'NPVt':>10}",
                 "-" * 70,
             ]
+            self.last_report = report
+
             for row in report["rows"]:
                 discount_factor = row["discount_factor"]
                 discount_factor_text = "-" if discount_factor is None else f"{discount_factor:.4f}"

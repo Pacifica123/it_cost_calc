@@ -11,7 +11,10 @@ flowchart LR
     CAND --> TCO[application: TCOModelService]
     TCO --> NPV[application: NPVReportService]
     CAND --> ANALYTICS[GA / GA+AHP / AHP / Pareto]
-    TCO --> REPORTS[data/generated/*.csv + JSON reports]
+    TCO --> DREPORT[application: DecisionReportService]
+    NPV --> DREPORT
+    ANALYTICS --> DREPORT
+    DREPORT --> REPORTS[data/generated/*.csv + JSON/Markdown reports]
     RUNTIME --> LOGS[data/generated/logs/]
 
     RAW[data/examples/parser/*.json] --> CNORM[data/examples/catalog/normalized_dns_catalog.json]
@@ -49,6 +52,9 @@ flowchart LR
 | CSV-отчёт | `data/generated/` или пользовательский путь | сценарий экспорта | пользователь |
 | Каталог оборудования | `data/generated/catalog/equipment_catalog.json` | `tools/catalog_parser` | основное приложение, тесты |
 | Пример каталога | `data/examples/catalog/normalized_dns_catalog.json` | подготовленный пример | тесты, документация |
+| DecisionReport JSON | `data/generated/decision_report.json` | `DecisionReportService` + exporter | пользователь, разработчик, будущая автоматизация отчёта |
+| DecisionReport Markdown | `data/generated/decision_report.md` | `DecisionReportService` + exporter | защита, пояснение выбора |
+| DecisionReport CSV-срез | `data/generated/decision_report_candidates.csv` | `DecisionReportService` + exporter | табличный просмотр альтернатив |
 | Логи | `data/generated/logs/it_cost_calc.log` | приложение | разработчик |
 
 
@@ -107,6 +113,20 @@ CandidateConfiguration / current cost totals
 ```
 
 NPV больше не обязан начинаться с пустого ручного ввода. Вкладка NPV может подставить рассчитанные CAPEX/OPEX/электроэнергию как финансовую базу, а пользователь затем добавляет ожидаемый эффект или экономию в денежные потоки. Это сохраняет объяснимость: сервис показывает, какие суммы попали в NPV, и предупреждает, если эффект не задан. Подробности описаны в `tco_npv_bridge.md`.
+
+## DecisionReport после этапа 6
+
+После TCO/NPV-моста данные могут быть собраны в единый итоговый отчёт выбора. `DecisionReportService` не запускает методы заново, а фиксирует текущее состояние runtime-компонентов, стоимости, пула альтернатив и уже рассчитанных аналитических результатов.
+
+```text
+runtime_entities.json
+  → RuntimeEntityNormalizationService
+  → CandidateConfigurationService / TCOModelService / аналитические методы
+  → DecisionReportService
+  → decision_report.json + decision_report.md + decision_report_candidates.csv
+```
+
+JSON остаётся полным машинным отчётом, Markdown — пользовательским объяснением для защиты, CSV — кратким табличным срезом альтернатив. Если AHP, GA, GA + AHP или NPV ещё не запускались, отчёт формируется как частичный и явно содержит предупреждения. Подробности описаны в `decision_report.md`.
 
 ## Предметный контракт категорий
 

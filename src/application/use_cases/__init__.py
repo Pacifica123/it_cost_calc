@@ -6,6 +6,7 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
+    "BuildDecisionReportUseCase": "application.use_cases.build_decision_report",
     "BuildNpvReportUseCase": "application.use_cases.build_npv_report",
     "CalculateElectricityCostsUseCase": "application.use_cases.calculate_electricity_costs",
     "ExportCostReportUseCase": "application.use_cases.export_cost_report",

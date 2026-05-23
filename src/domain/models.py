@@ -304,6 +304,84 @@ class CandidateConfiguration:
 
 
 @dataclass(slots=True)
+class DecisionReport:
+    """Unified decision artifact for the final IT-solution choice.
+
+    The report is intentionally broader than a single method result: it keeps
+    project context, components, candidate alternatives, cost/NPV interpretation
+    and method outputs in one reproducible structure.  Exporters can then build
+    a full machine JSON payload or a shorter user-facing markdown explanation
+    from the same object.
+    """
+
+    id: str
+    title: str
+    project: dict[str, Any] = field(default_factory=dict)
+    components: list[dict[str, Any]] = field(default_factory=list)
+    cost_model: dict[str, Any] = field(default_factory=dict)
+    assumptions: list[str] = field(default_factory=list)
+    constraints: list[dict[str, Any]] = field(default_factory=list)
+    candidate_configurations: list[dict[str, Any]] = field(default_factory=list)
+    analysis_results: dict[str, Any] = field(default_factory=dict)
+    npv_interpretation: dict[str, Any] = field(default_factory=dict)
+    winner_explanation: dict[str, Any] = field(default_factory=dict)
+    risks: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DecisionReport":
+        return cls(
+            id=str(payload.get("id", "decision_report")),
+            title=str(payload.get("title", "Итоговый отчёт выбора ИТ-решения")),
+            project={str(key): deepcopy(value) for key, value in dict(payload.get("project", {})).items()},
+            components=[
+                {str(key): deepcopy(value) for key, value in dict(component).items()}
+                for component in payload.get("components", [])
+                if isinstance(component, Mapping)
+            ],
+            cost_model={
+                str(key): deepcopy(value) for key, value in dict(payload.get("cost_model", {})).items()
+            },
+            assumptions=[str(item) for item in payload.get("assumptions", [])],
+            constraints=[
+                {str(key): deepcopy(value) for key, value in dict(item).items()}
+                for item in payload.get("constraints", [])
+                if isinstance(item, Mapping)
+            ],
+            candidate_configurations=[
+                {str(key): deepcopy(value) for key, value in dict(item).items()}
+                for item in payload.get("candidate_configurations", [])
+                if isinstance(item, Mapping)
+            ],
+            analysis_results={
+                str(key): deepcopy(value)
+                for key, value in dict(payload.get("analysis_results", {})).items()
+            },
+            npv_interpretation={
+                str(key): deepcopy(value)
+                for key, value in dict(payload.get("npv_interpretation", {})).items()
+            },
+            winner_explanation={
+                str(key): deepcopy(value)
+                for key, value in dict(payload.get("winner_explanation", {})).items()
+            },
+            risks=[
+                {str(key): deepcopy(value) for key, value in dict(item).items()}
+                for item in payload.get("risks", [])
+                if isinstance(item, Mapping)
+            ],
+            warnings=[str(item) for item in payload.get("warnings", [])],
+            metadata={
+                str(key): deepcopy(value) for key, value in dict(payload.get("metadata", {})).items()
+            },
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain_data(self)
+
+
+@dataclass(slots=True)
 class Relation:
     left: str
     operator: RelationOperator
