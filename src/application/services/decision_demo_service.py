@@ -4,6 +4,7 @@ from copy import deepcopy
 from statistics import median
 from typing import Any, Iterable, Mapping
 
+from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from domain.decision.ahp.aggregation import aggregate_configuration
 from shared.constants import (
@@ -85,6 +86,9 @@ _ROLE_PROFILES = {
 class DecisionDemoDataService:
     """Builds consistent demo data for AHP and criteria-importance tabs from runtime entities."""
 
+    def __init__(self, profile_service: AnalysisScopeProfileService | None = None):
+        self.profile_service = profile_service or AnalysisScopeProfileService()
+
     def build(
         self,
         entities: Mapping[str, list[dict[str, Any]]],
@@ -92,12 +96,9 @@ class DecisionDemoDataService:
         analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
     ) -> dict[str, Any]:
         scoped_payloads = {
-            ANALYSIS_SCOPE_TECHNICAL: self.build_scope_payload(
-                entities, analysis_scope=ANALYSIS_SCOPE_TECHNICAL
-            ),
-            ANALYSIS_SCOPE_SOFTWARE: self.build_scope_payload(
-                entities, analysis_scope=ANALYSIS_SCOPE_SOFTWARE
-            ),
+            scope: self.build_scope_payload(entities, analysis_scope=scope)
+            for scope in self.profile_service.profiles()
+            if scope in {ANALYSIS_SCOPE_TECHNICAL, ANALYSIS_SCOPE_SOFTWARE}
         }
         selected = scoped_payloads.get(analysis_scope, scoped_payloads[ANALYSIS_SCOPE_TECHNICAL])
         result = deepcopy(selected)
@@ -119,6 +120,7 @@ class DecisionDemoDataService:
         )
         return {
             "analysis_scope": analysis_scope,
+            "analysis_profile": self.profile_service.profile_metadata(analysis_scope),
             "configurations": configurations,
             "constraints": constraints,
             "criteria_case": criteria_case,

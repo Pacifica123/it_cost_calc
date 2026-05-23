@@ -12,6 +12,10 @@ import logging
 from copy import deepcopy
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
+from application.services.analysis_scope_profile_service import (
+    AnalysisScopeProfile,
+    AnalysisScopeProfileService,
+)
 from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from shared.constants import CAPITAL_COST_CATEGORIES
 
@@ -60,9 +64,11 @@ class GeneticOptimizationService:
         source: RuntimeEntitiesSource | Mapping[str, Any] | None = None,
         *,
         ga_runner: GaRunner | None = None,
+        profile_service: AnalysisScopeProfileService | None = None,
     ):
         self.source = source
         self.ga_runner = ga_runner or self._default_ga_runner
+        self.profile_service = profile_service or AnalysisScopeProfileService()
 
     def _default_ga_runner(self, params: dict[str, Any]) -> dict[str, Any]:
         from domain.optimization.ga import run_ga_mvp
@@ -82,6 +88,11 @@ class GeneticOptimizationService:
         source: RuntimeEntitiesSource | Mapping[str, Any] | None = None,
         *,
         categories: Sequence[str] | None = None,
+        analysis_scope: str | None = None,
+        analysis_profile: AnalysisScopeProfile | None = None,
+        power_lookup: Mapping[str, float] | None = None,
+        target_units: float | None = None,
+        max_power: float | None = None,
         criteria: Sequence[CriterionSpec | Callable[[list[RuntimeOptimizationItem]], Any]] | None = None,
         constraints: Sequence[ConstraintSpec | Callable[[list[RuntimeOptimizationItem]], Any]] | None = None,
         weights: Sequence[float] | None = None,
@@ -105,16 +116,36 @@ class GeneticOptimizationService:
             weights/pairwise_matrix: Criterion weights for the GA core.
             ga_params: Additional parameters passed to ``run_ga_mvp``.
         """
-        effective_categories = tuple(categories or CAPITAL_COST_CATEGORIES)
+        profile = analysis_profile or (
+            self.profile_service.get_profile(analysis_scope) if analysis_scope is not None else None
+        )
+        effective_categories = tuple(
+            categories
+            or (profile.capital_categories if profile is not None else CAPITAL_COST_CATEGORIES)
+        )
         candidates = self.build_candidates(
             source=source,
             categories=effective_categories,
             include_zero_quantity=include_zero_quantity,
         )
 
-        criteria_specs = self._build_criteria(criteria)
+        criteria_specs = self._build_criteria(
+            criteria,
+            profile=profile,
+            power_lookup=power_lookup,
+        )
+        dynamic_constraints = list(constraints or [])
+        if profile is not None:
+            dynamic_constraints.extend(
+                self.profile_service.build_ga_constraints(
+                    profile.scope,
+                    power_lookup=power_lookup,
+                    max_power=max_power,
+                    target_units=target_units,
+                )
+            )
         constraint_specs = self._build_constraints(
-            constraints,
+            dynamic_constraints,
             max_budget=max_budget,
             required_categories=required_categories,
             min_selected_items=min_selected_items,
@@ -132,8 +163,13 @@ class GeneticOptimizationService:
         )
         if weights is not None:
             params["weights"] = list(weights)
+        elif profile is not None:
+            params["weights"] = self.profile_service.default_weights(profile.scope)
         if pairwise_matrix is not None:
             params["pairwise_matrix"] = pairwise_matrix
+        if profile is not None:
+            params["analysis_scope"] = profile.scope
+            params["analysis_profile"] = profile
 
         logger.info(
             "Запуск прикладного слоя GA: candidates=%s, criteria=%s, constraints=%s",
@@ -237,9 +273,17 @@ class GeneticOptimizationService:
     def _build_criteria(
         self,
         criteria: Sequence[CriterionSpec | Callable[[list[RuntimeOptimizationItem]], Any]] | None,
+        *,
+        profile: AnalysisScopeProfile | None = None,
+        power_lookup: Mapping[str, float] | None = None,
     ) -> list[CriterionSpec | Callable[[list[RuntimeOptimizationItem]], Any]]:
         if criteria is not None:
             return list(criteria)
+        if profile is not None:
+            return self.profile_service.build_ga_criteria(
+                profile.scope,
+                power_lookup=power_lookup,
+            )
 
         return [
             {
@@ -348,6 +392,7 @@ class GeneticOptimizationService:
                 "candidate_count": len(candidates),
                 "categories": list(categories),
                 "ga": self._public_ga_params(ga_params),
+                "analysis_profile": self._profile_metadata(ga_params),
                 "criterion_names": list(ga_result.get("criterion_names", [])),
                 "constraint_names": [
                     constraint.get("name")
@@ -359,8 +404,19 @@ class GeneticOptimizationService:
         summary["export_payload"] = self._export_payload(summary)
         return summary
 
+    def _profile_metadata(self, ga_params: Mapping[str, Any]) -> dict[str, Any] | None:
+        profile = ga_params.get("analysis_profile")
+        if isinstance(profile, AnalysisScopeProfile):
+            return profile.to_dict()
+        if isinstance(profile, Mapping):
+            return deepcopy(dict(profile))
+        scope = ga_params.get("analysis_scope")
+        if isinstance(scope, str):
+            return self.profile_service.profile_metadata(scope)
+        return None
+
     def _public_ga_params(self, ga_params: Mapping[str, Any]) -> dict[str, Any]:
-        hidden = {"items", "criteria", "constraints", "pairwise_matrix"}
+        hidden = {"items", "criteria", "constraints", "pairwise_matrix", "analysis_profile"}
         result: dict[str, Any] = {}
         for key, value in ga_params.items():
             if key in hidden or callable(value):
@@ -391,6 +447,7 @@ class GeneticOptimizationService:
                 "termination_reason": summary["ga_result"].get("termination_reason"),
                 "generations_ran": summary["ga_result"].get("generations_ran"),
                 "fitness_scale": summary["ga_result"].get("fitness_scale"),
+                "analysis_profile": deepcopy(summary.get("parameters", {}).get("analysis_profile")),
             }
         }
 

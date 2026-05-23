@@ -4,7 +4,8 @@ import json
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-from shared.constants import ANALYSIS_SCOPE_LABELS, ANALYSIS_SCOPE_TECHNICAL
+from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
+from shared.constants import ANALYSIS_SCOPE_TECHNICAL
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 
 from .data_mixin import CriteriaImportanceDataMixin
@@ -31,9 +32,10 @@ class CriteriaImportanceTab(
     CriteriaImportanceDataMixin,
     BaseScrollableTab,
 ):
-    def __init__(self, parent, crud):
+    def __init__(self, parent, crud, *, profile_service: AnalysisScopeProfileService | None = None):
         super().__init__(parent)
         self.crud = crud
+        self.profile_service = profile_service or AnalysisScopeProfileService()
         self.case_data = None
         self.scoped_cases = {}
         self.analysis_scope_var = tk.StringVar(value=ANALYSIS_SCOPE_TECHNICAL)
@@ -56,7 +58,7 @@ class CriteriaImportanceTab(
         scope_box = tk.Frame(toolbar)
         scope_box.pack(side="left", padx=(12, 0))
         tk.Label(scope_box, text="Область:").pack(side="left")
-        for value, label in ANALYSIS_SCOPE_LABELS.items():
+        for value, label in self.profile_service.labels().items():
             ttk.Radiobutton(
                 scope_box,
                 text=label,
@@ -270,7 +272,7 @@ class CriteriaImportanceTab(
 
     def _analysis_scope(self):
         value = self.analysis_scope_var.get() if hasattr(self, "analysis_scope_var") else ""
-        if value in ANALYSIS_SCOPE_LABELS:
+        if value in self.profile_service.profiles():
             return value
         return ANALYSIS_SCOPE_TECHNICAL
 
@@ -282,7 +284,7 @@ class CriteriaImportanceTab(
         if not case_data:
             self._set_result(f"Нет подготовленного Pareto/критериального кейса для области {scope}.")
             return
-        label = ANALYSIS_SCOPE_LABELS.get(scope, scope)
+        label = self.profile_service.labels().get(scope, scope)
         self.load_case_data(
             case_data,
             message=f"Загружен демонстрационный Pareto-кейс для области {label}.",

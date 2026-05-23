@@ -6,6 +6,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.services.cost_aggregation_service import CostAggregationService
 from application.services.decision_demo_service import DecisionDemoDataService
 from application.services.electricity_cost_service import ElectricityCostService
@@ -62,7 +63,8 @@ class CalculatorApp(tk.Tk):
         self.crud = TreeviewCrudRepository(self.entity_repository)
         self.equipment_service = EquipmentService(self.entity_repository)
         self.cost_aggregation_service = CostAggregationService()
-        self.decision_demo_data_service = DecisionDemoDataService()
+        self.analysis_scope_profile_service = AnalysisScopeProfileService()
+        self.decision_demo_data_service = DecisionDemoDataService(self.analysis_scope_profile_service)
 
         self.prepare_cost_summary_use_case = PrepareCostSummaryUseCase(
             self.cost_aggregation_service, self.equipment_service
@@ -75,7 +77,10 @@ class CalculatorApp(tk.Tk):
             ElectricityCostService()
         )
         self.build_npv_report_use_case = BuildNpvReportUseCase(NPVReportService())
-        self.genetic_optimization_service = GeneticOptimizationService(self.entity_repository)
+        self.genetic_optimization_service = GeneticOptimizationService(
+            self.entity_repository,
+            profile_service=self.analysis_scope_profile_service,
+        )
         self.run_genetic_optimization_use_case = RunGeneticOptimizationUseCase(
             self.genetic_optimization_service
         )
@@ -130,17 +135,22 @@ class CalculatorApp(tk.Tk):
             run_genetic_ahp_ranking_use_case=self.run_genetic_ahp_ranking_use_case,
             energy_tab=self.energy_tab,
             data_root=self.data_root,
+            profile_service=self.analysis_scope_profile_service,
         )
         self.notebook.add(self.genetic_optimization_tab, text="Генетический подбор")
 
         self.configuration_selection_tab = configuration_selection_tab.ConfigurationSelectionTab(
-            self.notebook, self.crud
+            self.notebook,
+            self.crud,
+            profile_service=self.analysis_scope_profile_service,
         )
         self.ahp_tab = self.configuration_selection_tab
         self.notebook.add(self.configuration_selection_tab, text="AHP-анализ конфигураций")
 
         self.criteria_importance_tab = criteria_importance_tab.CriteriaImportanceTab(
-            self.notebook, self.crud
+            self.notebook,
+            self.crud,
+            profile_service=self.analysis_scope_profile_service,
         )
         self.notebook.add(self.criteria_importance_tab, text="Обоснование выбора ИТ-решения")
 

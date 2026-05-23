@@ -6,6 +6,8 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
+    "AnalysisScopeProfileService": "application.services.analysis_scope_profile_service",
+    "AnalysisScopeProfile": "application.services.analysis_scope_profile_service",
     "CostAggregationService": "application.services.cost_aggregation_service",
     "CostSummaryService": "application.services.cost_summary_service",
     "ElectricityCostService": "application.services.electricity_cost_service",

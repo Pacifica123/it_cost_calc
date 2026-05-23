@@ -5,8 +5,8 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from shared.constants import (
-    ANALYSIS_SCOPE_LABELS,
     ANALYSIS_SCOPE_SOFTWARE,
     ANALYSIS_SCOPE_TECHNICAL,
 )
@@ -37,9 +37,10 @@ except Exception:
 
 
 class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterMixin, BaseScrollableTab):
-    def __init__(self, parent, crud):
+    def __init__(self, parent, crud, *, profile_service: AnalysisScopeProfileService | None = None):
         super().__init__(parent)
         self.crud = crud
+        self.profile_service = profile_service or AnalysisScopeProfileService()
         self.configurations: dict[str, dict] = {}
         self.analysis_scope_var = tk.StringVar(value=ANALYSIS_SCOPE_TECHNICAL)
         self.scoped_demo_payloads: dict[str, dict] = {}
@@ -83,7 +84,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         scope_box = tk.Frame(ctrl)
         scope_box.pack(side="left", padx=(12, 0))
         tk.Label(scope_box, text="Область:").pack(side="left")
-        for value, label in ANALYSIS_SCOPE_LABELS.items():
+        for value, label in self.profile_service.labels().items():
             ttk.Radiobutton(
                 scope_box,
                 text=label,
@@ -243,7 +244,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
 
     def _analysis_scope(self) -> str:
         value = self.analysis_scope_var.get() if hasattr(self, "analysis_scope_var") else ""
-        if value in ANALYSIS_SCOPE_LABELS:
+        if value in self.profile_service.profiles():
             return value
         return ANALYSIS_SCOPE_TECHNICAL
 
@@ -448,7 +449,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
             self.summary_text.delete("1.0", "end")
             self.summary_text.insert("1.0", f"Нет подготовленного AHP-кейса для области {analysis_scope}.")
             return
-        label = ANALYSIS_SCOPE_LABELS.get(analysis_scope, analysis_scope)
+        label = self.profile_service.labels().get(analysis_scope, analysis_scope)
         self._apply_demo_configurations(
             payload.get("configurations", []),
             constraints=payload.get("constraints", {}),

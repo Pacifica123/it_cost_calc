@@ -6,7 +6,9 @@
 flowchart LR
     FIX[data/fixtures/demo_dataset.json] --> RUNTIME[data/generated/runtime_entities.json]
     RUNTIME --> RNORM[application: normalization scope/component_type]
-    RNORM --> REPORTS[data/generated/*.csv]
+    RNORM --> PROFILE[application: AnalysisScopeProfileService]
+    PROFILE --> ANALYTICS[GA / GA+AHP / AHP / Pareto]
+    PROFILE --> REPORTS[data/generated/*.csv + JSON reports]
     RUNTIME --> LOGS[data/generated/logs/]
 
     RAW[data/examples/parser/*.json] --> CNORM[data/examples/catalog/normalized_dns_catalog.json]
@@ -54,6 +56,16 @@ flowchart LR
 Переходная логика не переносится во вкладки интерфейса: UI передаёт категорию и пользовательские поля, а application-слой решает, относится ли запись к `technical`, `software`, `implementation` или `common`, и какой `component_type` можно безопасно назначить.
 
 Особое правило действует для `client`: если у записи нет `client_seats` и явного `component_type=workstation`, она не считается рабочим местом автоматически. Поэтому периферия остаётся частью клиентского контура, но не закрывает ограничения по пользователям.
+
+## Профили анализа после этапа 3
+
+После нормализации runtime-записей прикладной слой выбирает профиль области анализа через `AnalysisScopeProfileService`. Профиль определяет, какие категории становятся кандидатами, какие критерии и ограничения применяются, какие подсказки показываются в UI и какие metadata попадают в GA/AHP export payload.
+
+```text
+runtime_entities.json → RuntimeEntityNormalizationService → AnalysisScopeProfileService → GA / GA+AHP / AHP / Pareto / export
+```
+
+Благодаря этому вкладки больше не являются главным источником знаний о различиях ПО и ТО: они выбирают `scope`, а прикладной слой возвращает правила анализа. Подробности описаны в `analysis_scope_profiles.md`.
 
 ## Предметный контракт категорий
 

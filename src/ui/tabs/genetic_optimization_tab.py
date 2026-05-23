@@ -7,12 +7,11 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any, Mapping, Sequence
 
+from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.use_cases.run_genetic_optimization import RunGeneticOptimizationUseCase
 from application.use_cases.run_genetic_ahp_ranking import RunGeneticAhpRankingUseCase
 from infrastructure.exporters.ga_ahp_json_exporter import export_ga_ahp_report_json
 from shared.constants import (
-    ANALYSIS_SCOPE_CAPITAL_CATEGORIES,
-    ANALYSIS_SCOPE_LABELS,
     ANALYSIS_SCOPE_SOFTWARE,
     ANALYSIS_SCOPE_TECHNICAL,
 )
@@ -50,6 +49,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         run_genetic_ahp_ranking_use_case: RunGeneticAhpRankingUseCase | None = None,
         energy_tab: Any | None = None,
         data_root: str | Path | None = None,
+        profile_service: AnalysisScopeProfileService | None = None,
     ):
         super().__init__(parent, width=1180, height=620)
         self.run_genetic_optimization_use_case = run_genetic_optimization_use_case
@@ -57,6 +57,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.energy_tab = energy_tab
         self.generated_data_dir = self._resolve_generated_data_dir(data_root)
         self.ga_ahp_report_path = self.generated_data_dir / "ga_ahp_report.json"
+        self.profile_service = profile_service or AnalysisScopeProfileService()
         self.last_result: dict[str, Any] | None = None
 
         self._build_variables()
@@ -133,7 +134,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
 
         scope_box = ttk.LabelFrame(settings, text="Область анализа")
         scope_box.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        for index, (value, label) in enumerate(ANALYSIS_SCOPE_LABELS.items()):
+        for index, (value, label) in enumerate(self.profile_service.labels().items()):
             ttk.Radiobutton(
                 scope_box,
                 text=label,
@@ -353,6 +354,8 @@ class GeneticOptimizationTab(BaseScrollableTab):
         try:
             result = self.run_genetic_optimization_use_case.execute(
                 categories=self._scope_categories(analysis_scope),
+                analysis_scope=analysis_scope,
+                power_lookup=power_lookup,
                 criteria=criteria,
                 constraints=constraints,
                 weights=weights,
@@ -404,6 +407,8 @@ class GeneticOptimizationTab(BaseScrollableTab):
         try:
             result = self.run_genetic_ahp_ranking_use_case.execute(
                 categories=self._scope_categories(analysis_scope),
+                analysis_scope=analysis_scope,
+                power_lookup=power_lookup,
                 criteria=criteria,
                 constraints=constraints,
                 weights=weights,
@@ -468,18 +473,25 @@ class GeneticOptimizationTab(BaseScrollableTab):
         return params
 
     def _read_weights(self, *, analysis_scope: str) -> list[float]:
-        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
-            return [
-                parse_float(self.coverage_weight_var.get(), "Вес разнообразия ПО"),
-                parse_float(self.client_weight_var.get(), "Вес количества лицензий"),
-                parse_float(self.cost_weight_var.get(), "Вес стоимости"),
-            ]
-        return [
-            parse_float(self.coverage_weight_var.get(), "Вес покрытия категорий"),
-            parse_float(self.client_weight_var.get(), "Вес клиентских мест"),
-            parse_float(self.power_weight_var.get(), "Вес энергопотребления"),
-            parse_float(self.cost_weight_var.get(), "Вес стоимости"),
-        ]
+        """Read criterion weights in the order defined by the analysis profile."""
+
+        profile = self.profile_service.get_profile(analysis_scope)
+        value_by_criterion = {
+            "category_coverage": self.coverage_weight_var,
+            "selected_software_items": self.coverage_weight_var,
+            "client_capacity": self.client_weight_var,
+            "software_license_quantity": self.client_weight_var,
+            "total_power_watts": self.power_weight_var,
+            "capital_cost": self.cost_weight_var,
+        }
+        weights: list[float] = []
+        for criterion in profile.criteria:
+            variable = value_by_criterion.get(criterion.id)
+            if variable is None:
+                weights.append(float(profile.default_weights.get(criterion.id, 1.0)))
+                continue
+            weights.append(parse_float(variable.get(), f"Вес критерия: {criterion.label}"))
+        return weights
 
     def _optional_float(self, value: str, field_name: str) -> float | None:
         if not value.strip():
@@ -488,53 +500,35 @@ class GeneticOptimizationTab(BaseScrollableTab):
 
     def _analysis_scope(self) -> str:
         value = self.analysis_scope_var.get() if hasattr(self, "analysis_scope_var") else ""
-        if value in ANALYSIS_SCOPE_CAPITAL_CATEGORIES:
+        if value in self.profile_service.profiles():
             return value
         return ANALYSIS_SCOPE_TECHNICAL
 
     def _scope_categories(self, analysis_scope: str | None = None) -> tuple[str, ...]:
-        scope = analysis_scope or self._analysis_scope()
-        return tuple(
-            ANALYSIS_SCOPE_CAPITAL_CATEGORIES.get(
-                scope,
-                ANALYSIS_SCOPE_CAPITAL_CATEGORIES[ANALYSIS_SCOPE_TECHNICAL],
-            )
-        )
+        return self.profile_service.get_profile(analysis_scope or self._analysis_scope()).capital_categories
 
     def _sync_scope_hint(self) -> None:
-        scope = self._analysis_scope()
-        if scope == ANALYSIS_SCOPE_SOFTWARE:
-            self.require_server_var.set(False)
-            self.require_client_var.set(False)
-            self.require_network_var.set(False)
-            self.require_licenses_var.set(True)
-            self.scope_hint_var.set(
-                "Режим ПО: анализируются только лицензии. Мощность не учитывается; "
-                "поле минимума трактуется как минимум лицензий/пользовательских лицензий."
-            )
-            return
-
-        self.require_server_var.set(True)
-        self.require_client_var.set(True)
-        self.require_network_var.set(True)
-        self.require_licenses_var.set(False)
+        profile = self.profile_service.get_profile(self._analysis_scope())
+        defaults = set(profile.default_required_categories())
+        self.require_server_var.set("server" in defaults)
+        self.require_client_var.set("client" in defaults)
+        self.require_network_var.set("network" in defaults)
+        self.require_licenses_var.set("licenses" in defaults)
         self.scope_hint_var.set(
-            "Режим ТО: анализируются серверы, клиентские устройства и сеть. "
-            "Клиентская ёмкость считается по client_seats, поэтому МФУ не заменяет рабочее место."
+            profile.explanation_rules.get("ui_hint")
+            or f"Выбран профиль: {profile.title}."
         )
 
     def _required_categories(self, *, analysis_scope: str) -> list[str]:
-        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
-            return ["licenses"] if self.require_licenses_var.get() else []
-
-        result = []
-        if self.require_server_var.get():
-            result.append("server")
-        if self.require_client_var.get():
-            result.append("client")
-        if self.require_network_var.get():
-            result.append("network")
-        return result
+        return self.profile_service.required_categories(
+            analysis_scope,
+            enabled_categories={
+                "server": bool(self.require_server_var.get()),
+                "client": bool(self.require_client_var.get()),
+                "network": bool(self.require_network_var.get()),
+                "licenses": bool(self.require_licenses_var.get()),
+            },
+        )
 
     def _power_lookup(self) -> dict[str, float]:
         if self.energy_tab is not None and hasattr(self.energy_tab, "update_equipment_table"):
@@ -555,47 +549,10 @@ class GeneticOptimizationTab(BaseScrollableTab):
         *,
         analysis_scope: str,
     ) -> list[dict[str, Any]]:
-        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
-            return [
-                {
-                    "name": "selected_software_items",
-                    "func": lambda subset: float(len(subset)),
-                    "direction": "max",
-                },
-                {
-                    "name": "software_license_quantity",
-                    "func": self._software_quantity,
-                    "direction": "max",
-                },
-                {
-                    "name": "capital_cost",
-                    "func": lambda subset: self._sum_property(subset, "total_cost"),
-                    "direction": "min",
-                },
-            ]
-
-        return [
-            {
-                "name": "category_coverage",
-                "func": self._category_coverage,
-                "direction": "max",
-            },
-            {
-                "name": "client_capacity",
-                "func": self._client_capacity,
-                "direction": "max",
-            },
-            {
-                "name": "total_power_watts",
-                "func": lambda subset, lookup=power_lookup: self._total_power(subset, lookup),
-                "direction": "min",
-            },
-            {
-                "name": "capital_cost",
-                "func": lambda subset: self._sum_property(subset, "total_cost"),
-                "direction": "min",
-            },
-        ]
+        return self.profile_service.build_ga_criteria(
+            analysis_scope,
+            power_lookup=power_lookup,
+        )
 
     def _build_constraints(
         self,
@@ -605,38 +562,12 @@ class GeneticOptimizationTab(BaseScrollableTab):
         target_users: float | None,
         analysis_scope: str,
     ) -> list[dict[str, Any]]:
-        constraints: list[dict[str, Any]] = []
-        if analysis_scope == ANALYSIS_SCOPE_SOFTWARE:
-            if target_users is not None and target_users > 0:
-                constraints.append(
-                    {
-                        "name": "software_license_quantity_required",
-                        "func": self._software_quantity,
-                        "operator": ">=",
-                        "bound": target_users,
-                    }
-                )
-            return constraints
-
-        if max_power is not None:
-            constraints.append(
-                {
-                    "name": "power_limit",
-                    "func": lambda subset, lookup=power_lookup: self._total_power(subset, lookup),
-                    "operator": "<=",
-                    "bound": max_power,
-                }
-            )
-        if target_users is not None and target_users > 0:
-            constraints.append(
-                {
-                    "name": "client_capacity_required",
-                    "func": self._client_capacity,
-                    "operator": ">=",
-                    "bound": target_users,
-                }
-            )
-        return constraints
+        return self.profile_service.build_ga_constraints(
+            analysis_scope,
+            power_lookup=power_lookup,
+            max_power=max_power,
+            target_units=target_users,
+        )
 
     def _render_result(self, result: Mapping[str, Any], power_lookup: Mapping[str, float]) -> None:
         self._clear_tree(self.composition_table)
@@ -1029,26 +960,19 @@ class GeneticOptimizationTab(BaseScrollableTab):
         return f"{self._format_number(value, digits=2)} руб."
 
     def _criterion_label(self, name: str) -> str:
-        return {
-            "category_coverage": "Покрытие категорий",
-            "client_capacity": "Клиентские места",
-            "total_power_watts": "Энергопотребление",
-            "capital_cost": "Стоимость",
-            "selected_software_items": "Разнообразие ПО",
-            "software_license_quantity": "Количество лицензий",
-        }.get(name, name)
+        return self.profile_service.criterion_label(name, scope=self._analysis_scope())
 
     def _constraint_label(self, name: str) -> str:
         if name.startswith("required_category_"):
             category = name.removeprefix("required_category_")
             return f"Обязательная категория: {CATEGORY_LABELS.get(category, category)}"
+        profile_label = self.profile_service.constraint_label(name, scope=self._analysis_scope())
+        if profile_label != name:
+            return profile_label
         return {
             "budget": "Бюджет",
             "min_selected_items": "Минимум выбранных элементов",
             "max_selected_items": "Максимум выбранных элементов",
-            "power_limit": "Лимит мощности",
-            "client_capacity_required": "Минимум клиентских мест",
-            "software_license_quantity_required": "Минимум лицензий",
         }.get(name, name)
 
 
