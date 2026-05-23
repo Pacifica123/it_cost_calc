@@ -11,6 +11,7 @@
 
 ### Архитектура
 - `architecture/overview.md` — общий обзор решения;
+- `architecture/conceptual_cohesion_manifest.md` — манифест концептуальной связанности данных, сущностей и аналитических методов;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -53,12 +54,13 @@
 Если нужно быстро войти в проект, удобно читать так:
 1. `../README.md`
 2. `architecture/overview.md`
-3. `architecture/system_schema.md`
-4. `architecture/module_map.md`
-5. `architecture/data_map.md`
-6. `research/genetic_algorithm.md`
-7. `research/ideas/genetic_algorithm_plain_manifest.md`
-8. `research/ideas/future_independent_ga_ahp_assessment.md`
-9. `research/ideas/future_hybrid_ga_ahp_score.md`
-10. `demo/ga_ahp_defense_guide.md`
-11. `traceability.md`
+3. `architecture/conceptual_cohesion_manifest.md`
+4. `architecture/system_schema.md`
+5. `architecture/module_map.md`
+6. `architecture/data_map.md`
+7. `research/genetic_algorithm.md`
+8. `research/ideas/genetic_algorithm_plain_manifest.md`
+9. `research/ideas/future_independent_ga_ahp_assessment.md`
+10. `research/ideas/future_hybrid_ga_ahp_score.md`
+11. `demo/ga_ahp_defense_guide.md`
+12. `traceability.md`
