@@ -331,6 +331,8 @@ class DecisionReportService:
                     f"Компонент редактора '{name}' сохранён со статусом {state} "
                     "и не участвует в строгой аналитике."
                 )
+            for warning in component.get("validation_warnings", []) or []:
+                warnings.append(str(warning))
             for warning in component.get("blocking_errors", []) or []:
                 warnings.append(str(warning))
         for warning in npv_interpretation.get("warnings", []) or []:

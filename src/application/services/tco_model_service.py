@@ -32,6 +32,17 @@ _SUBSCRIPTION_TYPES = {
     ComponentType.SOFTWARE_SERVICE.value,
 }
 _SUPPORT_TYPES = {ComponentType.SUPPORT_SERVICE.value, ComponentType.BACKUP_SERVICE.value}
+_ENERGY_COMPONENT_TYPES = {
+    ComponentType.SERVER.value,
+    ComponentType.WORKSTATION.value,
+    ComponentType.PERIPHERAL.value,
+    ComponentType.NETWORK_DEVICE.value,
+}
+_SOFTWARE_COMPONENT_TYPES = {
+    ComponentType.SOFTWARE_LICENSE.value,
+    ComponentType.SOFTWARE_SUBSCRIPTION.value,
+    ComponentType.SOFTWARE_SERVICE.value,
+}
 
 
 class TCOModelService:
@@ -55,37 +66,46 @@ class TCOModelService:
         )
         component_type = str(payload.get("component_type") or "")
 
-        purchase_cost = self._purchase_cost(payload, category=category)
-        one_time_cost = self._number(payload.get("one_time_cost"), default=0.0)
-        monthly_cost = self._number(payload.get("monthly_cost"), default=0.0)
+        purchase_cost = self._explicit_or_fallback_purchase_cost(payload, category=category)
+        implementation_cost = self._number(payload.get("implementation_cost"), default=0.0)
+        testing_cost = self._number(payload.get("testing_cost"), default=0.0)
+        migration_cost = self._number(payload.get("migration_cost"), default=0.0)
 
-        implementation_cost = 0.0
-        testing_cost = 0.0
-        migration_cost = 0.0
-        if category == "testing":
-            testing_cost = one_time_cost
-        elif category == "migration":
-            migration_cost = one_time_cost
-        elif category in _IMPLEMENTATION_CATEGORIES or component_type in _IMPLEMENTATION_TYPES:
-            implementation_cost = one_time_cost
-        else:
-            implementation_cost = one_time_cost
+        one_time_cost = self._number(payload.get("one_time_cost"), default=0.0)
+        if one_time_cost and not any((implementation_cost, testing_cost, migration_cost)):
+            if category == "testing":
+                testing_cost = one_time_cost
+            elif category == "migration":
+                migration_cost = one_time_cost
+            else:
+                implementation_cost = one_time_cost
+
+        monthly_cost = self._number(payload.get("monthly_cost"), default=0.0)
+        annual_monthly_equivalent = self._number(
+            payload.get("annual_cost_monthly_equivalent"),
+            default=self._number(payload.get("annual_cost"), default=0.0) / 12.0,
+        )
+        recurring_monthly = monthly_cost + annual_monthly_equivalent
 
         subscription_cost = 0.0
         support_cost = 0.0
         if category in _SUBSCRIPTION_CATEGORIES or component_type in _SUBSCRIPTION_TYPES:
-            subscription_cost = monthly_cost
+            subscription_cost = recurring_monthly
         elif category in _SUPPORT_CATEGORIES or component_type in _SUPPORT_TYPES:
-            support_cost = monthly_cost
+            support_cost = recurring_monthly
+        elif str(payload.get("scope") or "") == ANALYSIS_SCOPE_SOFTWARE:
+            subscription_cost = recurring_monthly
         else:
-            support_cost = monthly_cost
+            support_cost = recurring_monthly
 
-        electricity_cost = self._explicit_electricity_cost(payload)
-        if electricity_cost == 0.0 and electricity_profile is not None:
-            electricity_cost = self._derived_monthly_electricity_cost(
-                payload,
-                electricity_profile=electricity_profile,
-            )
+        electricity_cost = 0.0
+        if self._energy_applicable(payload):
+            electricity_cost = self._explicit_electricity_cost(payload)
+            if electricity_cost == 0.0 and electricity_profile is not None:
+                electricity_cost = self._derived_monthly_electricity_cost(
+                    payload,
+                    electricity_profile=electricity_profile,
+                )
 
         return CostModel(
             purchase_cost=purchase_cost,
@@ -277,6 +297,17 @@ class TCOModelService:
             ]
         return summary
 
+    def _explicit_or_fallback_purchase_cost(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        category: str,
+    ) -> float:
+        explicit = self._number(payload.get("purchase_cost"), default=0.0)
+        if explicit:
+            return explicit
+        return self._purchase_cost(payload, category=category)
+
     def _purchase_cost(self, payload: Mapping[str, Any], *, category: str) -> float:
         total = self._number(
             payload.get("total_cost", payload.get("capital_cost")),
@@ -300,6 +331,20 @@ class TCOModelService:
                 return value
         return 0.0
 
+    def _energy_applicable(self, payload: Mapping[str, Any]) -> bool:
+        energy_block = payload.get("energy") if isinstance(payload.get("energy"), Mapping) else {}
+        if "applicable" in energy_block:
+            return bool(energy_block.get("applicable"))
+        scope = str(payload.get("scope") or "")
+        component_type = str(payload.get("component_type") or "")
+        if component_type in _SOFTWARE_COMPONENT_TYPES or scope == ANALYSIS_SCOPE_SOFTWARE:
+            return False
+        if component_type in _ENERGY_COMPONENT_TYPES:
+            return True
+        if scope == "mixed":
+            return bool(payload.get("max_power") or payload.get("energy_applicable"))
+        return scope == "technical"
+
     def _derived_monthly_electricity_cost(
         self,
         payload: Mapping[str, Any],
@@ -307,7 +352,7 @@ class TCOModelService:
         electricity_profile: Mapping[str, Any],
     ) -> float:
         scope = str(payload.get("scope") or "")
-        if scope == ANALYSIS_SCOPE_SOFTWARE:
+        if scope == ANALYSIS_SCOPE_SOFTWARE or not self._energy_applicable(payload):
             return 0.0
         max_power = self._number(payload.get("max_power"), default=0.0)
         if max_power <= 0:

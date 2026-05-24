@@ -39,6 +39,17 @@ _ONE_TIME_COST_KEYS = (
     "testing_cost",
 )
 _RECURRING_COST_KEYS = ("monthly_cost", "annual_cost", "energy_cost")
+_ENERGY_COMPONENT_TYPES = {
+    ComponentType.SERVER,
+    ComponentType.WORKSTATION,
+    ComponentType.PERIPHERAL,
+    ComponentType.NETWORK_DEVICE,
+}
+_SOFTWARE_COMPONENT_TYPES = {
+    ComponentType.SOFTWARE_LICENSE,
+    ComponentType.SOFTWARE_SUBSCRIPTION,
+    ComponentType.SOFTWARE_SERVICE,
+}
 
 
 class SolutionComponentNormalizationService:
@@ -139,6 +150,8 @@ class SolutionComponentNormalizationService:
         name: str = "Компоненты решения",
         scope: str | AnalysisScope | None = None,
         source: str | CandidateConfigurationSource = CandidateConfigurationSource.MANUAL,
+        horizon_months: int | float = TCOModelService.DEFAULT_HORIZON_MONTHS,
+        electricity_profile: Mapping[str, Any] | None = None,
     ) -> CandidateConfiguration:
         normalized = self.normalize_many(components)
         ready_components = [component for component in normalized if component.candidate_eligible]
@@ -161,7 +174,11 @@ class SolutionComponentNormalizationService:
                 ],
             },
         )
-        return self.tco_model_service.attach_to_candidate(candidate)
+        return self.tco_model_service.attach_to_candidate(
+            candidate,
+            horizon_months=horizon_months,
+            electricity_profile=electricity_profile,
+        )
 
     def to_cost_model(self, component: SolutionComponent | Mapping[str, Any]) -> CostModel:
         normalized = self.normalize(component)
@@ -230,6 +247,8 @@ class SolutionComponentNormalizationService:
     ) -> dict[str, Any]:
         normalized = ensure_solution_component(component)
         metrics = deepcopy(normalized.metrics)
+        financial = self._financial_payload(normalized)
+        energy = self._energy_payload(normalized)
         payload = {
             "id": normalized.id,
             "name": normalized.name,
@@ -246,15 +265,21 @@ class SolutionComponentNormalizationService:
             "implementation_cost": normalized.implementation_cost,
             "migration_cost": normalized.migration_cost,
             "testing_cost": normalized.testing_cost,
-            "monthly_cost": normalized.monthly_cost + normalized.annual_cost / 12.0,
+            "monthly_cost": normalized.monthly_cost,
             "annual_cost": normalized.annual_cost,
+            "annual_cost_monthly_equivalent": normalized.annual_cost / 12.0,
             "energy_cost": normalized.energy_cost,
+            "energy_applicable": energy["applicable"],
+            "energy_source": energy["source"],
             "total_cost": normalized.purchase_cost,
             "one_time_cost": (
                 normalized.implementation_cost
                 + normalized.migration_cost
                 + normalized.testing_cost
             ),
+            "recurring_monthly_cost": normalized.monthly_cost + normalized.annual_cost / 12.0,
+            "financial_fields": financial,
+            "energy": energy,
             "metadata": deepcopy(normalized.metadata),
             "validation_warnings": list(normalized.validation_warnings),
             "blocking_errors": list(normalized.blocking_errors),
@@ -362,9 +387,32 @@ class SolutionComponentNormalizationService:
             warnings.append(
                 "Стоимость компонента не задана: TCO/NPV не будут считать его вклад."
             )
+            return
+        positive_fields = [
+            key
+            for key in (*_ONE_TIME_COST_KEYS, *_RECURRING_COST_KEYS)
+            if self._number(getattr(model, key), default=0.0) > 0.0
+        ]
+        if len(positive_fields) == 1 and positive_fields[0] in {"purchase_cost", "energy_cost"}:
+            warnings.append(
+                "Все расходы компонента фактически указаны одной суммой; для точного TCO лучше разделить CAPEX, разовые работы и регулярные платежи."
+            )
         if model.annual_cost and not model.monthly_cost:
             warnings.append(
-                "annual_cost будет интерпретирован как ежегодный платёж; для monthly OPEX задайте monthly_cost."
+                "annual_cost будет интерпретирован как ежегодный платёж и пересчитан в ежемесячный OPEX для TCO."
+            )
+        energy = self._energy_payload(model)
+        if model.energy_cost and energy["source"] == "manual":
+            warnings.append(
+                "Энергетическая стоимость указана вручную и не связана с мощностью/профилем работы."
+            )
+        if model.energy_cost and not energy["applicable"]:
+            warnings.append(
+                "Для выбранного типа компонента энергетический расчёт не применим; energy_cost не должен подменять OPEX."
+            )
+        if model.scope == AnalysisScope.MIXED and model.energy_cost and not model.metrics.get("technical_part"):
+            warnings.append(
+                "Для mixed-компонента с энергетической частью нужно явно описать техническую часть или разнести компонент на части."
             )
 
     def _has_financial_data(self, model: SolutionComponent) -> bool:
@@ -372,11 +420,62 @@ class SolutionComponentNormalizationService:
         return any(float(value or 0.0) > 0.0 for value in values)
 
     def _is_energy_eligible(self, model: SolutionComponent) -> bool:
-        if model.scope not in {AnalysisScope.TECHNICAL, AnalysisScope.MIXED}:
-            return False
+        energy = self._energy_payload(model)
+        return bool(energy["applicable"] and energy["source"] in {"manual", "derived_ready"})
+
+    def _financial_payload(self, model: SolutionComponent) -> dict[str, Any]:
+        return {
+            "purchase_cost": float(model.purchase_cost),
+            "implementation_cost": float(model.implementation_cost),
+            "migration_cost": float(model.migration_cost),
+            "testing_cost": float(model.testing_cost),
+            "monthly_cost": float(model.monthly_cost),
+            "annual_cost": float(model.annual_cost),
+            "annual_cost_monthly_equivalent": float(model.annual_cost) / 12.0,
+            "energy_cost": float(model.energy_cost),
+            "effect_source": "not_in_cost_model",
+            "note": (
+                "Пользовательский эффект или экономия не смешиваются с расходами; "
+                "для NPV они передаются отдельным annual_effect."
+            ),
+        }
+
+    def _energy_payload(self, model: SolutionComponent) -> dict[str, Any]:
         max_power = self._number(model.metrics.get("max_power"), default=0.0)
+        hours_per_day = self._number(model.metrics.get("hours_per_day"), default=0.0)
+        working_days = self._number(model.metrics.get("working_days"), default=0.0)
         quantity = self._number(model.metrics.get("quantity"), default=model.quantity)
-        return max_power > 0.0 and quantity > 0.0
+        component_type = model.component_type
+        is_software = component_type in _SOFTWARE_COMPONENT_TYPES
+        is_technical = component_type in _ENERGY_COMPONENT_TYPES
+        explicit_mixed = bool(model.metrics.get("technical_part") or model.metrics.get("energy_applicable"))
+        applicable = (
+            not is_software
+            and (
+                model.scope == AnalysisScope.TECHNICAL
+                or is_technical
+                or (model.scope == AnalysisScope.MIXED and explicit_mixed)
+            )
+        )
+        if not applicable:
+            source = "not_applicable"
+        elif model.energy_cost > 0 and max_power <= 0:
+            source = "manual"
+        elif max_power > 0 and hours_per_day > 0 and working_days > 0:
+            source = "derived_ready"
+        elif model.energy_cost > 0:
+            source = "manual"
+        else:
+            source = "missing_usage_profile"
+        return {
+            "applicable": bool(applicable),
+            "source": source,
+            "manual_monthly_cost": float(model.energy_cost),
+            "max_power": max_power,
+            "quantity": quantity,
+            "hours_per_day": hours_per_day,
+            "working_days": working_days,
+        }
 
     def _is_legacy_sandbox(self, model: SolutionComponent) -> bool:
         metadata = model.metadata

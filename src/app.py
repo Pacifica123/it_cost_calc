@@ -77,7 +77,9 @@ class CalculatorApp(tk.Tk):
         self.solution_component_runtime_service = SolutionComponentRuntimeService(self.entity_repository)
 
         self.prepare_cost_summary_use_case = PrepareCostSummaryUseCase(
-            self.cost_aggregation_service, self.equipment_service
+            self.cost_aggregation_service,
+            self.equipment_service,
+            self.solution_component_runtime_service,
         )
         self.export_cost_report_use_case = ExportCostReportUseCase(
             self.prepare_cost_summary_use_case, self.cost_aggregation_service
@@ -275,7 +277,8 @@ class CalculatorApp(tk.Tk):
 
     def update_total_costs(self) -> dict:
         totals = self.prepare_cost_summary_use_case.execute(
-            electricity_cost=self.energy_tab.get_electricity_cost()
+            electricity_cost=self.energy_tab.get_electricity_cost(),
+            electricity_profile=self.energy_tab.get_electricity_profile(),
         )
         logger.debug("Итоги затрат пересчитаны: %s", totals)
         return totals
@@ -284,7 +287,9 @@ class CalculatorApp(tk.Tk):
         export_path = self.data_root / "generated" / "total_costs.csv"
         logger.info("Запрос на экспорт CSV: %s", export_path)
         totals = self.export_cost_report_use_case.execute(
-            export_path, electricity_cost=self.energy_tab.get_electricity_cost()
+            export_path,
+            electricity_cost=self.energy_tab.get_electricity_cost(),
+            electricity_profile=self.energy_tab.get_electricity_profile(),
         )
         self.export_tab.update_summary()
         logger.info("CSV-экспорт завершён: %s", export_path)

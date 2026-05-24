@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any, Mapping
 
 from application.services.cost_aggregation_service import CostAggregationService
 from application.use_cases.prepare_cost_summary import PrepareCostSummaryUseCase
@@ -18,9 +19,18 @@ class ExportCostReportUseCase:
         self.prepare_cost_summary_use_case = prepare_cost_summary_use_case
         self.cost_aggregation_service = cost_aggregation_service
 
-    def execute(self, filename: str | Path, electricity_cost: float = 0.0) -> dict:
+    def execute(
+        self,
+        filename: str | Path,
+        electricity_cost: float = 0.0,
+        *,
+        electricity_profile: Mapping[str, Any] | None = None,
+    ) -> dict:
         logger.info("Подготовка экспортного отчёта: %s", filename)
-        totals = self.prepare_cost_summary_use_case.execute(electricity_cost=electricity_cost)
+        totals = self.prepare_cost_summary_use_case.execute(
+            electricity_cost=electricity_cost,
+            electricity_profile=electricity_profile,
+        )
         self.cost_aggregation_service.export_to_csv(filename)
         logger.info("Экспортный отчёт завершён: %s", filename)
         return totals

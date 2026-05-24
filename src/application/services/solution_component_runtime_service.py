@@ -11,6 +11,9 @@ from copy import deepcopy
 from typing import Any, Mapping, Sequence
 
 from application.ports import EntityRepository
+from application.services.solution_component_financial_service import (
+    SolutionComponentFinancialIntegrationService,
+)
 from application.services.solution_component_normalization_service import (
     SolutionComponentNormalizationService,
 )
@@ -32,6 +35,9 @@ class SolutionComponentRuntimeService:
     ):
         self.repository = repository
         self.normalization_service = normalization_service or SolutionComponentNormalizationService()
+        self.financial_service = SolutionComponentFinancialIntegrationService(
+            normalization_service=self.normalization_service
+        )
 
     def list_rows(self) -> list[dict[str, Any]]:
         """Return raw runtime rows from the dedicated section."""
@@ -100,6 +106,27 @@ class SolutionComponentRuntimeService:
         )
         return candidate.to_dict()
 
+
+    def build_financial_chain(
+        self,
+        *,
+        horizon_months: int | float = SolutionComponentFinancialIntegrationService.DEFAULT_HORIZON_MONTHS,
+        horizon_years: int = SolutionComponentFinancialIntegrationService.DEFAULT_HORIZON_YEARS,
+        annual_effect: float = 0.0,
+        discount_rate: float | None = None,
+        electricity_profile: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build the strict ``стоимость → TCO → NPV`` chain for editor components."""
+
+        return self.financial_service.build_financial_chain(
+            self.list_rows(),
+            horizon_months=horizon_months,
+            horizon_years=horizon_years,
+            annual_effect=annual_effect,
+            discount_rate=discount_rate,
+            electricity_profile=electricity_profile,
+        )
+
     def export_snapshot(self) -> dict[str, Any]:
         """Return a user-facing snapshot for export/report checks.
 
@@ -157,6 +184,8 @@ class SolutionComponentRuntimeService:
             "validation_warnings": list(component.validation_warnings),
             "blocking_errors": list(component.blocking_errors),
             "excluded_from_analysis_reason": self._exclusion_reason(component),
+            "financial_fields": self.normalization_service.to_component_payload(component).get("financial_fields", {}),
+            "energy": self.normalization_service.to_component_payload(component).get("energy", {}),
         }
 
     def _exclusion_reason(self, component: SolutionComponent) -> str:

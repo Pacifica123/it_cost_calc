@@ -185,6 +185,27 @@ class EnergyTab(BaseScrollableTab):
     def get_electricity_cost(self) -> float:
         return self.total_cost
 
+    def get_electricity_profile(self) -> dict[str, float]:
+        """Return current tariff/profile settings for services outside the energy tab.
+
+        Cross-tab recalculations must not crash while the user is editing an
+        incomplete value, so invalid temporary text falls back to the default
+        values shown by the form.  The explicit calculate button still performs
+        strict validation and shows a message box.
+        """
+
+        return {
+            "hours_per_day": self._profile_float(self.hours_per_day_entry.get(), default=8.0),
+            "working_days": self._profile_float(self.working_days_entry.get(), default=22.0),
+            "cost_per_kwh": self._profile_float(self.cost_per_kwh_entry.get(), default=1.0),
+        }
+
+    def _profile_float(self, value: str, *, default: float) -> float:
+        try:
+            return parse_float(value, "Параметр энергетического профиля")
+        except ValueError:
+            return float(default)
+
 
 ElectricityCostsTab = EnergyTab
 
