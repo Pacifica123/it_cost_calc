@@ -43,7 +43,8 @@ class ExportTab(BaseScrollableTab):
                 "\n\nDecisionReport сформирован:"
                 f"\n- JSON: {paths.get('json')}"
                 f"\n- Markdown: {paths.get('markdown')}"
-                f"\n- CSV: {paths.get('csv')}",
+                f"\n- CSV альтернатив: {paths.get('csv')}"
+                f"\n- CSV компонентов: {paths.get('components_csv')}",
             )
             messagebox.showinfo(
                 "DecisionReport",

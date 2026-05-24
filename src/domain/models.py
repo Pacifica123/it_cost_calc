@@ -480,6 +480,7 @@ class DecisionReport:
     assumptions: list[str] = field(default_factory=list)
     constraints: list[dict[str, Any]] = field(default_factory=list)
     candidate_configurations: list[dict[str, Any]] = field(default_factory=list)
+    solution_component_report: dict[str, Any] = field(default_factory=dict)
     analysis_results: dict[str, Any] = field(default_factory=dict)
     npv_interpretation: dict[str, Any] = field(default_factory=dict)
     winner_explanation: dict[str, Any] = field(default_factory=dict)
@@ -512,6 +513,10 @@ class DecisionReport:
                 for item in payload.get("candidate_configurations", [])
                 if isinstance(item, Mapping)
             ],
+            solution_component_report={
+                str(key): deepcopy(value)
+                for key, value in dict(payload.get("solution_component_report", {})).items()
+            },
             analysis_results={
                 str(key): deepcopy(value)
                 for key, value in dict(payload.get("analysis_results", {})).items()

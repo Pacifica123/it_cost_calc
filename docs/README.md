@@ -28,6 +28,7 @@
 - `architecture/solution_component_editor_mvp.md` — MVP пользовательского редактора компонентов решения, профильная форма и предпросмотр нормализации;
 - `architecture/solution_component_financial_integration.md` — финансовая интеграция компонентов редактора с TCO, энергией, NPV и предупреждениями C5;
 - `architecture/solution_component_analytics_integration.md` — аналитическая интеграция компонентов редактора с CandidateConfiguration, AHP, GA и GA + AHP;
+- `architecture/solution_component_decision_report_export.md` — интеграция компонентов редактора с DecisionReport, JSON/Markdown/CSV-экспортом и объяснением исключённых черновиков;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -88,13 +89,14 @@
 17. `architecture/solution_component_editor_mvp.md`
 18. `architecture/solution_component_financial_integration.md`
 19. `architecture/solution_component_analytics_integration.md`
-20. `architecture/system_schema.md`
-21. `architecture/module_map.md`
-22. `architecture/data_map.md`
-23. `research/genetic_algorithm.md`
-24. `research/ideas/genetic_algorithm_plain_manifest.md`
-25. `research/ideas/future_independent_ga_ahp_assessment.md`
-26. `research/ideas/future_hybrid_ga_ahp_score.md`
-27. `demo/ga_ahp_defense_guide.md`
-28. `demo/demo_data_contract.md`
-29. `traceability.md`
+20. `architecture/solution_component_decision_report_export.md`
+21. `architecture/system_schema.md`
+22. `architecture/module_map.md`
+23. `architecture/data_map.md`
+24. `research/genetic_algorithm.md`
+25. `research/ideas/genetic_algorithm_plain_manifest.md`
+26. `research/ideas/future_independent_ga_ahp_assessment.md`
+27. `research/ideas/future_hybrid_ga_ahp_score.md`
+28. `demo/ga_ahp_defense_guide.md`
+29. `demo/demo_data_contract.md`
+30. `traceability.md`

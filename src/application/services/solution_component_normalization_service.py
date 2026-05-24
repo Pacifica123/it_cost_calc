@@ -218,6 +218,18 @@ class SolutionComponentNormalizationService:
     ) -> dict[str, Any]:
         normalized = self.normalize(component)
         cost_model = self.to_cost_model(normalized)
+        cost_payload = to_plain_data(cost_model)
+        one_time = (
+            float(cost_payload.get("purchase_cost", 0.0))
+            + float(cost_payload.get("implementation_cost", 0.0))
+            + float(cost_payload.get("migration_cost", 0.0))
+            + float(cost_payload.get("testing_cost", 0.0))
+        )
+        monthly = (
+            float(cost_payload.get("subscription_cost", 0.0))
+            + float(cost_payload.get("support_cost", 0.0))
+            + float(cost_payload.get("electricity_cost", 0.0))
+        )
         return {
             "id": normalized.id,
             "name": normalized.name,
@@ -237,7 +249,19 @@ class SolutionComponentNormalizationService:
             "validation_warnings": list(normalized.validation_warnings),
             "blocking_errors": list(normalized.blocking_errors),
             "cost_assumptions": list(normalized.cost_assumptions),
-            "cost_model": to_plain_data(cost_model),
+            "metrics": deepcopy(normalized.metrics),
+            "constraints": deepcopy(normalized.constraints),
+            "cost_model": cost_payload,
+            "financial_contribution": {
+                "purchase_cost": float(cost_payload.get("purchase_cost", 0.0)),
+                "implementation_cost": float(cost_payload.get("implementation_cost", 0.0)),
+                "migration_cost": float(cost_payload.get("migration_cost", 0.0)),
+                "testing_cost": float(cost_payload.get("testing_cost", 0.0)),
+                "monthly_opex": monthly,
+                "annual_opex": monthly * 12.0,
+                "one_time_costs": one_time,
+                "total_first_year_cost": one_time + monthly * 12.0,
+            },
             "metadata": deepcopy(normalized.metadata),
         }
 

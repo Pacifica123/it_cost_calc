@@ -81,6 +81,11 @@ class DecisionReportService:
         )
         npv_interpretation = self._npv_interpretation(npv_report)
         constraints = self._constraints(analysis_results)
+        solution_component_report = self._solution_component_report(
+            components=components,
+            candidates=candidates,
+            analysis_results=analysis_results,
+        )
         warnings = self._warnings(
             components=components,
             candidates=candidates,
@@ -104,6 +109,7 @@ class DecisionReportService:
             assumptions=self._assumptions(assumptions, cost_model=cost_model),
             constraints=constraints,
             candidate_configurations=candidates,
+            solution_component_report=solution_component_report,
             analysis_results=analysis_results,
             npv_interpretation=npv_interpretation,
             winner_explanation=winner_explanation,
@@ -177,6 +183,233 @@ class DecisionReportService:
         snapshot["schema_version"] = row.get("schema_version")
         snapshot.setdefault("strict_analysis_participation", bool(row.get("strict_analysis_participation", False)))
         return snapshot
+
+    def _solution_component_report(
+        self,
+        *,
+        components: Sequence[Mapping[str, Any]],
+        candidates: Sequence[Mapping[str, Any]],
+        analysis_results: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        editor_components = [
+            component
+            for component in components
+            if isinstance(component, Mapping)
+            and component.get("source_format") == "solution_component"
+        ]
+        alternative_links = self._solution_component_alternative_links(candidates)
+        links_by_component: dict[str, list[dict[str, Any]]] = {}
+        for link in alternative_links:
+            links_by_component.setdefault(str(link["component_id"]), []).append(link)
+
+        valid_components: list[dict[str, Any]] = []
+        excluded_components: list[dict[str, Any]] = []
+        for component in editor_components:
+            component_id = str(component.get("id") or "")
+            row = self._solution_component_report_row(
+                component,
+                candidate_links=links_by_component.get(component_id, []),
+            )
+            if bool(component.get("candidate_eligible") or component.get("analysis_ready")):
+                valid_components.append(row)
+            else:
+                excluded_components.append(row)
+
+        ahp_metrics = self._metric_names_from_analysis(analysis_results.get("ahp"))
+        ga_metrics = self._metric_names_from_analysis(analysis_results.get("genetic_optimization"))
+        hybrid_metrics = self._metric_names_from_analysis(analysis_results.get("hybrid_assessment"))
+
+        return {
+            "schema_version": 1,
+            "role_explanation": (
+                "SolutionComponent используется как расширенный ввод для нестандартных компонентов. "
+                "В строгую аналитику попадают только нормализованные компоненты, связанные с "
+                "CandidateConfiguration; черновики и исключённые записи показываются отдельно."
+            ),
+            "counts": {
+                "total": len(editor_components),
+                "valid": len(valid_components),
+                "excluded_or_draft": len(excluded_components),
+                "linked_to_alternatives": len({link["component_id"] for link in alternative_links}),
+            },
+            "valid_components": valid_components,
+            "excluded_components": excluded_components,
+            "alternative_links": alternative_links,
+            "metrics_used_by_method": {
+                "ahp": ahp_metrics,
+                "ga": ga_metrics,
+                "ga_ahp": sorted(set(ahp_metrics + ga_metrics + hybrid_metrics)),
+            },
+            "export_notes": [
+                "JSON содержит полный машинный snapshot отчёта и компонентный раздел.",
+                "Markdown разделяет валидные и исключённые компоненты для защиты вывода.",
+                "CSV кандидатов сохраняет совместимость; отдельный CSV компонентов не смешивает финансовые поля и метрики.",
+            ],
+        }
+
+    def _solution_component_report_row(
+        self,
+        component: Mapping[str, Any],
+        *,
+        candidate_links: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        warnings = [
+            str(item)
+            for item in list(component.get("blocking_errors") or [])
+            + list(component.get("validation_warnings") or [])
+            if item
+        ]
+        financial = component.get("financial_contribution")
+        if not isinstance(financial, Mapping):
+            financial = self._financial_contribution_from_component(component)
+        metrics = component.get("metrics") if isinstance(component.get("metrics"), Mapping) else {}
+        return {
+            "id": str(component.get("id") or ""),
+            "name": str(component.get("name") or component.get("id") or ""),
+            "scope": component.get("scope"),
+            "component_type": component.get("component_type"),
+            "origin": component.get("origin"),
+            "status": component.get("normalization_state") or component.get("editor_status"),
+            "editor_status": component.get("editor_status"),
+            "analysis_ready": bool(component.get("analysis_ready")),
+            "candidate_eligible": bool(component.get("candidate_eligible")),
+            "tco_eligible": bool(component.get("tco_eligible")),
+            "energy_eligible": bool(component.get("energy_eligible")),
+            "npv_eligible": bool(component.get("npv_eligible")),
+            "financial_contribution": dict(financial),
+            "metrics_used": self._user_facing_metrics(metrics),
+            "candidate_links": [dict(link) for link in candidate_links],
+            "warnings": self._unique_text(warnings),
+            "exclusion_reasons": self._exclusion_reasons(component, warnings),
+        }
+
+    def _solution_component_alternative_links(
+        self,
+        candidates: Sequence[Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        links: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for candidate in candidates:
+            if not isinstance(candidate, Mapping):
+                continue
+            candidate_id = str(candidate.get("id") or candidate.get("name") or "candidate")
+            candidate_name = str(candidate.get("name") or candidate_id)
+            source = str(candidate.get("source") or "")
+
+            component_ids: list[str] = []
+            for item in candidate.get("components", []) or []:
+                if not isinstance(item, Mapping):
+                    continue
+                component_id = item.get("source_component_id") or item.get("id")
+                if component_id and (
+                    item.get("source_format") == "solution_component"
+                    or item.get("source_component_id")
+                ):
+                    component_ids.append(str(component_id))
+            metadata = candidate.get("metadata") if isinstance(candidate.get("metadata"), Mapping) else {}
+            for component_id in metadata.get("source_component_ids", []) or []:
+                if component_id:
+                    component_ids.append(str(component_id))
+
+            for component_id in self._unique_text(component_ids):
+                key = (component_id, candidate_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                links.append(
+                    {
+                        "component_id": component_id,
+                        "candidate_id": candidate_id,
+                        "candidate_name": candidate_name,
+                        "candidate_source": source,
+                    }
+                )
+        return links
+
+    def _financial_contribution_from_component(self, component: Mapping[str, Any]) -> dict[str, Any]:
+        cost_model = component.get("cost_model") if isinstance(component.get("cost_model"), Mapping) else {}
+        purchase = self._number(cost_model.get("purchase_cost"), default=0.0)
+        implementation = self._number(cost_model.get("implementation_cost"), default=0.0)
+        migration = self._number(cost_model.get("migration_cost"), default=0.0)
+        testing = self._number(cost_model.get("testing_cost"), default=0.0)
+        monthly = (
+            self._number(cost_model.get("subscription_cost"), default=0.0)
+            + self._number(cost_model.get("support_cost"), default=0.0)
+            + self._number(cost_model.get("electricity_cost"), default=0.0)
+        )
+        one_time = purchase + implementation + migration + testing
+        return {
+            "purchase_cost": purchase,
+            "implementation_cost": implementation,
+            "migration_cost": migration,
+            "testing_cost": testing,
+            "monthly_opex": monthly,
+            "annual_opex": monthly * 12.0,
+            "one_time_costs": one_time,
+            "total_first_year_cost": one_time + monthly * 12.0,
+        }
+
+    def _user_facing_metrics(self, metrics: Mapping[str, Any]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key in (
+            "source_category",
+            "max_power",
+            "client_seats",
+            "license_units",
+            "functionality_score",
+            "support_score",
+            "performance_score",
+            "reliability_score",
+            "hours_per_day",
+            "working_days",
+        ):
+            if key in metrics:
+                result[key] = deepcopy(metrics[key])
+        return result
+
+    def _metric_names_from_analysis(self, value: Any) -> list[str]:
+        if not isinstance(value, Mapping):
+            return []
+        names: list[str] = []
+        criteria = value.get("criteria")
+        if isinstance(criteria, Mapping):
+            weights = criteria.get("weights")
+            if isinstance(weights, Mapping):
+                names.extend(str(key) for key in weights)
+            elif isinstance(weights, list):
+                for item in weights:
+                    if isinstance(item, Mapping):
+                        names.append(str(item.get("id") or item.get("metric") or item.get("name") or ""))
+        for key in ("metrics", "weights", "criteria_weights"):
+            values = value.get(key)
+            if isinstance(values, Mapping):
+                names.extend(str(item) for item in values)
+        return [name for name in self._unique_text(names) if name]
+
+    def _exclusion_reasons(
+        self,
+        component: Mapping[str, Any],
+        warnings: Sequence[str],
+    ) -> list[str]:
+        if bool(component.get("candidate_eligible") or component.get("analysis_ready")):
+            return []
+        reasons = list(warnings)
+        if not reasons:
+            reasons.append(
+                "Компонент сохранён как черновик или исключён из строгой аналитики, поэтому не влияет на итоговый выбор."
+            )
+        return self._unique_text(reasons)
+
+    def _unique_text(self, values: Sequence[Any]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            text = str(value)
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            result.append(text)
+        return result
 
     def _cost_model(self, totals: Mapping[str, Any]) -> dict[str, Any]:
         payload = {str(key): deepcopy(value) for key, value in dict(totals).items()}

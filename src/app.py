@@ -30,6 +30,7 @@ from infrastructure.exporters.decision_report_exporter import (
     export_decision_report_csv,
     export_decision_report_json,
     export_decision_report_markdown,
+    export_solution_component_csv,
 )
 from infrastructure.logging import configure_logging
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
@@ -300,6 +301,7 @@ class CalculatorApp(tk.Tk):
         report_path = export_root / "decision_report.json"
         markdown_path = export_root / "decision_report.md"
         csv_path = export_root / "decision_report_candidates.csv"
+        components_csv_path = export_root / "decision_report_solution_components.csv"
 
         last_genetic_result = getattr(self.genetic_optimization_tab, "last_result", None)
         genetic_result = None
@@ -331,13 +333,20 @@ class CalculatorApp(tk.Tk):
         json_path = export_decision_report_json(report, report_path)
         md_path = export_decision_report_markdown(report, markdown_path)
         table_path = export_decision_report_csv(report, csv_path)
+        components_table_path = export_solution_component_csv(report, components_csv_path)
         logger.info(
-            "DecisionReport экспортирован: json=%s markdown=%s csv=%s",
+            "DecisionReport экспортирован: json=%s markdown=%s csv=%s components_csv=%s",
             json_path,
             md_path,
             table_path,
+            components_table_path,
         )
-        return {"json": json_path, "markdown": md_path, "csv": table_path}
+        return {
+            "json": json_path,
+            "markdown": md_path,
+            "csv": table_path,
+            "components_csv": components_table_path,
+        }
 
     def shutdown(self) -> None:
         if self._is_shutting_down:
