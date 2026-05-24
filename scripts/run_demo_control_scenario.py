@@ -47,6 +47,10 @@ def _validate_expected_invariants(payload: dict, expected_payload: dict) -> list
         "combined_candidate_count",
         "tco_candidate_count",
         "decision_report_candidate_count",
+        "solution_component_count",
+        "solution_component_strict_count",
+        "solution_component_draft_count",
+        "decision_report_solution_component_count",
     ):
         minimum = expected.get(f"{key}_min")
         if minimum is not None and int(invariants.get(key, 0)) < int(minimum):

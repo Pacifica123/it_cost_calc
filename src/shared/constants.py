@@ -38,3 +38,10 @@ ANALYSIS_SCOPE_CAPITAL_CATEGORIES = {
 # These rows are auxiliary sandbox data and should not be treated as strict
 # CAPEX/OPEX/analysis entities unless a dedicated normalizer explicitly opts in.
 LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX = "legacy_infrastructure:"
+
+# Dedicated runtime section for advanced SolutionComponent editor rows.
+# The section lives in the same runtime_entities.json file as legacy CAPEX/OPEX
+# data, but has its own schema marker so drafts can be loaded without forcing
+# migration of older projects.
+SOLUTION_COMPONENT_ENTITY = "solution_components"
+SOLUTION_COMPONENT_SCHEMA_VERSION = 1

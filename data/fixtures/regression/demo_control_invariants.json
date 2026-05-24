@@ -2,7 +2,12 @@
   "schema_version": 1,
   "scenario_id": "it_solution_demo_control_v1",
   "expected": {
-    "required_scopes": ["technical", "software", "implementation", "common"],
+    "required_scopes": [
+      "technical",
+      "software",
+      "implementation",
+      "common"
+    ],
     "required_component_types": [
       "server",
       "workstation",
@@ -21,6 +26,10 @@
     "combined_candidate_count_min": 10,
     "tco_candidate_count_min": 10,
     "decision_report_candidate_count_min": 10,
-    "ga_seed": 42
+    "ga_seed": 42,
+    "solution_component_count_min": 4,
+    "solution_component_strict_count_min": 3,
+    "solution_component_draft_count_min": 1,
+    "decision_report_solution_component_count_min": 4
   }
 }

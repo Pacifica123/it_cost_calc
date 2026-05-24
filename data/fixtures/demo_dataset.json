@@ -1,13 +1,14 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "scenario_id": "it_solution_demo_control_v1",
   "dataset_role": "demonstration",
-  "description": "Сквозной демонстрационный набор для CAPEX/OPEX/энергии, CandidateConfiguration, TCO и DecisionReport.",
+  "description": "Сквозной демонстрационный набор для CAPEX/OPEX/энергии, SolutionComponent, CandidateConfiguration, TCO и DecisionReport.",
   "reproducibility": {
     "ga_seed": 42,
     "ga_init_mode": "heuristic_init",
     "ahp_weights_source": "AnalysisScopeProfileService.default_weights",
-    "candidate_pool_source": "DecisionDemoDataService.scoped_payloads"
+    "candidate_pool_source": "DecisionDemoDataService.scoped_payloads",
+    "solution_component_storage": "entities.solution_components schema_version=1"
   },
   "entities": {
     "server": [
@@ -178,6 +179,84 @@
         "category": "server_administration",
         "scope": "technical",
         "component_type": "support_service"
+      }
+    ],
+    "solution_components": [
+      {
+        "schema_version": 1,
+        "id": "component-tech-analytics-server",
+        "name": "Сервер аналитической базы данных",
+        "scope": "technical",
+        "component_type": "server",
+        "origin": "demo",
+        "strict_analysis_participation": true,
+        "purchase_cost": 146000.0,
+        "quantity": 1,
+        "metrics": {
+          "source_category": "server",
+          "max_power": 420.0,
+          "client_seats": 0,
+          "performance_score": 0.78,
+          "reliability_score": 0.82
+        },
+        "cost_assumptions": [
+          "Цена задана как оценка закупки сервера для демонстрационного сценария."
+        ]
+      },
+      {
+        "schema_version": 1,
+        "id": "component-software-crm-subscription",
+        "name": "CRM-подписка для отдела продаж",
+        "scope": "software",
+        "component_type": "software_subscription",
+        "origin": "demo",
+        "strict_analysis_participation": true,
+        "monthly_cost": 12000.0,
+        "metrics": {
+          "source_category": "subscription_licenses",
+          "license_units": 8,
+          "functionality_score": 0.78,
+          "support_score": 0.8
+        },
+        "cost_assumptions": [
+          "Стоимость задана как ежемесячная подписка без разового внедрения."
+        ]
+      },
+      {
+        "schema_version": 1,
+        "id": "component-mixed-sales-workplace-kit",
+        "name": "Комплект рабочего места отдела продаж",
+        "scope": "mixed",
+        "component_type": "bundle",
+        "origin": "demo",
+        "strict_analysis_participation": true,
+        "purchase_cost": 98000.0,
+        "implementation_cost": 15000.0,
+        "metrics": {
+          "source_category": "solution_bundle",
+          "client_seats": 1,
+          "license_units": 1
+        },
+        "metadata": {
+          "children": [
+            "component-tech-analytics-server",
+            "component-software-crm-subscription"
+          ]
+        },
+        "cost_assumptions": [
+          "Смешанный комплект хранится как агрегированная демонстрационная альтернатива."
+        ]
+      },
+      {
+        "schema_version": 1,
+        "id": "component-draft-unclassified-training",
+        "name": "Черновик компонента для обучения сотрудников",
+        "origin": "demo",
+        "strict_analysis_participation": false,
+        "purchase_cost": 30000.0,
+        "cost_assumptions": [
+          "Черновик намеренно не содержит scope и component_type для проверки предупреждений."
+        ]
       }
     ]
   }

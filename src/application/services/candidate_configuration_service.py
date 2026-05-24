@@ -22,7 +22,11 @@ from domain import (
     to_plain_data,
 )
 from domain.decision.ahp.aggregation import aggregate_configuration
-from shared.constants import ANALYSIS_SCOPE_TECHNICAL, LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX
+from shared.constants import (
+    ANALYSIS_SCOPE_TECHNICAL,
+    LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX,
+    SOLUTION_COMPONENT_ENTITY,
+)
 
 
 class CandidateConfigurationService:
@@ -146,9 +150,26 @@ class CandidateConfigurationService:
         source: str | CandidateConfigurationSource = CandidateConfigurationSource.MANUAL,
     ) -> CandidateConfiguration:
         components: list[dict[str, Any]] = []
+        skipped_solution_component_ids: list[str] = []
         for category, rows in entities.items():
             category_name = str(category)
             if category_name.startswith(LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX):
+                continue
+            if category_name == SOLUTION_COMPONENT_ENTITY:
+                from application.services.solution_component_normalization_service import (
+                    SolutionComponentNormalizationService,
+                )
+
+                service = SolutionComponentNormalizationService(
+                    tco_model_service=self.tco_model_service,
+                )
+                for component in service.normalize_many(rows):
+                    if component.candidate_eligible:
+                        payload = service.to_component_payload(component)
+                        payload.setdefault("source_category", category_name)
+                        components.append(payload)
+                    else:
+                        skipped_solution_component_ids.append(component.id)
                 continue
             for index, row in enumerate(rows):
                 component = normalize_runtime_row(row, category=category_name)
@@ -156,6 +177,9 @@ class CandidateConfigurationService:
                 component.setdefault("source_category", category_name)
                 components.append(component)
         totals = self._totals_from_components(components)
+        metadata = {"legacy_format": "runtime_entities"}
+        if skipped_solution_component_ids:
+            metadata["skipped_solution_component_ids"] = skipped_solution_component_ids
         candidate = CandidateConfiguration(
             id=candidate_id,
             name=name,
@@ -164,7 +188,7 @@ class CandidateConfigurationService:
             totals=totals,
             metrics={},
             source=self._source(source),
-            metadata={"legacy_format": "runtime_entities"},
+            metadata=metadata,
         )
         return self._with_tco(candidate)
 

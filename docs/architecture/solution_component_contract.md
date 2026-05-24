@@ -273,4 +273,4 @@
 - сервис нормализации отдаёт `CostModel`, energy input и snapshot для `DecisionReport`;
 - записи с `_legacy_sandbox=true` или префиксом `legacy_infrastructure:*` не включаются в строгую аналитику автоматически.
 
-UI-редактор, runtime-хранилище и fixture-данные остаются задачами следующих этапов roadmap.
+После C3 runtime-хранилище и fixture-данные реализованы отдельной секцией `entities.solution_components` и описаны в `solution_component_runtime_storage.md`. UI-редактор остаётся задачей следующего этапа roadmap.

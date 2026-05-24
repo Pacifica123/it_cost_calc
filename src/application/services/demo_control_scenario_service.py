@@ -19,12 +19,16 @@ from application.services.decision_demo_service import DecisionDemoDataService
 from application.services.decision_report_service import DecisionReportService
 from application.services.genetic_optimization_service import GeneticOptimizationService
 from application.services.runtime_entity_normalization_service import RuntimeEntityNormalizationService
+from application.services.solution_component_normalization_service import (
+    SolutionComponentNormalizationService,
+)
 from domain.decision.criteria_importance.pipeline import run_importance_pipeline
 from shared.constants import (
     ANALYSIS_SCOPE_SOFTWARE,
     ANALYSIS_SCOPE_TECHNICAL,
     CAPITAL_COST_CATEGORIES,
     OPERATIONAL_COST_CATEGORIES,
+    SOLUTION_COMPONENT_ENTITY,
 )
 
 
@@ -47,14 +51,19 @@ class DemoControlScenarioService:
         demo_data_service: DecisionDemoDataService | None = None,
         candidate_configuration_service: CandidateConfigurationService | None = None,
         decision_report_service: DecisionReportService | None = None,
+        solution_component_service: SolutionComponentNormalizationService | None = None,
     ):
         self.normalizer = normalizer or RuntimeEntityNormalizationService()
         self.demo_data_service = demo_data_service or DecisionDemoDataService()
         self.candidate_configuration_service = (
             candidate_configuration_service or CandidateConfigurationService()
         )
+        self.solution_component_service = (
+            solution_component_service or SolutionComponentNormalizationService()
+        )
         self.decision_report_service = decision_report_service or DecisionReportService(
-            self.candidate_configuration_service
+            self.candidate_configuration_service,
+            solution_component_service=self.solution_component_service,
         )
 
     def build(
@@ -181,6 +190,19 @@ class DemoControlScenarioService:
         if not report_candidates:
             errors.append("DecisionReport has no candidate_configurations")
 
+        solution_rows = normalized_entities.get(SOLUTION_COMPONENT_ENTITY, [])
+        for index, row in enumerate(solution_rows):
+            if not isinstance(row, Mapping):
+                errors.append(f"{SOLUTION_COMPONENT_ENTITY}[{index}] is not a mapping")
+                continue
+            component = self.solution_component_service.normalize(row)
+            if not component.candidate_eligible and not (
+                component.validation_warnings or component.blocking_errors
+            ):
+                errors.append(
+                    f"{SOLUTION_COMPONENT_ENTITY}[{index}] is excluded without warnings/errors"
+                )
+
         reproducibility = scenario_payload.get("reproducibility", {})
         if not isinstance(reproducibility, Mapping):
             errors.append("reproducibility must be a mapping")
@@ -244,6 +266,17 @@ class DemoControlScenarioService:
             if isinstance(payload, Mapping):
                 candidate_count_by_scope[str(scope)] = len(payload.get("candidate_configurations", []) or [])
 
+        solution_components = self.solution_component_service.normalize_many(
+            normalized_entities.get(SOLUTION_COMPONENT_ENTITY, [])
+        )
+        decision_components = decision_report.get("components", []) or []
+        decision_solution_components = [
+            component
+            for component in decision_components
+            if isinstance(component, Mapping)
+            and component.get("source_format") == "solution_component"
+        ]
+
         return {
             "known_runtime_rows": known_rows,
             "scope_counts": scope_counts,
@@ -258,6 +291,14 @@ class DemoControlScenarioService:
             "criteria_report_scopes": sorted(criteria_reports),
             "decision_report_candidate_count": len(decision_report.get("candidate_configurations", []) or []),
             "decision_report_warning_count": len(decision_report.get("warnings", []) or []),
+            "solution_component_count": len(solution_components),
+            "solution_component_strict_count": sum(
+                1 for component in solution_components if component.candidate_eligible
+            ),
+            "solution_component_draft_count": sum(
+                1 for component in solution_components if not component.candidate_eligible
+            ),
+            "decision_report_solution_component_count": len(decision_solution_components),
         }
 
     def _fixture_roles(self) -> dict[str, Any]:
@@ -270,8 +311,9 @@ class DemoControlScenarioService:
                 ],
             },
             "demonstration": {
-                "purpose": "Сквозной пользовательский сценарий загрузки данных и показа выбора ИТ-решения.",
+                "purpose": "Сквозной пользовательский сценарий загрузки данных и показа выбора ИТ-решения, включая SolutionComponent.",
                 "fixture": "data/fixtures/demo_dataset.json",
+                "solution_component_entity": SOLUTION_COMPONENT_ENTITY,
             },
             "regression": {
                 "purpose": "Проверка инвариантов без тестового раннера и без записи cache-файлов.",
@@ -299,6 +341,10 @@ class DemoControlScenarioService:
             "hybrid_assessment": {
                 "candidate_pool_source": "same_as_ga_ahp_export_payload",
                 "rule": "compare GA and AHP leaders over one candidate pool",
+            },
+            "solution_components": {
+                "entity": SOLUTION_COMPONENT_ENTITY,
+                "drafts_are_excluded": True,
             },
         }
 

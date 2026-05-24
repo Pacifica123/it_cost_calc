@@ -209,6 +209,9 @@ class SolutionComponentNormalizationService:
                 normalized.component_type.value if normalized.component_type else None
             ),
             "origin": normalized.origin.value,
+            "source_format": "solution_component",
+            "normalization_state": normalized.normalization_state.value,
+            "editor_status": "strict" if normalized.candidate_eligible else "draft",
             "analysis_ready": normalized.analysis_ready,
             "candidate_eligible": normalized.candidate_eligible,
             "tco_eligible": normalized.tco_eligible,
@@ -235,6 +238,9 @@ class SolutionComponentNormalizationService:
                 normalized.component_type.value if normalized.component_type else None
             ),
             "origin": normalized.origin.value,
+            "source_format": "solution_component",
+            "normalization_state": normalized.normalization_state.value,
+            "editor_status": "strict" if normalized.candidate_eligible else "draft",
             "quantity": normalized.quantity,
             "purchase_cost": normalized.purchase_cost,
             "implementation_cost": normalized.implementation_cost,

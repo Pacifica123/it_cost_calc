@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Реестр fixture-ролей после этапа 8: учебные примеры, пользовательское демо и регрессионные инварианты больше не смешиваются в одном смысловом слое.",
+  "description": "Реестр fixture-ролей после добавления runtime-хранения SolutionComponent: учебные примеры, пользовательское демо, компоненты редактора и регрессионные инварианты не смешиваются в одном смысловом слое.",
   "roles": {
     "educational": [
       {
@@ -16,7 +16,7 @@
       {
         "path": "data/fixtures/demo_dataset.json",
         "scenario_id": "it_solution_demo_control_v1",
-        "purpose": "Сквозной пользовательский сценарий: CAPEX/OPEX/энергия → CandidateConfiguration → TCO → DecisionReport."
+        "purpose": "Сквозной пользовательский сценарий: CAPEX/OPEX/энергия + SolutionComponent → CandidateConfiguration → TCO → DecisionReport."
       }
     ],
     "regression": [
@@ -30,6 +30,7 @@
     "ga_seed": 42,
     "ga_init_mode": "heuristic_init",
     "ahp_weights_source": "AnalysisScopeProfileService.default_weights",
-    "hybrid_assessment_candidate_pool": "same_as_ga_ahp_export_payload"
+    "hybrid_assessment_candidate_pool": "same_as_ga_ahp_export_payload",
+    "solution_component_storage": "data/fixtures/demo_dataset.json::entities.solution_components"
   }
 }

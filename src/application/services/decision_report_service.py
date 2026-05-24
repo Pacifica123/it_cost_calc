@@ -14,8 +14,11 @@ from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
 from application.services.candidate_configuration_service import CandidateConfigurationService
+from application.services.solution_component_normalization_service import (
+    SolutionComponentNormalizationService,
+)
 from domain import DecisionReport, to_plain_data
-from shared.constants import LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX
+from shared.constants import LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX, SOLUTION_COMPONENT_ENTITY
 
 
 class DecisionReportService:
@@ -27,9 +30,13 @@ class DecisionReportService:
     def __init__(
         self,
         candidate_configuration_service: CandidateConfigurationService | None = None,
+        solution_component_service: SolutionComponentNormalizationService | None = None,
     ):
         self.candidate_configuration_service = (
             candidate_configuration_service or CandidateConfigurationService()
+        )
+        self.solution_component_service = (
+            solution_component_service or SolutionComponentNormalizationService()
         )
 
     def build_report(
@@ -75,6 +82,7 @@ class DecisionReportService:
         npv_interpretation = self._npv_interpretation(npv_report)
         constraints = self._constraints(analysis_results)
         warnings = self._warnings(
+            components=components,
             candidates=candidates,
             analysis_results=analysis_results,
             npv_interpretation=npv_interpretation,
@@ -125,6 +133,11 @@ class DecisionReportService:
         components: list[dict[str, Any]] = []
         for category, rows in dict(entities).items():
             category_name = str(category)
+            if category_name == SOLUTION_COMPONENT_ENTITY:
+                for index, row in enumerate(rows):
+                    components.append(self._solution_component_snapshot(row, index=index))
+                continue
+
             is_legacy_sandbox = category_name.startswith(LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX)
             for index, row in enumerate(rows):
                 component = {str(key): deepcopy(value) for key, value in dict(row).items()}
@@ -136,6 +149,34 @@ class DecisionReportService:
                     component.setdefault("strict_analysis_participation", False)
                 components.append(component)
         return components
+
+    def _solution_component_snapshot(
+        self,
+        row: Mapping[str, Any],
+        *,
+        index: int,
+    ) -> dict[str, Any]:
+        try:
+            snapshot = self.solution_component_service.to_decision_report_component_snapshot(row)
+        except Exception as error:  # defensive: report export should not fail on one draft
+            snapshot = {
+                "id": str(row.get("id") or f"{SOLUTION_COMPONENT_ENTITY}:{index}"),
+                "name": str(row.get("name") or row.get("title") or "Компонент редактора"),
+                "source_format": "solution_component",
+                "normalization_state": "blocked",
+                "editor_status": "draft",
+                "analysis_ready": False,
+                "candidate_eligible": False,
+                "validation_warnings": [],
+                "blocking_errors": [f"SolutionComponent export failed: {error}"],
+            }
+        snapshot.setdefault("id", f"{SOLUTION_COMPONENT_ENTITY}:{index}")
+        snapshot.setdefault("name", snapshot["id"])
+        snapshot["source_category"] = SOLUTION_COMPONENT_ENTITY
+        snapshot["role"] = "solution_component_editor"
+        snapshot["schema_version"] = row.get("schema_version")
+        snapshot.setdefault("strict_analysis_participation", bool(row.get("strict_analysis_participation", False)))
+        return snapshot
 
     def _cost_model(self, totals: Mapping[str, Any]) -> dict[str, Any]:
         payload = {str(key): deepcopy(value) for key, value in dict(totals).items()}
@@ -268,6 +309,7 @@ class DecisionReportService:
     def _warnings(
         self,
         *,
+        components: Sequence[Mapping[str, Any]],
         candidates: Sequence[Mapping[str, Any]],
         analysis_results: Mapping[str, Any],
         npv_interpretation: Mapping[str, Any],
@@ -279,6 +321,18 @@ class DecisionReportService:
             warnings.append("Нет результатов аналитических методов: отчёт содержит только исходные данные и стоимость.")
         if npv_interpretation.get("status") == "not_provided":
             warnings.append("NPV-интерпретация отсутствует: финансовый вывод неполный.")
+        for component in components:
+            if component.get("source_format") != "solution_component":
+                continue
+            if not component.get("candidate_eligible", False):
+                name = component.get("name") or component.get("id") or "компонент"
+                state = component.get("normalization_state") or "draft"
+                warnings.append(
+                    f"Компонент редактора '{name}' сохранён со статусом {state} "
+                    "и не участвует в строгой аналитике."
+                )
+            for warning in component.get("blocking_errors", []) or []:
+                warnings.append(str(warning))
         for warning in npv_interpretation.get("warnings", []) or []:
             warnings.append(str(warning))
         return list(dict.fromkeys(warnings))

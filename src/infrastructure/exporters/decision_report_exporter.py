@@ -33,6 +33,13 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
     recommended = _mapping(winner.get("recommended"))
     npv = _mapping(report.get("npv_interpretation"))
     candidates = _sequence(report.get("candidate_configurations"))
+    components = _sequence(report.get("components"))
+    editor_components = [
+        component
+        for component in components
+        if isinstance(component, Mapping)
+        and component.get("source_format") == "solution_component"
+    ]
     warnings = [str(item) for item in _sequence(report.get("warnings"))]
     risks = _sequence(report.get("risks"))
 
@@ -60,9 +67,17 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
             f"- Годовые расходы: {_money(tco.get('annual_opex'))}",
             f"- TCO за период: {_money(tco.get('total_ownership_cost'))}",
             "",
-            "## 4. Пул альтернатив",
+            "## 4. Компоненты редактора",
         ]
     )
+    if editor_components:
+        lines.extend(_solution_component_table(editor_components[:10]))
+        if len(editor_components) > 10:
+            lines.append(f"\nПоказаны первые 10 компонентов редактора из {len(editor_components)}.")
+    else:
+        lines.append("Компоненты редактора SolutionComponent не переданы в отчёт.")
+
+    lines.extend(["", "## 5. Пул альтернатив"])
     if candidates:
         lines.extend(_candidate_table(candidates[:10]))
         if len(candidates) > 10:
@@ -73,12 +88,12 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## 5. NPV-интерпретация",
+            "## 6. NPV-интерпретация",
             f"- Статус: {npv.get('status', 'не рассчитан')}",
             f"- Значение NPV: {_money(npv.get('npv'))}",
             f"- Пояснение: {npv.get('interpretation') or npv.get('explanation', 'не указано')}",
             "",
-            "## 6. Риски и предупреждения",
+            "## 7. Риски и предупреждения",
         ]
     )
     if risks:
@@ -97,7 +112,7 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## 7. Сценарий защиты",
+            "## 8. Сценарий защиты",
             "1. Пользователь вводит компоненты решения и связанные затраты.",
             "2. Компоненты нормализуются по области анализа и типу.",
             "3. Из компонентов формируется пул кандидатных конфигураций.",
@@ -174,6 +189,37 @@ def export_decision_report_csv(report: Mapping[str, Any], filename: str | Path) 
         writer.writeheader()
         writer.writerows(rows)
     return path
+
+
+def _solution_component_table(components: Sequence[Any]) -> list[str]:
+    lines = [
+        "| ID | Компонент | Scope | Статус | Предупреждения |",
+        "|---|---|---|---|---|",
+    ]
+    for component in components:
+        if not isinstance(component, Mapping):
+            continue
+        warnings = [
+            str(item)
+            for item in _sequence(component.get("blocking_errors"))
+            + _sequence(component.get("validation_warnings"))
+            if item
+        ]
+        warning_text = "; ".join(warnings[:2]) or "—"
+        lines.append(
+            "| {id} | {name} | {scope} | {status} | {warnings} |".format(
+                id=str(component.get("id", "")).replace("|", "\\|"),
+                name=str(component.get("name", "")).replace("|", "\\|"),
+                scope=str(component.get("scope") or "").replace("|", "\\|"),
+                status=str(
+                    component.get("normalization_state")
+                    or component.get("editor_status")
+                    or ""
+                ).replace("|", "\\|"),
+                warnings=warning_text.replace("|", "\\|"),
+            )
+        )
+    return lines
 
 
 def _candidate_table(candidates: Sequence[Any]) -> list[str]:
