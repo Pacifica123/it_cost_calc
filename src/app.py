@@ -132,7 +132,10 @@ class CalculatorApp(tk.Tk):
         self.notebook.add(self.solution_component_editor_tab, text="Редактор компонентов")
 
         self.it_infrastructure_tab = infrastructure_tab.ITInfrastructureTab(
-            self.notebook, self.crud
+            self.notebook,
+            self.crud,
+            solution_component_runtime_service=self.solution_component_runtime_service,
+            on_component_converted=self._refresh_solution_component_views,
         )
         self.notebook.add(self.it_infrastructure_tab, text="ИТ-песочница (архив)")
 
@@ -194,6 +197,13 @@ class CalculatorApp(tk.Tk):
         )
         ttk.Label(toolbar, textvariable=self.demo_status_var).pack(side="left", padx=(12, 0))
         ttk.Button(toolbar, text="Выход", command=self.shutdown).pack(side="right")
+
+
+    def _refresh_solution_component_views(self) -> None:
+        self.solution_component_editor_tab.refresh_components()
+        self.update_total_costs()
+        self.export_tab.update_summary()
+        logger.debug("UI-представления обновлены после ручной конвертации sandbox-записи")
 
     def _has_runtime_data(self) -> bool:
         return any(rows for rows in self.entity_repository.entities.values())

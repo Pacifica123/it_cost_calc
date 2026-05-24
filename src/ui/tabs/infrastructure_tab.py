@@ -12,13 +12,71 @@ import logging
 import re
 import tkinter as tk
 from tkinter import messagebox, ttk
-from typing import Any
+from typing import Any, Callable
 
+from application.services.solution_component_sandbox_conversion_service import (
+    SolutionComponentSandboxConversionService,
+)
+from application.services.solution_component_runtime_service import SolutionComponentRuntimeService
+from domain import ComponentType
 from shared.constants import LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX
 from shared.validation import parse_float, parse_int, require_text
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
+from ui.tabs.solution_component_editor_tab import format_normalization_preview
 
 logger = logging.getLogger(__name__)
+
+_CONVERSION_SCOPE_COMPONENT_TYPES = {
+    "technical": (
+        ComponentType.SERVER.value,
+        ComponentType.WORKSTATION.value,
+        ComponentType.PERIPHERAL.value,
+        ComponentType.NETWORK_DEVICE.value,
+        ComponentType.SUPPORT_SERVICE.value,
+        ComponentType.BACKUP_SERVICE.value,
+    ),
+    "software": (
+        ComponentType.SOFTWARE_LICENSE.value,
+        ComponentType.SOFTWARE_SUBSCRIPTION.value,
+        ComponentType.SOFTWARE_SERVICE.value,
+        ComponentType.IMPLEMENTATION_SERVICE.value,
+        ComponentType.SUPPORT_SERVICE.value,
+    ),
+    "implementation": (
+        ComponentType.IMPLEMENTATION_SERVICE.value,
+        ComponentType.SUPPORT_SERVICE.value,
+    ),
+    "mixed": (
+        ComponentType.BUNDLE.value,
+        ComponentType.SERVER.value,
+        ComponentType.SOFTWARE_SERVICE.value,
+        ComponentType.IMPLEMENTATION_SERVICE.value,
+        ComponentType.SUPPORT_SERVICE.value,
+    ),
+}
+
+_CONVERSION_FINANCIAL_FIELDS = (
+    ("purchase_cost", "Покупка / CAPEX"),
+    ("implementation_cost", "Внедрение"),
+    ("migration_cost", "Миграция"),
+    ("testing_cost", "Тестирование"),
+    ("monthly_cost", "Ежемесячно"),
+    ("annual_cost", "Ежегодно"),
+    ("energy_cost", "Энергия / мес."),
+    ("quantity", "Количество"),
+)
+
+_CONVERSION_METRIC_FIELDS = (
+    ("max_power", "Мощность, Вт"),
+    ("client_seats", "Рабочие места"),
+    ("license_units", "Лицензии / пользователи"),
+    ("functionality_score", "Функциональность"),
+    ("performance_score", "Производительность"),
+    ("reliability_score", "Надёжность"),
+    ("support_score", "Поддержка"),
+    ("hours_per_day", "Часы работы в день"),
+    ("working_days", "Рабочие дни в месяце"),
+)
 
 
 class ITInfrastructureTab(BaseScrollableTab):
@@ -44,9 +102,20 @@ class ITInfrastructureTab(BaseScrollableTab):
         "_legacy_note",
     }
 
-    def __init__(self, parent, crud):
+    def __init__(
+        self,
+        parent,
+        crud,
+        *,
+        solution_component_runtime_service: SolutionComponentRuntimeService | None = None,
+        conversion_service: SolutionComponentSandboxConversionService | None = None,
+        on_component_converted: Callable[[], None] | None = None,
+    ):
         super().__init__(parent)
         self.crud = crud
+        self.solution_component_runtime_service = solution_component_runtime_service
+        self.conversion_service = conversion_service or SolutionComponentSandboxConversionService()
+        self.on_component_converted = on_component_converted
         self.tables: dict[str, tuple[tk.Frame, ttk.Treeview, tk.Frame]] = {}
 
         self.inner_frame.columnconfigure(0, weight=1)
@@ -205,6 +274,12 @@ class ITInfrastructureTab(BaseScrollableTab):
             text="Удалить",
             command=lambda key=entity_key: self.delete_row(key),
         ).pack(side="left", padx=(6, 0))
+        if self.solution_component_runtime_service is not None:
+            tk.Button(
+                buttons_frame,
+                text="Преобразовать в компонент",
+                command=lambda key=entity_key: self.convert_selected_row(key),
+            ).pack(side="left", padx=(12, 0))
 
         self.tables[entity_key] = (frame, table, buttons_frame)
 
@@ -234,6 +309,215 @@ class ITInfrastructureTab(BaseScrollableTab):
             messagebox.showwarning("Нет выбора", "Выберите строку для удаления", parent=self)
             return
         self.crud.delete(entity_key, selected_index, table)
+
+
+    def convert_selected_row(self, entity_key: str) -> None:
+        """Open explicit conversion dialog for one selected legacy row."""
+
+        if self.solution_component_runtime_service is None:
+            messagebox.showwarning(
+                "Конвертация недоступна",
+                "Редактор компонентов не подключён к этой вкладке.",
+                parent=self,
+            )
+            return
+        table = self.tables[entity_key][1]
+        selected_index = self._selected_index(table)
+        if selected_index is None:
+            messagebox.showwarning("Нет выбора", "Выберите sandbox-запись для конвертации", parent=self)
+            return
+        rows = self.crud.entities.get(entity_key, [])
+        if selected_index >= len(rows):
+            messagebox.showwarning("Нет строки", "Выбранная sandbox-запись уже недоступна.", parent=self)
+            return
+        self._show_conversion_dialog(entity_key, selected_index, rows[selected_index])
+
+    def _show_conversion_dialog(
+        self,
+        entity_key: str,
+        selected_index: int,
+        row: dict[str, Any],
+    ) -> None:
+        draft = self.conversion_service.build_conversion_draft(
+            row,
+            sandbox_entity=entity_key,
+            row_index=selected_index,
+        )
+        popup = tk.Toplevel(self)
+        popup.title("Преобразовать sandbox-запись в компонент")
+        popup.transient(self)
+        popup.grab_set()
+
+        container = tk.Frame(popup, padx=12, pady=12)
+        container.pack(fill="both", expand=True)
+        container.columnconfigure(1, weight=1)
+        container.columnconfigure(3, weight=1)
+
+        intro = tk.Label(
+            container,
+            text=(
+                "Конвертация выполняется только вручную. Исходная sandbox-запись останется на месте; "
+                "новая строка попадёт в редактор компонентов как черновик, пока вы явно не включите "
+                "строгую аналитику и не заполните обязательные поля."
+            ),
+            justify="left",
+            anchor="w",
+            wraplength=820,
+            fg="#555555",
+        )
+        intro.grid(row=0, column=0, columnspan=4, sticky="ew", pady=(0, 8))
+
+        id_var = tk.StringVar(value=str(draft.get("id", "")))
+        name_var = tk.StringVar(value=str(draft.get("name", "")))
+        scope_var = tk.StringVar(value=str(draft.get("scope") or "mixed"))
+        type_var = tk.StringVar(value=str(draft.get("component_type") or ComponentType.BUNDLE.value))
+        strict_var = tk.BooleanVar(value=bool(draft.get("strict_analysis_participation", False)))
+
+        tk.Label(container, text="ID компонента").grid(row=1, column=0, sticky="w", pady=3)
+        tk.Entry(container, textvariable=id_var, width=36).grid(row=1, column=1, sticky="ew", pady=3)
+        tk.Label(container, text="Название").grid(row=2, column=0, sticky="w", pady=3)
+        tk.Entry(container, textvariable=name_var, width=36).grid(row=2, column=1, sticky="ew", pady=3)
+
+        tk.Label(container, text="Профиль").grid(row=1, column=2, sticky="w", padx=(12, 4), pady=3)
+        scope_combo = ttk.Combobox(
+            container,
+            textvariable=scope_var,
+            values=tuple(_CONVERSION_SCOPE_COMPONENT_TYPES),
+            state="readonly",
+            width=26,
+        )
+        scope_combo.grid(row=1, column=3, sticky="ew", pady=3)
+        tk.Label(container, text="Тип компонента").grid(row=2, column=2, sticky="w", padx=(12, 4), pady=3)
+        type_combo = ttk.Combobox(
+            container,
+            textvariable=type_var,
+            values=_CONVERSION_SCOPE_COMPONENT_TYPES.get(scope_var.get(), _CONVERSION_SCOPE_COMPONENT_TYPES["mixed"]),
+            state="readonly",
+            width=26,
+        )
+        type_combo.grid(row=2, column=3, sticky="ew", pady=3)
+
+        def on_scope_change(_event=None) -> None:
+            allowed = _CONVERSION_SCOPE_COMPONENT_TYPES.get(scope_var.get(), _CONVERSION_SCOPE_COMPONENT_TYPES["mixed"])
+            type_combo.configure(values=allowed)
+            if type_var.get() not in allowed:
+                type_var.set(allowed[0])
+
+        scope_combo.bind("<<ComboboxSelected>>", on_scope_change)
+
+        finance_frame = tk.LabelFrame(container, text="Разнести сумму по финансовым полям", padx=8, pady=6)
+        finance_frame.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(8, 4))
+        finance_frame.columnconfigure(1, weight=1)
+        finance_frame.columnconfigure(3, weight=1)
+        financial_vars: dict[str, tk.StringVar] = {}
+        for idx, (key, label) in enumerate(_CONVERSION_FINANCIAL_FIELDS):
+            row_no = idx // 2
+            col_no = 0 if idx % 2 == 0 else 2
+            var = tk.StringVar(value=_format_conversion_number(draft.get(key, "")))
+            financial_vars[key] = var
+            tk.Label(finance_frame, text=label).grid(row=row_no, column=col_no, sticky="w", padx=(0, 4), pady=3)
+            tk.Entry(finance_frame, textvariable=var, width=24).grid(row=row_no, column=col_no + 1, sticky="ew", pady=3)
+
+        metrics_frame = tk.LabelFrame(container, text="Метрики профиля (можно оставить пустыми)", padx=8, pady=6)
+        metrics_frame.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(8, 4))
+        metrics_frame.columnconfigure(1, weight=1)
+        metrics_frame.columnconfigure(3, weight=1)
+        metric_vars: dict[str, tk.StringVar] = {}
+        for idx, (key, label) in enumerate(_CONVERSION_METRIC_FIELDS):
+            row_no = idx // 2
+            col_no = 0 if idx % 2 == 0 else 2
+            value = dict(draft.get("metrics") or {}).get(key, "")
+            var = tk.StringVar(value=_format_conversion_number(value))
+            metric_vars[key] = var
+            tk.Label(metrics_frame, text=label).grid(row=row_no, column=col_no, sticky="w", padx=(0, 4), pady=3)
+            tk.Entry(metrics_frame, textvariable=var, width=24).grid(row=row_no, column=col_no + 1, sticky="ew", pady=3)
+
+        assumptions_frame = tk.LabelFrame(container, text="Комментарий / допущения", padx=8, pady=6)
+        assumptions_frame.grid(row=5, column=0, columnspan=4, sticky="ew", pady=(8, 4))
+        assumptions_frame.columnconfigure(0, weight=1)
+        assumptions_text = tk.Text(assumptions_frame, height=4, wrap="word")
+        assumptions_text.grid(row=0, column=0, sticky="ew")
+        assumptions_text.insert("1.0", "\n".join(draft.get("cost_assumptions") or []))
+
+        tk.Checkbutton(
+            container,
+            text="Сразу включить в строгую аналитику после нормализации",
+            variable=strict_var,
+        ).grid(row=6, column=0, columnspan=4, sticky="w", pady=(6, 2))
+
+        preview_var = tk.StringVar(value="Нажмите «Предпросмотр», чтобы увидеть warnings до сохранения.")
+        preview_label = tk.Label(container, textvariable=preview_var, justify="left", anchor="w", wraplength=820)
+        preview_label.grid(row=7, column=0, columnspan=4, sticky="ew", pady=(8, 4))
+
+        def collect_overrides() -> dict[str, Any]:
+            metrics = {
+                key: _conversion_number_or_text(var.get())
+                for key, var in metric_vars.items()
+                if str(var.get()).strip() != ""
+            }
+            if str(financial_vars["quantity"].get()).strip():
+                metrics.setdefault("quantity", _conversion_number_or_text(financial_vars["quantity"].get()))
+            return {
+                "id": id_var.get().strip(),
+                "name": name_var.get().strip(),
+                "scope": scope_var.get(),
+                "component_type": type_var.get(),
+                "strict_analysis_participation": strict_var.get(),
+                **{key: var.get() for key, var in financial_vars.items()},
+                "metrics": metrics,
+                "cost_assumptions": assumptions_text.get("1.0", "end").splitlines(),
+            }
+
+        def preview() -> None:
+            try:
+                normalized = self.conversion_service.preview_conversion(
+                    row,
+                    sandbox_entity=entity_key,
+                    row_index=selected_index,
+                    overrides=collect_overrides(),
+                )
+            except ValueError as error:
+                messagebox.showerror("Ошибка ввода", str(error), parent=popup)
+                return
+            preview_var.set(format_normalization_preview(normalized))
+
+        def save() -> None:
+            try:
+                payload = self.conversion_service.build_conversion_draft(
+                    row,
+                    sandbox_entity=entity_key,
+                    row_index=selected_index,
+                    overrides=collect_overrides(),
+                )
+                normalized = self.solution_component_runtime_service.add_component(payload)
+            except ValueError as error:
+                messagebox.showerror("Ошибка ввода", str(error), parent=popup)
+                return
+            preview_var.set(format_normalization_preview(normalized))
+            logger.info(
+                "Sandbox-запись вручную преобразована в SolutionComponent: entity=%s index=%s component=%s",
+                entity_key,
+                selected_index,
+                normalized.id,
+            )
+            if self.on_component_converted is not None:
+                self.on_component_converted()
+            messagebox.showinfo(
+                "Компонент создан",
+                "Новая строка добавлена в редактор компонентов. Исходная sandbox-запись не изменена.",
+                parent=popup,
+            )
+            popup.destroy()
+
+        buttons = tk.Frame(container)
+        buttons.grid(row=8, column=0, columnspan=4, sticky="e", pady=(10, 0))
+        tk.Button(buttons, text="Предпросмотр", command=preview).pack(side="left", padx=(0, 8))
+        tk.Button(buttons, text="Создать компонент", command=save).pack(side="left", padx=(0, 8))
+        tk.Button(buttons, text="Отмена", command=popup.destroy).pack(side="left")
+
+        popup.bind("<Escape>", lambda _event: popup.destroy())
+        on_scope_change()
+        preview()
 
     def _show_row_dialog(
         self,
@@ -379,6 +663,28 @@ class ITInfrastructureTab(BaseScrollableTab):
 
     def _is_sandbox_key(self, entity_key: str) -> bool:
         return str(entity_key).startswith(LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX)
+
+
+def _format_conversion_number(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value or "")
+    if number.is_integer():
+        return str(int(number))
+    return str(number)
+
+
+def _conversion_number_or_text(value: Any) -> Any:
+    if value is None:
+        return ""
+    raw = str(value).strip()
+    if raw == "":
+        return ""
+    try:
+        return float(raw.replace(",", "."))
+    except ValueError:
+        return raw
 
 
 __all__ = ["ITInfrastructureTab"]

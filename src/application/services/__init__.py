@@ -23,6 +23,7 @@ _EXPORTS = {
     "SolutionComponentAnalyticsIntegrationService": "application.services.solution_component_analytics_service",
     "SolutionComponentNormalizationService": "application.services.solution_component_normalization_service",
     "SolutionComponentRuntimeService": "application.services.solution_component_runtime_service",
+    "SolutionComponentSandboxConversionService": "application.services.solution_component_sandbox_conversion_service",
     "TCOModelService": "application.services.tco_model_service",
 }
 
