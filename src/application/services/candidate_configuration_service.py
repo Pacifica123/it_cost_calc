@@ -168,6 +168,32 @@ class CandidateConfigurationService:
         )
         return self._with_tco(candidate)
 
+    def from_solution_components(
+        self,
+        components: Iterable[Mapping[str, Any]],
+        *,
+        scope: str | AnalysisScope | None = None,
+        candidate_id: str = "solution_components",
+        name: str = "Компоненты решения",
+        source: str | CandidateConfigurationSource = CandidateConfigurationSource.MANUAL,
+    ) -> CandidateConfiguration:
+        """Convert normalized SolutionComponent payloads into the shared candidate shape."""
+
+        from application.services.solution_component_normalization_service import (
+            SolutionComponentNormalizationService,
+        )
+
+        service = SolutionComponentNormalizationService(
+            tco_model_service=self.tco_model_service,
+        )
+        return service.to_candidate_configuration(
+            components,
+            candidate_id=candidate_id,
+            name=name,
+            scope=scope,
+            source=source,
+        )
+
     def to_ahp_configurations(
         self,
         candidates: Iterable[CandidateConfiguration | Mapping[str, Any]],

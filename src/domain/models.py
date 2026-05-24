@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
-from typing import Any, Mapping, TypeVar
+from typing import Any, Mapping, Sequence, TypeVar
 
 
 class ExpenseType(str, Enum):
@@ -17,6 +17,7 @@ class AnalysisScope(str, Enum):
     SOFTWARE = "software"
     IMPLEMENTATION = "implementation"
     COMMON = "common"
+    MIXED = "mixed"
 
 
 class CandidateConfigurationSource(str, Enum):
@@ -25,6 +26,14 @@ class CandidateConfigurationSource(str, Enum):
     GA = "ga"
     CATALOG = "catalog"
     IMPORTED = "imported"
+
+
+class SolutionComponentOrigin(str, Enum):
+    MANUAL = "manual"
+    DEMO = "demo"
+    CATALOG = "catalog"
+    IMPORTED = "imported"
+    CONVERTED_SANDBOX = "converted_sandbox"
 
 
 class ComponentType(str, Enum):
@@ -38,6 +47,7 @@ class ComponentType(str, Enum):
     IMPLEMENTATION_SERVICE = "implementation_service"
     SUPPORT_SERVICE = "support_service"
     BACKUP_SERVICE = "backup_service"
+    BUNDLE = "bundle"
 
 
 class EquipmentCategory(str, Enum):
@@ -194,7 +204,155 @@ class Alternative:
         )
 
 
+class SolutionComponentNormalizationState(str, Enum):
+    DRAFT = "draft"
+    NORMALIZED = "normalized"
+    ANALYSIS_READY = "analysis_ready"
+    BLOCKED = "blocked"
 
+
+@dataclass(slots=True)
+class SolutionComponent:
+    """User-defined solution component prepared for analysis adapters.
+
+    The model deliberately stores the input component and normalization flags,
+    not a duplicated candidate configuration.  Application services can convert
+    this object to ``CandidateConfiguration``, ``CostModel``, energy input or a
+    decision-report snapshot when the component is ready enough for that path.
+    """
+
+    id: str
+    name: str
+    scope: AnalysisScope | None = None
+    component_type: ComponentType | None = None
+    origin: SolutionComponentOrigin = SolutionComponentOrigin.MANUAL
+    strict_analysis_participation: bool = False
+    purchase_cost: float = 0.0
+    implementation_cost: float = 0.0
+    migration_cost: float = 0.0
+    testing_cost: float = 0.0
+    monthly_cost: float = 0.0
+    annual_cost: float = 0.0
+    energy_cost: float = 0.0
+    quantity: float = 1.0
+    metrics: dict[str, Any] = field(default_factory=dict)
+    constraints: dict[str, Any] = field(default_factory=dict)
+    cost_assumptions: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    validation_warnings: list[str] = field(default_factory=list)
+    blocking_errors: list[str] = field(default_factory=list)
+    candidate_eligible: bool = False
+    tco_eligible: bool = False
+    energy_eligible: bool = False
+    npv_eligible: bool = False
+    analysis_ready: bool = False
+    normalization_state: SolutionComponentNormalizationState = (
+        SolutionComponentNormalizationState.DRAFT
+    )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SolutionComponent":
+        metrics = _mapping_from_payload(payload.get("metrics"))
+        constraints = _mapping_from_payload(payload.get("constraints"))
+        metadata = _mapping_from_payload(payload.get("metadata"))
+        return cls(
+            id=str(payload.get("id") or payload.get("component_id") or ""),
+            name=str(payload.get("name") or payload.get("title") or ""),
+            scope=_analysis_scope_or_none(payload.get("scope")),
+            component_type=_component_type_or_none(payload.get("component_type")),
+            origin=_solution_component_origin_or_default(payload.get("origin")),
+            strict_analysis_participation=bool(
+                payload.get("strict_analysis_participation", False)
+            ),
+            purchase_cost=_float_from_payload(
+                payload,
+                "purchase_cost",
+                fallback_keys=("capital_cost", "total_cost"),
+            ),
+            implementation_cost=_float_from_payload(payload, "implementation_cost"),
+            migration_cost=_float_from_payload(payload, "migration_cost"),
+            testing_cost=_float_from_payload(payload, "testing_cost"),
+            monthly_cost=_float_from_payload(
+                payload,
+                "monthly_cost",
+                fallback_keys=("subscription_cost", "support_cost"),
+            ),
+            annual_cost=_float_from_payload(payload, "annual_cost"),
+            energy_cost=_float_from_payload(
+                payload,
+                "energy_cost",
+                fallback_keys=("electricity_cost", "monthly_electricity_cost"),
+            ),
+            quantity=_float_from_payload(payload, "quantity", default=1.0),
+            metrics=metrics,
+            constraints=constraints,
+            cost_assumptions=[str(item) for item in payload.get("cost_assumptions", [])],
+            metadata=metadata,
+            validation_warnings=[str(item) for item in payload.get("validation_warnings", [])],
+            blocking_errors=[str(item) for item in payload.get("blocking_errors", [])],
+            candidate_eligible=bool(payload.get("candidate_eligible", False)),
+            tco_eligible=bool(payload.get("tco_eligible", False)),
+            energy_eligible=bool(payload.get("energy_eligible", False)),
+            npv_eligible=bool(payload.get("npv_eligible", False)),
+            analysis_ready=bool(payload.get("analysis_ready", False)),
+            normalization_state=_solution_component_normalization_state_or_default(
+                payload.get("normalization_state")
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_plain_data(self)
+
+    def with_validation(
+        self,
+        *,
+        warnings: Sequence[str] | None = None,
+        blocking_errors: Sequence[str] | None = None,
+        candidate_eligible: bool | None = None,
+        tco_eligible: bool | None = None,
+        energy_eligible: bool | None = None,
+        npv_eligible: bool | None = None,
+        analysis_ready: bool | None = None,
+        normalization_state: SolutionComponentNormalizationState | None = None,
+    ) -> "SolutionComponent":
+        return SolutionComponent(
+            id=self.id,
+            name=self.name,
+            scope=self.scope,
+            component_type=self.component_type,
+            origin=self.origin,
+            strict_analysis_participation=self.strict_analysis_participation,
+            purchase_cost=self.purchase_cost,
+            implementation_cost=self.implementation_cost,
+            migration_cost=self.migration_cost,
+            testing_cost=self.testing_cost,
+            monthly_cost=self.monthly_cost,
+            annual_cost=self.annual_cost,
+            energy_cost=self.energy_cost,
+            quantity=self.quantity,
+            metrics=deepcopy(self.metrics),
+            constraints=deepcopy(self.constraints),
+            cost_assumptions=list(self.cost_assumptions),
+            metadata=deepcopy(self.metadata),
+            validation_warnings=list(warnings if warnings is not None else self.validation_warnings),
+            blocking_errors=list(
+                blocking_errors if blocking_errors is not None else self.blocking_errors
+            ),
+            candidate_eligible=(
+                bool(candidate_eligible)
+                if candidate_eligible is not None
+                else self.candidate_eligible
+            ),
+            tco_eligible=bool(tco_eligible) if tco_eligible is not None else self.tco_eligible,
+            energy_eligible=(
+                bool(energy_eligible) if energy_eligible is not None else self.energy_eligible
+            ),
+            npv_eligible=bool(npv_eligible) if npv_eligible is not None else self.npv_eligible,
+            analysis_ready=(
+                bool(analysis_ready) if analysis_ready is not None else self.analysis_ready
+            ),
+            normalization_state=(normalization_state or self.normalization_state),
+        )
 
 @dataclass(slots=True)
 class CostModel:
@@ -284,7 +442,7 @@ class CandidateConfiguration:
         return cls(
             id=str(payload.get("id", "")),
             name=str(payload.get("name", payload.get("id", ""))),
-            scope=as_analysis_scope(payload["scope"]) if payload.get("scope") else None,
+            scope=_analysis_scope_or_none(payload.get("scope")),
             components=[
                 {str(key): deepcopy(value) for key, value in dict(component).items()}
                 for component in payload.get("components", [])
@@ -415,6 +573,67 @@ class AnalysisResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def _analysis_scope_or_none(value: Any) -> AnalysisScope | None:
+    if value in {None, ""}:
+        return None
+    try:
+        return as_analysis_scope(value)
+    except ValueError:
+        return None
+
+
+def _component_type_or_none(value: Any) -> ComponentType | None:
+    if value in {None, ""}:
+        return None
+    try:
+        return as_component_type(value)
+    except ValueError:
+        return None
+
+
+def _solution_component_origin_or_default(value: Any) -> SolutionComponentOrigin:
+    if value in {None, ""}:
+        return SolutionComponentOrigin.MANUAL
+    try:
+        return as_solution_component_origin(value)
+    except ValueError:
+        return SolutionComponentOrigin.MANUAL
+
+
+def _solution_component_normalization_state_or_default(
+    value: Any,
+) -> SolutionComponentNormalizationState:
+    if value in {None, ""}:
+        return SolutionComponentNormalizationState.DRAFT
+    try:
+        return as_solution_component_normalization_state(value)
+    except ValueError:
+        return SolutionComponentNormalizationState.DRAFT
+
+
+def _mapping_from_payload(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key): deepcopy(item) for key, item in value.items()}
+
+
+def _float_from_payload(
+    payload: Mapping[str, Any],
+    key: str,
+    *,
+    fallback_keys: Sequence[str] = (),
+    default: float = 0.0,
+) -> float:
+    for candidate_key in (key, *fallback_keys):
+        if candidate_key not in payload or payload.get(candidate_key) in {None, ""}:
+            continue
+        try:
+            return float(payload.get(candidate_key, default))
+        except (TypeError, ValueError):
+            return float(default)
+    return float(default)
+
+
 def _optional_float(value: Any) -> float | None:
     if value is None or value == "":
         return None
@@ -439,6 +658,22 @@ def as_component_type(value: str | ComponentType) -> ComponentType:
     if isinstance(value, ComponentType):
         return value
     return ComponentType(str(value))
+
+
+def as_solution_component_origin(
+    value: str | SolutionComponentOrigin,
+) -> SolutionComponentOrigin:
+    if isinstance(value, SolutionComponentOrigin):
+        return value
+    return SolutionComponentOrigin(str(value))
+
+
+def as_solution_component_normalization_state(
+    value: str | SolutionComponentNormalizationState,
+) -> SolutionComponentNormalizationState:
+    if isinstance(value, SolutionComponentNormalizationState):
+        return value
+    return SolutionComponentNormalizationState(str(value))
 
 
 def as_equipment_category(value: str | EquipmentCategory) -> EquipmentCategory:
@@ -522,6 +757,14 @@ def ensure_alternative(value: Alternative | Mapping[str, Any]) -> Alternative:
     if isinstance(value, Alternative):
         return value
     return Alternative.from_dict(value)
+
+
+def ensure_solution_component(
+    value: SolutionComponent | Mapping[str, Any],
+) -> SolutionComponent:
+    if isinstance(value, SolutionComponent):
+        return value
+    return SolutionComponent.from_dict(value)
 
 
 def ensure_candidate_configuration(
