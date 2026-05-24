@@ -292,9 +292,28 @@ class SolutionComponentNormalizationService:
             "license_units",
             "support_score",
             "functionality_score",
+            "performance_score",
+            "reliability_score",
+            "lifespan",
+            "lifetime_years",
+            "cpu_score",
+            "ram_score",
+            "perf",
+            "energy",
         ):
             if key in metrics:
                 payload[key] = deepcopy(metrics[key])
+        if "perf" not in payload:
+            payload["perf"] = self._number(
+                metrics.get("performance_score", metrics.get("functionality_score")),
+                default=0.0,
+            )
+        if "reliability" not in payload and "reliability_score" in metrics:
+            payload["reliability"] = deepcopy(metrics["reliability_score"])
+        if "lifespan" not in payload and "lifetime_years" in metrics:
+            payload["lifespan"] = deepcopy(metrics["lifetime_years"])
+        if "energy" not in payload and "max_power" in payload:
+            payload["energy"] = self._number(payload.get("max_power"), default=0.0)
         payload["metrics"] = metrics
         return payload
 

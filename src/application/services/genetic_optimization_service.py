@@ -18,7 +18,17 @@ from application.services.analysis_scope_profile_service import (
 )
 from application.services.candidate_configuration_service import CandidateConfigurationService
 from application.services.runtime_entity_normalization_service import normalize_runtime_row
-from shared.constants import CAPITAL_COST_CATEGORIES
+from application.services.solution_component_analytics_service import (
+    SolutionComponentAnalyticsIntegrationService,
+)
+from shared.constants import (
+    ANALYSIS_SCOPE_SOFTWARE,
+    ANALYSIS_SCOPE_TECHNICAL,
+    CAPITAL_COST_CATEGORIES,
+    SOFTWARE_CAPITAL_CATEGORIES,
+    SOLUTION_COMPONENT_ENTITY,
+    TECHNICAL_CAPITAL_CATEGORIES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +81,10 @@ class GeneticOptimizationService:
         self.ga_runner = ga_runner or self._default_ga_runner
         self.profile_service = profile_service or AnalysisScopeProfileService()
         self.candidate_configuration_service = CandidateConfigurationService()
+        self.solution_component_analytics_service = SolutionComponentAnalyticsIntegrationService(
+            profile_service=self.profile_service,
+            candidate_configuration_service=self.candidate_configuration_service,
+        )
 
     def _default_ga_runner(self, params: dict[str, Any]) -> dict[str, Any]:
         from domain.optimization.ga import run_ga_mvp
@@ -104,6 +118,7 @@ class GeneticOptimizationService:
         min_selected_items: int = 1,
         max_selected_items: int | None = None,
         include_zero_quantity: bool = False,
+        include_solution_components: bool = True,
         ga_params: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Run genetic optimization over runtime entities.
@@ -129,6 +144,8 @@ class GeneticOptimizationService:
             source=source,
             categories=effective_categories,
             include_zero_quantity=include_zero_quantity,
+            analysis_scope=profile.scope if profile is not None else analysis_scope,
+            include_solution_components=include_solution_components,
         )
 
         criteria_specs = self._build_criteria(
@@ -193,6 +210,8 @@ class GeneticOptimizationService:
         *,
         categories: Sequence[str] | None = None,
         include_zero_quantity: bool = False,
+        analysis_scope: str | None = None,
+        include_solution_components: bool = True,
     ) -> list[RuntimeOptimizationItem]:
         """Convert runtime rows into generic GA ``Item`` objects.
 
@@ -211,6 +230,25 @@ class GeneticOptimizationService:
                 if not include_zero_quantity and properties.get("quantity", 1.0) <= 0:
                     continue
                 candidates.append(RuntimeOptimizationItem(**properties))
+
+        if include_solution_components:
+            component_scope = analysis_scope or self._scope_from_categories(effective_categories)
+            solution_rows = entities.get(SOLUTION_COMPONENT_ENTITY, [])
+            if component_scope and solution_rows:
+                for index, properties in enumerate(
+                    self.solution_component_analytics_service.build_ga_item_properties(
+                        solution_rows,
+                        analysis_scope=component_scope,
+                    )
+                ):
+                    item_properties = dict(properties)
+                    item_properties.setdefault("source_index", index)
+                    item_properties.setdefault("source_category", item_properties.get("category", SOLUTION_COMPONENT_ENTITY))
+                    item_properties.setdefault("category", item_properties.get("source_category", SOLUTION_COMPONENT_ENTITY))
+                    item_properties.setdefault("selected_count", 1.0)
+                    if not include_zero_quantity and item_properties.get("quantity", 1.0) <= 0:
+                        continue
+                    candidates.append(RuntimeOptimizationItem(**item_properties))
 
         return candidates
 
@@ -514,7 +552,22 @@ class GeneticOptimizationService:
                 self._number(item.get("client_seats"), default=0.0)
                 for item in selected_items
             ),
+            "software_license_quantity": sum(
+                self._number(item.get("license_units"), default=0.0)
+                for item in selected_items
+            ),
+            "solution_component_count": sum(
+                1 for item in selected_items if item.get("source_format") == "solution_component"
+            ),
         }
+
+    def _scope_from_categories(self, categories: Sequence[str]) -> str | None:
+        category_set = {str(category) for category in categories}
+        if category_set and category_set.issubset(set(TECHNICAL_CAPITAL_CATEGORIES)):
+            return ANALYSIS_SCOPE_TECHNICAL
+        if category_set and category_set.issubset(set(SOFTWARE_CAPITAL_CATEGORIES)):
+            return ANALYSIS_SCOPE_SOFTWARE
+        return None
 
     def _sum_property(self, subset: Sequence[RuntimeOptimizationItem], property_name: str) -> float:
         return sum(self._number(item.properties.get(property_name), default=0.0) for item in subset)
