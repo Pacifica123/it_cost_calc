@@ -22,6 +22,7 @@
 - `architecture/decision_report.md` — единый итоговый отчёт выбора: JSON/Markdown/CSV, объяснение победителя, риски и защитный сценарий;
 - `architecture/legacy_infrastructure_tab.md` — роль старой вкладки ИТ-инфраструктуры как вспомогательной песочницы, namespace `legacy_infrastructure:` и границы участия в аналитике;
 - `architecture/future_solution_component_editor_variant_c.md` — будущая идея варианта C: универсальный редактор `SolutionComponent` после завершения roadmap;
+- `architecture/solution_component_editor_roadmap.md` — детальный roadmap-чеклист пошаговой реализации универсального редактора компонентов;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -76,13 +77,14 @@
 11. `architecture/decision_report.md`
 12. `architecture/legacy_infrastructure_tab.md`
 13. `architecture/future_solution_component_editor_variant_c.md`
-14. `architecture/system_schema.md`
-15. `architecture/module_map.md`
-16. `architecture/data_map.md`
-17. `research/genetic_algorithm.md`
-18. `research/ideas/genetic_algorithm_plain_manifest.md`
-19. `research/ideas/future_independent_ga_ahp_assessment.md`
-20. `research/ideas/future_hybrid_ga_ahp_score.md`
-21. `demo/ga_ahp_defense_guide.md`
-22. `demo/demo_data_contract.md`
-23. `traceability.md`
+14. `architecture/solution_component_editor_roadmap.md`
+15. `architecture/system_schema.md`
+16. `architecture/module_map.md`
+17. `architecture/data_map.md`
+18. `research/genetic_algorithm.md`
+19. `research/ideas/genetic_algorithm_plain_manifest.md`
+20. `research/ideas/future_independent_ga_ahp_assessment.md`
+21. `research/ideas/future_hybrid_ga_ahp_score.md`
+22. `demo/ga_ahp_defense_guide.md`
+23. `demo/demo_data_contract.md`
+24. `traceability.md`
