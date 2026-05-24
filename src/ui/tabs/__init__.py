@@ -19,6 +19,7 @@ _MODULE_EXPORTS = {
     "export_tab": "ui.tabs.export_tab",
     "genetic_optimization_tab": "ui.tabs.genetic_optimization_tab",
     "infrastructure_tab": "ui.tabs.infrastructure_tab",
+    "solution_component_editor_tab": "ui.tabs.solution_component_editor_tab",
     "npv_tab": "ui.tabs.npv_tab",
     "opex_tab": "ui.tabs.opex_tab",
 }

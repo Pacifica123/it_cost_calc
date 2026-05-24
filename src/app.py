@@ -15,6 +15,7 @@ from application.services.equipment_service import EquipmentService
 from application.services.genetic_optimization_service import GeneticOptimizationService
 from application.services.genetic_ahp_ranking_service import GeneticAhpRankingService
 from application.services.npv_report_service import NPVReportService
+from application.services.solution_component_runtime_service import SolutionComponentRuntimeService
 from application.use_cases import (
     BuildDecisionReportUseCase,
     BuildNpvReportUseCase,
@@ -43,6 +44,7 @@ from ui.tabs import (
     export_tab,
     genetic_optimization_tab,
     infrastructure_tab,
+    solution_component_editor_tab,
     npv_tab,
     opex_tab,
 )
@@ -72,6 +74,7 @@ class CalculatorApp(tk.Tk):
         self.cost_aggregation_service = CostAggregationService()
         self.analysis_scope_profile_service = AnalysisScopeProfileService()
         self.decision_demo_data_service = DecisionDemoDataService(self.analysis_scope_profile_service)
+        self.solution_component_runtime_service = SolutionComponentRuntimeService(self.entity_repository)
 
         self.prepare_cost_summary_use_case = PrepareCostSummaryUseCase(
             self.cost_aggregation_service, self.equipment_service
@@ -120,10 +123,15 @@ class CalculatorApp(tk.Tk):
         self.operational_costs_tab = self.opex_tab
         self.notebook.add(self.opex_tab, text="Операционные затраты")
 
+        self.solution_component_editor_tab = solution_component_editor_tab.SolutionComponentEditorTab(
+            self.notebook, self.solution_component_runtime_service
+        )
+        self.notebook.add(self.solution_component_editor_tab, text="Редактор компонентов")
+
         self.it_infrastructure_tab = infrastructure_tab.ITInfrastructureTab(
             self.notebook, self.crud
         )
-        self.notebook.add(self.it_infrastructure_tab, text="ИТ-песочница")
+        self.notebook.add(self.it_infrastructure_tab, text="ИТ-песочница (архив)")
 
         self.energy_tab = energy_tab.EnergyTab(
             self.notebook,
@@ -191,6 +199,7 @@ class CalculatorApp(tk.Tk):
         self.technical_equipment_tab.refresh_all()
         self.software_tab.refresh_all()
         self.opex_tab.refresh_all()
+        self.solution_component_editor_tab.refresh_components()
         self.energy_tab.update_equipment_table()
         self.update_total_costs()
         self.export_tab.update_summary()
@@ -256,6 +265,8 @@ class CalculatorApp(tk.Tk):
 
     def on_tab_change(self, _event) -> None:
         current_index = self.notebook.index("current")
+        if current_index == self.notebook.index(self.solution_component_editor_tab):
+            self.solution_component_editor_tab.refresh_components()
         if current_index == self.notebook.index(self.energy_tab):
             logger.debug("Активирована вкладка электроэнергии, запускается обновление")
             self.energy_tab.update_equipment_table()
