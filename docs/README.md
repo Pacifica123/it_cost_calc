@@ -17,11 +17,11 @@
 - `architecture/conceptual_cohesion_completion_summary.md` — итоговая сводка выполнения roadmap, закрытых общих правил, контрольных вопросов и дальнейших направлений;
 - `architecture/current_subject_schema.md` — переходная предметная схема текущих CAPEX/OPEX-категорий, будущих `scope`/`component_type` и связей вкладок с данными;
 - `architecture/analysis_scope_profiles.md` — прикладные профили анализа ПО/ТО: категории, критерии, ограничения, веса и правила объяснения;
-- `architecture/candidate_configurations.md` — единый формат кандидатных альтернатив для AHP, GA, GA + AHP, анализа важности критериев и будущего DecisionReport;
+- `architecture/candidate_configurations.md` — единый формат кандидатных альтернатив для AHP, GA, GA + AHP, анализа важности критериев и DecisionReport;
 - `architecture/tco_npv_bridge.md` — TCO-модель и финансовый мост между CAPEX/OPEX/электроэнергией и NPV;
 - `architecture/decision_report.md` — единый итоговый отчёт выбора: JSON/Markdown/CSV, объяснение победителя, риски и защитный сценарий;
 - `architecture/legacy_infrastructure_tab.md` — роль старой вкладки ИТ-инфраструктуры как вспомогательной песочницы, namespace `legacy_infrastructure:` и границы участия в аналитике;
-- `architecture/future_solution_component_editor_variant_c.md` — будущая идея варианта C: универсальный редактор `SolutionComponent` после завершения roadmap;
+- `architecture/future_solution_component_editor_variant_c.md` — история и итог реализации варианта C: универсальный редактор `SolutionComponent`;
 - `architecture/solution_component_editor_roadmap.md` — детальный roadmap-чеклист пошаговой реализации универсального редактора компонентов;
 - `architecture/solution_component_contract.md` — документационный контракт `SolutionComponent`: поля, стоимость, метрики, допуски и связи с общей аналитической моделью;
 - `architecture/solution_component_runtime_storage.md` — runtime-хранение `SolutionComponent`, demo-fixture, статусы черновиков и совместимость экспорта;
@@ -30,6 +30,7 @@
 - `architecture/solution_component_analytics_integration.md` — аналитическая интеграция компонентов редактора с CandidateConfiguration, AHP, GA и GA + AHP;
 - `architecture/solution_component_decision_report_export.md` — интеграция компонентов редактора с DecisionReport, JSON/Markdown/CSV-экспортом и объяснением исключённых черновиков;
 - `architecture/solution_component_sandbox_conversion.md` — ручная конвертация старых sandbox-записей в SolutionComponent без автоматической миграции;
+- `architecture/solution_component_demo_control.md` — финальная C9-связка демонстрации, smoke-проверки и защитного объяснения редактора компонентов;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -50,7 +51,8 @@
 ### Демонстрация и защита
 - `demo/README.md` — обзор демонстрационных сценариев;
 - `demo/ga_ahp_defense_guide.md` — сценарий показа генетического подбора и связки ГА + AHP, текст выступления и ответы на вопросы;
-- `demo/demo_data_contract.md` — контракт демо-данных, учебных примеров и регрессионных инвариантов после этапа 8.
+- `demo/demo_data_contract.md` — контракт демо-данных, учебных примеров и регрессионных инвариантов после этапа 8;
+- `demo/solution_component_editor_defense_guide.md` — финальный сценарий защиты редактора `SolutionComponent`.
 
 ### Исследовательские материалы
 - `research/README.md` — обзор исследовательской зоны;
@@ -92,13 +94,15 @@
 19. `architecture/solution_component_analytics_integration.md`
 20. `architecture/solution_component_decision_report_export.md`
 21. `architecture/solution_component_sandbox_conversion.md`
-22. `architecture/system_schema.md`
-23. `architecture/module_map.md`
-24. `architecture/data_map.md`
-25. `research/genetic_algorithm.md`
-26. `research/ideas/genetic_algorithm_plain_manifest.md`
-27. `research/ideas/future_independent_ga_ahp_assessment.md`
-28. `research/ideas/future_hybrid_ga_ahp_score.md`
-29. `demo/ga_ahp_defense_guide.md`
-30. `demo/demo_data_contract.md`
-31. `traceability.md`
+22. `architecture/solution_component_demo_control.md`
+23. `architecture/system_schema.md`
+24. `architecture/module_map.md`
+25. `architecture/data_map.md`
+26. `research/genetic_algorithm.md`
+27. `research/ideas/genetic_algorithm_plain_manifest.md`
+28. `research/ideas/future_independent_ga_ahp_assessment.md`
+29. `research/ideas/future_hybrid_ga_ahp_score.md`
+30. `demo/ga_ahp_defense_guide.md`
+31. `demo/demo_data_contract.md`
+32. `demo/solution_component_editor_defense_guide.md`
+33. `traceability.md`

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "scenario_id": "solution_component_c9_defense_demo",
+  "expected": {
+    "component_count": 4,
+    "strict_component_count_min": 3,
+    "draft_component_count_min": 1,
+    "candidate_component_count": 3,
+    "report_valid_component_count_min": 3,
+    "report_excluded_component_count_min": 1,
+    "required_component_ids": [
+      "c9-mixed-server-hypervisor-setup",
+      "c9-software-subscription-support",
+      "c9-peripheral-mfu-no-client-seat",
+      "c9-draft-unclassified-training"
+    ],
+    "required_checks": {
+      "mixed_bundle_energy_eligible": true,
+      "software_subscription_energy_excluded": true,
+      "peripheral_client_seats_zero": true,
+      "draft_excluded_from_candidate": true,
+      "decision_report_has_solution_components": true
+    }
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "scenario_id": "solution_component_c9_defense_demo",
+  "dataset_role": "solution_component_editor_defense",
+  "description": "Финальный демонстрационный набор C9 для показа универсального редактора SolutionComponent: составной mixed-компонент, ПО-подписка, периферия без клиентского места и черновик с предупреждениями.",
+  "reproducibility": {
+    "ga_seed": 42,
+    "script": "scripts/run_solution_component_c9_demo.py",
+    "expected_invariants": "data/fixtures/regression/solution_component_c9_invariants.json"
+  },
+  "entities": {
+    "solution_components": [
+      {
+        "schema_version": 1,
+        "id": "c9-mixed-server-hypervisor-setup",
+        "name": "Комплект сервер + гипервизор + базовая настройка",
+        "scope": "mixed",
+        "component_type": "bundle",
+        "origin": "demo",
+        "strict_analysis_participation": true,
+        "purchase_cost": 184000.0,
+        "implementation_cost": 36000.0,
+        "testing_cost": 9000.0,
+        "monthly_cost": 4200.0,
+        "energy_cost": 2700.0,
+        "quantity": 1,
+        "metrics": {
+          "source_category": "solution_bundle",
+          "technical_part": true,
+          "software_part": true,
+          "max_power": 520.0,
+          "hours_per_day": 12.0,
+          "working_days": 22.0,
+          "performance_score": 0.84,
+          "reliability_score": 0.86,
+          "client_seats": 0,
+          "license_units": 1
+        },
+        "metadata": {
+          "demo_step": "C9.1 mixed bundle",
+          "children": [
+            "server",
+            "hypervisor",
+            "base_setup"
+          ]
+        },
+        "cost_assumptions": [
+          "Составной компонент нужен для защиты: сервер, гипервизор и базовая настройка показываются как один нестандартный комплект.",
+          "Энергетическая часть задана явно через technical_part, max_power и режим работы."
+        ]
+      },
+      {
+        "schema_version": 1,
+        "id": "c9-software-subscription-support",
+        "name": "Подписка на сервис учёта заявок с сопровождением",
+        "scope": "software",
+        "component_type": "software_subscription",
+        "origin": "demo",
+        "strict_analysis_participation": true,
+        "implementation_cost": 28000.0,
+        "monthly_cost": 14500.0,
+        "annual_cost": 24000.0,
+        "quantity": 10,
+        "metrics": {
+          "source_category": "subscription_licenses",
+          "license_units": 10,
+          "functionality_score": 0.82,
+          "support_score": 0.88,
+          "compatibility_score": 0.74
+        },
+        "metadata": {
+          "demo_step": "C9.1 software subscription"
+        },
+        "cost_assumptions": [
+          "Подписка показывает ПО-сценарий: регулярная плата, годовое сопровождение и метрики функциональности без энергетического расчёта."
+        ]
+      },
+      {
+        "schema_version": 1,
+        "id": "c9-peripheral-mfu-no-client-seat",
+        "name": "Сетевое МФУ для отдела продаж",
+        "scope": "technical",
+        "component_type": "peripheral",
+        "origin": "demo",
+        "strict_analysis_participation": true,
+        "purchase_cost": 56000.0,
+        "monthly_cost": 1800.0,
+        "quantity": 1,
+        "metrics": {
+          "source_category": "client",
+          "max_power": 95.0,
+          "hours_per_day": 5.0,
+          "working_days": 22.0,
+          "client_seats": 0,
+          "performance_score": 0.58,
+          "reliability_score": 0.71,
+          "lifespan": 4
+        },
+        "metadata": {
+          "demo_step": "C9.1 peripheral without client workplace"
+        },
+        "cost_assumptions": [
+          "МФУ относится к техническому обеспечению, но не занимает рабочее место пользователя: client_seats=0."
+        ]
+      },
+      {
+        "schema_version": 1,
+        "id": "c9-draft-unclassified-training",
+        "name": "Черновик обучения пользователей",
+        "origin": "demo",
+        "strict_analysis_participation": false,
+        "purchase_cost": 18000.0,
+        "metrics": {
+          "source_category": "training"
+        },
+        "metadata": {
+          "demo_step": "C9.1 draft with warnings"
+        },
+        "cost_assumptions": [
+          "Черновик намеренно не содержит scope и component_type, чтобы показать предупреждения и исключение из CandidateConfiguration."
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Реестр fixture-ролей после добавления runtime-хранения SolutionComponent: учебные примеры, пользовательское демо, компоненты редактора и регрессионные инварианты не смешиваются в одном смысловом слое.",
+  "description": "Реестр fixture-ролей после завершения C9: учебные примеры, сквозной demo-набор, финальный защитный сценарий SolutionComponent и регрессионные инварианты разделены по назначению.",
   "roles": {
     "educational": [
       {
@@ -17,12 +17,21 @@
         "path": "data/fixtures/demo_dataset.json",
         "scenario_id": "it_solution_demo_control_v1",
         "purpose": "Сквозной пользовательский сценарий: CAPEX/OPEX/энергия + SolutionComponent → CandidateConfiguration → TCO → DecisionReport."
+      },
+      {
+        "path": "data/fixtures/solution_component_c9_demo_dataset.json",
+        "scenario_id": "solution_component_c9_defense_demo",
+        "purpose": "Финальный C9-сценарий защиты редактора SolutionComponent: mixed-комплект, ПО-подписка, периферия без клиентского места и черновик с предупреждениями."
       }
     ],
     "regression": [
       {
         "path": "data/fixtures/regression/demo_control_invariants.json",
         "purpose": "Инварианты smoke-проверки без pytest и без записи cache-файлов."
+      },
+      {
+        "path": "data/fixtures/regression/solution_component_c9_invariants.json",
+        "purpose": "Ожидаемые инварианты C9 smoke-сценария без pytest и без cache-файлов."
       }
     ]
   },
@@ -31,6 +40,8 @@
     "ga_init_mode": "heuristic_init",
     "ahp_weights_source": "AnalysisScopeProfileService.default_weights",
     "hybrid_assessment_candidate_pool": "same_as_ga_ahp_export_payload",
-    "solution_component_storage": "data/fixtures/demo_dataset.json::entities.solution_components"
+    "solution_component_storage": "data/fixtures/demo_dataset.json::entities.solution_components",
+    "solution_component_c9_fixture": "data/fixtures/solution_component_c9_demo_dataset.json",
+    "solution_component_c9_check": "python -B scripts/run_solution_component_c9_demo.py"
   }
 }

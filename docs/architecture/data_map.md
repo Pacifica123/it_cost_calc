@@ -6,6 +6,8 @@
 flowchart LR
     MAN[data/fixtures/demo_scenarios.json] --> FIX[data/fixtures/demo_dataset.json]
     REG[data/fixtures/regression/demo_control_invariants.json] --> DCTRL[DemoControlScenarioService]
+    C9FIX[data/fixtures/solution_component_c9_demo_dataset.json] --> C9CTRL[scripts/run_solution_component_c9_demo.py]
+    C9INV[data/fixtures/regression/solution_component_c9_invariants.json] --> C9CTRL
     FIX --> RUNTIME[data/generated/runtime_entities.json]
     RUNTIME --> RNORM[application: normalization scope/component_type]
     RNORM --> PROFILE[application: AnalysisScopeProfileService]
@@ -26,6 +28,7 @@ flowchart LR
     EXAHP[data/examples/ahp/*.json] --> EDU[Учебные сценарии методик]
     FIX --> DCTRL
     DCTRL --> DREPORT
+    C9CTRL --> DREPORT
 ```
 
 ## Группы данных
@@ -34,6 +37,8 @@ flowchart LR
 - `data/fixtures/demo_scenarios.json` — реестр ролей данных: учебные, демонстрационные и регрессионные;
 - `data/fixtures/demo_dataset.json` — сквозной демонстрационный набор для ручной загрузки и demo/control-сценария;
 - `data/fixtures/regression/demo_control_invariants.json` — инварианты контрольного сценария без `pytest`;
+- `data/fixtures/solution_component_c9_demo_dataset.json` — финальный C9-набор для защиты редактора `SolutionComponent`;
+- `data/fixtures/regression/solution_component_c9_invariants.json` — ожидаемые инварианты C9 smoke-сценария;
 - `data/examples/ahp/` — учебные и эталонные наборы для AHP;
 - `data/examples/optimization/` — учебные примеры для оптимизационных сценариев;
 - `data/examples/parser/` — сохранённые снимки парсинга.
@@ -55,6 +60,8 @@ flowchart LR
 | Реестр demo-ролей | `data/fixtures/demo_scenarios.json` | разработчик | документация, smoke-проверки, будущая автоматизация |
 | Демонстрационный набор | `data/fixtures/demo_dataset.json` | разработчик/исходная фикстура | GUI, CLI загрузки, `DemoControlScenarioService` |
 | Регрессионные инварианты demo | `data/fixtures/regression/demo_control_invariants.json` | разработчик | `scripts/run_demo_control_scenario.py --check-only` |
+| C9 fixture редактора компонентов | `data/fixtures/solution_component_c9_demo_dataset.json` | разработчик | `scripts/run_solution_component_c9_demo.py`, защитные материалы |
+| C9 инварианты редактора | `data/fixtures/regression/solution_component_c9_invariants.json` | разработчик | `scripts/run_solution_component_c9_demo.py` |
 | Runtime-сущности | `data/generated/runtime_entities.json` | приложение | GUI, сервисы, экспорт |
 | CSV-отчёт | `data/generated/` или пользовательский путь | сценарий экспорта | пользователь |
 | Каталог оборудования | `data/generated/catalog/equipment_catalog.json` | `tools/catalog_parser` | основное приложение, тесты |
@@ -168,6 +175,26 @@ python -B scripts/run_demo_control_scenario.py --check-only
 ```
 
 Подробный контракт описан в `docs/demo/demo_data_contract.md`.
+
+## Финальный C9-сценарий `SolutionComponent`
+
+После завершения ветки C1–C9 добавлен отдельный защитный набор для редактора компонентов. Он не заменяет основной `demo_dataset.json`, а проверяет именно новую логику advanced-редактора:
+
+```text
+data/fixtures/solution_component_c9_demo_dataset.json
+  → SolutionComponentRuntimeService
+  → SolutionComponentFinancialIntegrationService
+  → SolutionComponentAnalyticsIntegrationService
+  → DecisionReportService
+```
+
+Проверка запускается так:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python -B scripts/run_solution_component_c9_demo.py
+```
+
+Сценарий подтверждает, что составной mixed-комплект, ПО-подписка, периферия без клиентского места и черновик проходят ожидаемый маршрут: strict-компоненты попадают в TCO/DecisionReport, а draft остаётся видимым, но не становится аналитической альтернативой.
 
 ## Предметный контракт категорий
 

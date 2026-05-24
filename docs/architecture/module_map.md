@@ -11,6 +11,7 @@ flowchart TB
         ENERGY[Электроэнергия]
         NPV[NPV]
         INFRA[ИТ-песочница]
+        SCUI[Редактор компонентов]
         AHPUI[AHP-анализ]
         CIUI[Анализ важности критериев]
         EXPORTUI[Экспорт]
@@ -27,6 +28,10 @@ flowchart TB
         NPVS[NpvReportService]
         DRS[DecisionReportService]
         DCTRL[DemoControlScenarioService]
+        SCNORM[SolutionComponentNormalizationService]
+        SCRUNTIME[SolutionComponentRuntimeService]
+        SCFIN[SolutionComponentFinancialIntegrationService]
+        SCAN[SolutionComponentAnalyticsIntegrationService]
         UC[Use cases]
     end
 
@@ -58,6 +63,7 @@ flowchart TB
     EXPORTUI --> UC
     DRUI --> UC
     INFRA --> REPO
+    SCUI --> SCRUNTIME
     AHPUI --> UC
     CIUI --> UC
 
@@ -73,6 +79,16 @@ flowchart TB
     DCTRL --> NORM
     DCTRL --> CAND
     DCTRL --> DRS
+    SCNORM --> PROFILE
+    SCRUNTIME --> SCNORM
+    SCFIN --> SCRUNTIME
+    SCFIN --> NPVS
+    SCAN --> SCNORM
+    SCAN --> CAND
+    SCAN --> OPT
+    SCAN --> AHPD
+    SCNORM --> DRS
+    SCRUNTIME --> REPO
     NORM --> MODELS
     ES --> REPO
     CAS --> REPO
@@ -100,6 +116,7 @@ flowchart TB
 
 - вкладки `CAPEX`/`ТО`/`ПО`, `OPEX`, `Электроэнергия`, `NPV`, `Экспорт`, `AHP` и `Анализ важности критериев` — это видимая часть основного аналитического сценария;
 - `ИТ-песочница` остаётся вспомогательной legacy-вкладкой: она пишет свободные статьи в runtime-хранилище с префиксом `legacy_infrastructure:`, но не является источником строгой предметной модели;
+- `Редактор компонентов` работает с `SolutionComponent` для нестандартных и составных случаев, а не заменяет быстрые вкладки ПО/ТО;
 - `application` связывает пользовательские действия с расчётами и хранением данных; переходная нормализация `scope`/`component_type`, профили ПО/ТО, адаптация к `CandidateConfiguration`, demo/control-сценарий и сборка `DecisionReport` выполняются здесь, а не в UI;
 - `domain` содержит математику и модели;
 - `infrastructure` хранит состояние и формирует выходные файлы, включая JSON/Markdown/CSV-представления `DecisionReport`;
@@ -112,6 +129,10 @@ flowchart TB
 | `RuntimeEntityNormalizationService` | `application` | Достраивает `scope`, `component_type`, `client_seats` и legacy-признаки. |
 | `AnalysisScopeProfileService` | `application` | Хранит профили ПО/ТО: критерии, ограничения, категории и подсказки. |
 | `CandidateConfigurationService` | `application` | Приводит runtime-записи и результаты методов к единому формату альтернатив. |
+| `SolutionComponentNormalizationService` | `application` | Нормализует компоненты редактора, рассчитывает warnings и признаки допуска. |
+| `SolutionComponentRuntimeService` | `application` | Хранит `SolutionComponent` в `entities.solution_components` и отделяет strict-компоненты от draft. |
+| `SolutionComponentFinancialIntegrationService` | `application` | Передаёт расходы компонентов редактора в TCO и NPV-базу без искусственного эффекта. |
+| `SolutionComponentAnalyticsIntegrationService` | `application` | Передаёт profile-ready компоненты в AHP/GA через `CandidateConfiguration`. |
 | `TCOModelService` | `application` | Собирает стоимость владения и финансовую базу NPV. |
 | `DecisionReportService` | `application` | Формирует единый итоговый отчёт выбора. |
 | `DemoControlScenarioService` | `application` | Проверяет, что демонстрационный набор проходит всю цепочку без отдельной смысловой модели. |
