@@ -47,7 +47,6 @@ target-version = ["py311"]
 extend-exclude = '''
 /(
     data/generated
-  | docs/thesis/raw
   | tools/catalog_parser/legacy
 )/
 '''
@@ -57,7 +56,6 @@ line-length = 100
 target-version = "py311"
 extend-exclude = [
     "data/generated",
-    "docs/thesis/raw",
     "tools/catalog_parser/legacy",
 ]
 
