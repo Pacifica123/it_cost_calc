@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.services.equipment_service import EquipmentService
+from application.services.scoped_candidate_pool_service import ScopedCandidatePoolService
 from application.use_cases.run_genetic_ahp_ranking import RunGeneticAhpRankingUseCase
 from application.use_cases.run_genetic_optimization import RunGeneticOptimizationUseCase
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL
@@ -95,6 +96,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         self.equipment_service = equipment_service
         self.crud = crud
         self.profile_service = profile_service
+        self.candidate_pool_service = ScopedCandidatePoolService(profile_service=self.profile_service)
         self.panels: dict[str, CollapsiblePanel] = {}
         self._adaptive_pane_groups: list[dict[str, Any]] = []
         self._adaptive_after_ids: list[str] = []
@@ -301,6 +303,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             profile_service=self.profile_service,
             initial_analysis_scope=self.scope,
             lock_analysis_scope=True,
+            on_candidate_pool_ready=self._receive_candidate_pool_from_ga,
         )
         self.genetic_optimization_tab.pack(fill="both", expand=True)
         self._add_adaptive_panel(parent, ga_panel, weight=2)
@@ -358,6 +361,33 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         )
         self.hybrid_decision_assessment_tab.pack(fill="both", expand=True)
         self._add_adaptive_panel(parent, hybrid_panel, weight=2)
+
+    def _receive_candidate_pool_from_ga(
+        self,
+        analysis_scope: str,
+        candidates,
+        metadata: Mapping[str, Any],
+    ) -> None:
+        if analysis_scope != self.scope:
+            return
+        count = int(metadata.get("count") or len(candidates or []))
+        source_label = f"top-{count} GA-кандидатов ({self.scope_label})"
+        snapshot = self.candidate_pool_service.replace(
+            self.scope,
+            candidates or [],
+            source_label=source_label,
+            source_method="ga",
+        )
+        if hasattr(self, "configuration_selection_tab"):
+            self.configuration_selection_tab.load_candidate_pool(
+                snapshot.candidates,
+                source_label=source_label,
+            )
+        if hasattr(self, "criteria_importance_tab"):
+            self.criteria_importance_tab.load_candidate_pool(
+                snapshot.candidates,
+                source_label=source_label,
+            )
 
     def _add_adaptive_panel(
         self,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from application.services.analysis_scope_profile_service import (
     CATEGORY_POLICY_EXCLUDED,
@@ -75,6 +75,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         profile_service: AnalysisScopeProfileService | None = None,
         initial_analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
         lock_analysis_scope: bool = False,
+        on_candidate_pool_ready: Callable[[str, Sequence[Mapping[str, Any]], Mapping[str, Any]], None] | None = None,
     ):
         super().__init__(parent, width=1180, height=620)
         self.initial_analysis_scope = initial_analysis_scope
@@ -85,6 +86,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.generated_data_dir = self._resolve_generated_data_dir(data_root)
         self.ga_ahp_report_path = self.generated_data_dir / "ga_ahp_report.json"
         self.profile_service = profile_service or AnalysisScopeProfileService()
+        self.on_candidate_pool_ready = on_candidate_pool_ready
         self.last_result: dict[str, Any] | None = None
 
         self._build_variables()
@@ -123,6 +125,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.category_policy_parent: tk.Widget | None = None
 
         self.status_var = tk.StringVar(value="ГА ещё не запускался.")
+        self.candidate_pool_status_var = tk.StringVar(value="Общий пул: после запуска ГА можно передать top-N кандидатов в AHP/Pareto.")
         self.ahp_agreement_var = tk.StringVar(
             value="Согласованность методов появится после расчёта гибридной оценки."
         )
@@ -208,8 +211,16 @@ class GeneticOptimizationTab(BaseScrollableTab):
         action_buttons = ttk.Frame(actions)
         action_buttons.grid(row=0, column=0, sticky="w")
         ttk.Button(action_buttons, text="Запустить ГА", command=self.run_optimization).pack(side="left")
-        ttk.Label(actions, textvariable=self.status_var, wraplength=240, justify="left").grid(
+        ttk.Button(
+            action_buttons,
+            text="Передать top-N в общий пул",
+            command=self.transfer_candidates_to_pool,
+        ).pack(side="left", padx=(6, 0))
+        ttk.Label(actions, textvariable=self.status_var, wraplength=260, justify="left").grid(
             row=1, column=0, sticky="ew", pady=(6, 0)
+        )
+        ttk.Label(actions, textvariable=self.candidate_pool_status_var, wraplength=260, justify="left").grid(
+            row=2, column=0, sticky="ew", pady=(4, 0)
         )
 
         result_box = ttk.LabelFrame(self.inner_frame, text="Лучшее найденное решение")
@@ -413,6 +424,61 @@ class GeneticOptimizationTab(BaseScrollableTab):
 
         self.last_result = result
         self._render_result(result, power_lookup)
+
+        candidates = self._candidate_configurations_from_result(result)
+        self.candidate_pool_status_var.set(
+            f"Кандидатов для общего пула: {len(candidates)}. Нажмите передачу, чтобы AHP/Pareto работали с этим набором."
+            if candidates
+            else "ГА не вернул top-N кандидатов для общего пула."
+        )
+
+    def transfer_candidates_to_pool(self) -> None:
+        if not self.last_result:
+            messagebox.showinfo(
+                "Общий пул альтернатив",
+                "Сначала запустите ГА, чтобы получить top-N кандидатных конфигураций.",
+                parent=self,
+            )
+            return
+        analysis_scope = getattr(self, "_last_analysis_scope", self._analysis_scope())
+        candidates = self._candidate_configurations_from_result(self.last_result)
+        if not candidates:
+            messagebox.showwarning(
+                "Общий пул альтернатив",
+                "В последнем результате ГА нет candidate_configurations для передачи.",
+                parent=self,
+            )
+            self.candidate_pool_status_var.set("Общий пул не обновлён: нет candidate_configurations.")
+            return
+        metadata = {
+            "source": "ga",
+            "count": len(candidates),
+            "analysis_scope": analysis_scope,
+        }
+        if self.on_candidate_pool_ready is not None:
+            self.on_candidate_pool_ready(analysis_scope, candidates, metadata)
+        self.candidate_pool_status_var.set(
+            f"Передано в общий пул {len(candidates)} GA-кандидатов для текущей области."
+        )
+
+    def _candidate_configurations_from_result(
+        self,
+        result: Mapping[str, Any],
+    ) -> list[Mapping[str, Any]]:
+        direct = result.get("candidate_configurations")
+        if isinstance(direct, list):
+            return [item for item in direct if isinstance(item, Mapping)]
+        genetic = result.get("genetic_optimization")
+        if isinstance(genetic, Mapping):
+            nested = genetic.get("candidate_configurations")
+            if isinstance(nested, list):
+                return [item for item in nested if isinstance(item, Mapping)]
+        export_payload = result.get("export_payload")
+        if isinstance(export_payload, Mapping):
+            nested = export_payload.get("candidate_configurations")
+            if isinstance(nested, list):
+                return [item for item in nested if isinstance(item, Mapping)]
+        return []
 
     def run_ahp_ranking(self) -> None:
         if self.run_genetic_ahp_ranking_use_case is None:

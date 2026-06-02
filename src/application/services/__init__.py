@@ -20,6 +20,7 @@ _EXPORTS = {
     "GeneticAhpRankingService": "application.services.genetic_ahp_ranking_service",
     "NPVReportService": "application.services.npv_report_service",
     "RuntimeEntityNormalizationService": "application.services.runtime_entity_normalization_service",
+    "ScopedCandidatePoolService": "application.services.scoped_candidate_pool_service",
     "SolutionComponentAnalyticsIntegrationService": "application.services.solution_component_analytics_service",
     "SolutionComponentNormalizationService": "application.services.solution_component_normalization_service",
     "SolutionComponentRuntimeService": "application.services.solution_component_runtime_service",

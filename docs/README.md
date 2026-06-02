@@ -36,6 +36,7 @@
 - `architecture/decision_methods_workspace_reallocation_plan.md` — план разделения GA, AHP, Pareto и гибридной оценки внутри рабочих областей ПО/ТО без дублирования AHP;
 - `architecture/hybrid_decision_assessment_workspace_plan.md` — план отдельной панели гибридной итоговой оценки как витрины согласованности методов;
 - `architecture/optimization_refactor_patch_sequence.md` — последовательность будущих devctl-патчей для интерфейсной и методической переработки аналитики;
+- `architecture/scoped_candidate_pool_implementation.md` — реализация общего пула top-N GA-кандидатов для AHP/Pareto внутри рабочей области ПО/ТО;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -107,16 +108,17 @@
 25. `architecture/decision_methods_workspace_reallocation_plan.md`
 26. `architecture/hybrid_decision_assessment_workspace_plan.md`
 27. `architecture/optimization_refactor_patch_sequence.md`
-28. `architecture/system_schema.md`
-29. `architecture/module_map.md`
-30. `architecture/data_map.md`
-31. `research/decision_criteria_unification_plan.md`
-32. `research/equipment_metrics_and_catalog_parsing_plan.md`
-33. `research/genetic_algorithm.md`
-34. `research/ideas/genetic_algorithm_plain_manifest.md`
-35. `research/ideas/future_independent_ga_ahp_assessment.md`
-36. `research/ideas/future_hybrid_ga_ahp_score.md`
-37. `demo/ga_ahp_defense_guide.md`
-38. `demo/demo_data_contract.md`
-39. `demo/solution_component_editor_defense_guide.md`
-40. `traceability.md`
+28. `architecture/scoped_candidate_pool_implementation.md`
+29. `architecture/system_schema.md`
+30. `architecture/module_map.md`
+31. `architecture/data_map.md`
+32. `research/decision_criteria_unification_plan.md`
+33. `research/equipment_metrics_and_catalog_parsing_plan.md`
+34. `research/genetic_algorithm.md`
+35. `research/ideas/genetic_algorithm_plain_manifest.md`
+36. `research/ideas/future_independent_ga_ahp_assessment.md`
+37. `research/ideas/future_hybrid_ga_ahp_score.md`
+38. `demo/ga_ahp_defense_guide.md`
+39. `demo/demo_data_contract.md`
+40. `demo/solution_component_editor_defense_guide.md`
+41. `traceability.md`

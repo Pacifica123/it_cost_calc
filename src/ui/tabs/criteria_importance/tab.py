@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
+from application.services.scoped_candidate_pool_service import ScopedCandidatePoolService
 from shared.constants import ANALYSIS_SCOPE_TECHNICAL
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 
@@ -48,6 +49,8 @@ class CriteriaImportanceTab(
         self.lock_analysis_scope = lock_analysis_scope
         self.case_data = None
         self.scoped_cases = {}
+        self.candidate_pool_service = ScopedCandidatePoolService(profile_service=self.profile_service)
+        self.candidate_pool_source_var = tk.StringVar(value="Pareto использует демо/ручной кейс; общий пул пока не передавался.")
         initial_scope = (
             self.initial_analysis_scope
             if self.initial_analysis_scope in self.profile_service.profiles()
@@ -97,6 +100,12 @@ class CriteriaImportanceTab(
             justify="left",
         )
         top_label.pack(fill="x", padx=6)
+        tk.Label(
+            root,
+            textvariable=self.candidate_pool_source_var,
+            anchor="w",
+            justify="left",
+        ).pack(fill="x", padx=6, pady=(2, 0))
 
         main_pane = tk.PanedWindow(root, orient="horizontal", sashrelief="raised")
         main_pane.pack(fill="both", expand=True, padx=6, pady=6)
@@ -288,6 +297,32 @@ class CriteriaImportanceTab(
         self._refresh_relations_tree()
         self._clear_result_tables()
         self._set_result(message or "Демо-сценарий для обоснования выбора ИТ-решения загружен.")
+
+    def load_candidate_pool(
+        self,
+        candidates,
+        *,
+        source_label: str = "общий пул альтернатив",
+        message: str | None = None,
+    ) -> None:
+        snapshot = self.candidate_pool_service.replace(
+            self._analysis_scope(),
+            candidates or [],
+            source_label=source_label,
+            source_method="ga",
+        )
+        self.candidate_pool_source_var.set(snapshot.summary())
+        case_data = self.candidate_pool_service.to_criteria_case(self._analysis_scope())
+        self.load_case_data(
+            case_data,
+            message=message
+            or (
+                f"Pareto получил {len(case_data.get('alternatives', []))} альтернатив из общего пула. "
+                "Оценки приведены к шкале 1..5 с учётом направления критериев профиля."
+            ),
+            scoped_cases={},
+            analysis_scope=self._analysis_scope(),
+        )
 
     def _analysis_scope(self):
         value = self.analysis_scope_var.get() if hasattr(self, "analysis_scope_var") else ""

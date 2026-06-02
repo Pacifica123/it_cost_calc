@@ -230,13 +230,38 @@ class CandidateConfigurationService:
     ) -> dict[str, Any]:
         model = ensure_candidate_configuration(candidate)
         legacy_meta = deepcopy(model.metadata.get("legacy_meta", {}))
-        people = int(float(model.metrics.get("people", legacy_meta.get("people", 0)) or 0))
+        people = self._candidate_people(model, legacy_meta)
         return {
             "id": model.id,
             "name": model.name,
             "devices": [self._component_to_ahp_device(component) for component in model.components],
             "meta": {**legacy_meta, "people": people},
         }
+
+    def _candidate_people(
+        self,
+        candidate: CandidateConfiguration,
+        legacy_meta: Mapping[str, Any],
+    ) -> int:
+        """Derive AHP people/capacity target from the shared candidate payload.
+
+        GA-produced candidates do not always carry the old ``meta.people``
+        field.  For the common pool bridge we treat technical ``client_seats``
+        and software ``software_license_quantity`` as the nearest explicit
+        capacity counters, so AHP can rank GA alternatives without losing the
+        hard-filter context.
+        """
+
+        for value in (
+            candidate.metrics.get("people"),
+            legacy_meta.get("people"),
+            candidate.totals.get("client_seats"),
+            candidate.totals.get("software_license_quantity"),
+        ):
+            number = self._number(value, default=0.0)
+            if number > 0:
+                return int(number)
+        return 0
 
     def attach_to_criteria_case(
         self,

@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
+from application.services.scoped_candidate_pool_service import ScopedCandidatePoolService
 from shared.constants import (
     ANALYSIS_SCOPE_SOFTWARE,
     ANALYSIS_SCOPE_TECHNICAL,
@@ -59,6 +60,8 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         )
         self.analysis_scope_var = tk.StringVar(value=initial_scope)
         self.scoped_demo_payloads: dict[str, dict] = {}
+        self.candidate_pool_service = ScopedCandidatePoolService(profile_service=self.profile_service)
+        self.candidate_pool_source_var = tk.StringVar(value="Общий пул альтернатив пока не передавался.")
         self.soft_criteria_vars = {
             criterion_id: tk.BooleanVar(value=True) for criterion_id in DEFAULT_SOFT_CRITERIA
         }
@@ -116,8 +119,14 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
             root,
             text=(
                 "Источник альтернатив AHP: таблица конфигураций текущей области. "
-                "GA может формировать отдельный пул кандидатов, но AHP остаётся самостоятельным ранжированием, а не частью GA-панели."
+                "GA может передать top-N кандидатов в общий пул, но AHP остаётся самостоятельным ранжированием, а не частью GA-панели."
             ),
+            wraplength=850,
+            justify="left",
+        ).pack(fill="x", padx=6, pady=(0, 3))
+        ttk.Label(
+            root,
+            textvariable=self.candidate_pool_source_var,
             wraplength=850,
             justify="left",
         ).pack(fill="x", padx=6, pady=(0, 6))
@@ -458,6 +467,31 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
     def load_demo_configurations(self, configurations, *, constraints=None, message=None) -> None:
         self.scoped_demo_payloads = {}
         self._apply_demo_configurations(configurations, constraints=constraints, message=message)
+
+    def load_candidate_pool(
+        self,
+        candidates,
+        *,
+        source_label: str = "общий пул альтернатив",
+        message: str | None = None,
+    ) -> None:
+        snapshot = self.candidate_pool_service.replace(
+            self._analysis_scope(),
+            candidates or [],
+            source_label=source_label,
+            source_method="ga",
+        )
+        self.candidate_pool_source_var.set(snapshot.summary())
+        configurations = self.candidate_pool_service.to_ahp_configurations(self._analysis_scope())
+        self._apply_demo_configurations(
+            configurations,
+            constraints=None,
+            message=message
+            or (
+                f"AHP получил {len(configurations)} альтернатив из общего пула текущей области. "
+                "Проверьте ограничения и запустите самостоятельное AHP-ранжирование."
+            ),
+        )
 
     def load_scoped_demo_payloads(
         self,
