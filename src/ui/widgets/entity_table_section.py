@@ -41,8 +41,8 @@ class EntityTableSection:
             highlightbackground=PANEL_BORDER,
             highlightcolor=PANEL_BORDER,
             highlightthickness=1,
-            bd=1,
-            relief="groove",
+            bd=0,
+            relief="flat",
         )
         self.frame.columnconfigure(0, weight=1)
         self.frame.rowconfigure(0, weight=1)

@@ -6,22 +6,25 @@ import tkinter as tk
 from tkinter import ttk
 
 
-# The palette is intentionally stronger than the platform default.  On Windows
-# some native ttk widgets can briefly repaint themselves with white backgrounds;
-# these values are applied both through ttk styles and, for Tk containers, as
-# direct widget options.
-BACKGROUND = "#d2cabd"          # whole application shell
-WORKSPACE = "#ddd7cc"           # tab/workspace surface
-SURFACE = "#e7e1d6"             # secondary surface around panels
-PANEL = "#eee8de"               # panel container
-PANEL_BODY = "#f3eee5"          # panel content area
-PANEL_HEADER = "#e4d9c9"        # collapsible header
-PANEL_BORDER = "#b1a796"
-SECTION = "#f0ebe2"
-TABLE_BG = "#fbfaf6"
-TEXT = "#1f2933"
-MUTED_TEXT = "#5b6675"
-ACCENT = "#2f6fdd"
+# Flat, calmer palette for the desktop UI.  The goal is a more modern and
+# minimalistic hierarchy: a cool light-gray shell, white work surfaces, subtle
+# panel contrast and restrained blue accent actions.
+BACKGROUND = "#edf1f5"          # whole application shell
+WORKSPACE = "#f7f9fc"           # tab/workspace surface
+SURFACE = "#eef3f8"             # secondary surface around panels
+PANEL = "#ffffff"               # panel container
+PANEL_BODY = "#f8fafc"          # panel content area
+PANEL_HEADER = "#f1f5f9"        # collapsible header
+PANEL_BORDER = "#d7dee7"
+SECTION = "#eef2f6"
+TABLE_BG = "#ffffff"
+TEXT = "#1f2937"
+MUTED_TEXT = "#6b7280"
+ACCENT = "#3b82f6"
+ACCENT_HOVER = "#2563eb"
+ACCENT_MUTED = "#dbeafe"
+SUBTLE_BUTTON = "#e5ebf2"
+SUBTLE_BUTTON_HOVER = "#d7e0ea"
 
 
 _PANEL_TTK_STYLES = {
@@ -35,7 +38,7 @@ _PANEL_TTK_STYLES = {
 
 
 def configure_app_style(root) -> None:
-    """Apply the neutral visual hierarchy to Tk/ttk widgets."""
+    """Apply the flat modern visual hierarchy to Tk/ttk widgets."""
 
     style = ttk.Style(root)
     try:
@@ -46,6 +49,8 @@ def configure_app_style(root) -> None:
     root.configure(background=BACKGROUND)
 
     style.configure(".", font=("TkDefaultFont", 9), foreground=TEXT)
+    style.map(".", foreground=[("disabled", "#9aa4b2")])
+
     style.configure("TFrame", background=BACKGROUND)
     style.configure("App.TFrame", background=BACKGROUND)
     style.configure("Workspace.TFrame", background=WORKSPACE)
@@ -79,27 +84,126 @@ def configure_app_style(root) -> None:
     style.configure(
         "Disclosure.TLabel",
         background=PANEL_HEADER,
-        foreground=TEXT,
-        font=("TkDefaultFont", 9, "bold"),
+        foreground=MUTED_TEXT,
+        font=("TkDefaultFont", 8, "bold"),
     )
 
-    style.configure("TLabelframe", background=SECTION, bordercolor=PANEL_BORDER)
+    style.configure("TLabelframe", background=SECTION, bordercolor=PANEL_BORDER, relief="solid")
     style.configure("TLabelframe.Label", background=SECTION, foreground=TEXT)
-    style.configure("Panel.TLabelframe", background=PANEL_BODY, bordercolor=PANEL_BORDER)
+    style.configure("Panel.TLabelframe", background=PANEL_BODY, bordercolor=PANEL_BORDER, relief="solid")
     style.configure("Panel.TLabelframe.Label", background=PANEL_BODY, foreground=TEXT)
     style.configure("PanelBody.TCheckbutton", background=PANEL_BODY, foreground=TEXT)
     style.map("PanelBody.TCheckbutton", background=[("active", PANEL_BODY)])
     style.configure("PanelBody.TRadiobutton", background=PANEL_BODY, foreground=TEXT)
     style.map("PanelBody.TRadiobutton", background=[("active", PANEL_BODY)])
 
-    style.configure("TPanedwindow", background=BACKGROUND)
-    style.configure("Workspace.TPanedwindow", background=WORKSPACE)
-    style.configure("TNotebook", background=BACKGROUND, borderwidth=0)
+    style.configure("TPanedwindow", background=BACKGROUND, sashwidth=6)
+    style.configure("Workspace.TPanedwindow", background=WORKSPACE, sashwidth=6)
+
+    style.configure("TNotebook", background=WORKSPACE, borderwidth=0, tabmargins=(0, 0, 0, 0))
     style.configure("PanelBody.TNotebook", background=PANEL_BODY, borderwidth=0)
-    style.configure("TNotebook.Tab", padding=(8, 4))
-    style.configure("TButton", padding=(8, 4))
-    style.configure("Treeview", rowheight=22, background=TABLE_BG, fieldbackground=TABLE_BG)
-    style.configure("Treeview.Heading", background=SECTION, font=("TkDefaultFont", 9, "bold"))
+    style.configure(
+        "TNotebook.Tab",
+        padding=(12, 7),
+        background=SURFACE,
+        foreground=MUTED_TEXT,
+        borderwidth=0,
+    )
+    style.map(
+        "TNotebook.Tab",
+        background=[("selected", PANEL), ("active", WORKSPACE)],
+        foreground=[("selected", TEXT), ("active", TEXT)],
+        expand=[("selected", (0, 0, 0, 0))],
+    )
+
+    style.configure(
+        "TButton",
+        padding=(10, 6),
+        background=ACCENT,
+        foreground="#ffffff",
+        borderwidth=0,
+        relief="flat",
+        focusthickness=0,
+    )
+    style.map(
+        "TButton",
+        background=[("active", ACCENT_HOVER), ("pressed", ACCENT_HOVER), ("disabled", "#cbd5e1")],
+        foreground=[("disabled", "#f8fafc")],
+    )
+    style.configure(
+        "Subtle.TButton",
+        padding=(10, 6),
+        background=SUBTLE_BUTTON,
+        foreground=TEXT,
+        borderwidth=0,
+        relief="flat",
+        focusthickness=0,
+    )
+    style.map(
+        "Subtle.TButton",
+        background=[("active", SUBTLE_BUTTON_HOVER), ("pressed", SUBTLE_BUTTON_HOVER), ("disabled", SURFACE)],
+        foreground=[("disabled", "#9aa4b2")],
+    )
+    style.configure(
+        "Toolbar.TButton",
+        padding=(12, 8),
+        background=ACCENT,
+        foreground="#ffffff",
+        borderwidth=0,
+        relief="flat",
+    )
+    style.map(
+        "Toolbar.TButton",
+        background=[("active", ACCENT_HOVER), ("pressed", ACCENT_HOVER)],
+    )
+
+    style.configure(
+        "TEntry",
+        fieldbackground="#ffffff",
+        background="#ffffff",
+        foreground=TEXT,
+        bordercolor=PANEL_BORDER,
+        lightcolor=PANEL_BORDER,
+        darkcolor=PANEL_BORDER,
+        insertcolor=TEXT,
+        padding=5,
+    )
+    style.configure(
+        "TCombobox",
+        fieldbackground="#ffffff",
+        background="#ffffff",
+        foreground=TEXT,
+        bordercolor=PANEL_BORDER,
+        lightcolor=PANEL_BORDER,
+        darkcolor=PANEL_BORDER,
+        arrowsize=14,
+        padding=4,
+    )
+    style.map(
+        "TCombobox",
+        fieldbackground=[("readonly", "#ffffff")],
+        selectbackground=[("readonly", "#ffffff")],
+        selectforeground=[("readonly", TEXT)],
+    )
+    style.configure(
+        "Treeview",
+        rowheight=24,
+        background=TABLE_BG,
+        fieldbackground=TABLE_BG,
+        foreground=TEXT,
+        bordercolor=PANEL_BORDER,
+        lightcolor=PANEL_BORDER,
+        darkcolor=PANEL_BORDER,
+    )
+    style.map("Treeview", background=[("selected", ACCENT_MUTED)], foreground=[("selected", TEXT)])
+    style.configure(
+        "Treeview.Heading",
+        background=SECTION,
+        foreground=TEXT,
+        font=("TkDefaultFont", 9, "bold"),
+        relief="flat",
+        borderwidth=0,
+    )
 
 
 def force_panel_backgrounds(widget: tk.Misc) -> None:
@@ -148,6 +252,10 @@ __all__ = [
     "TEXT",
     "MUTED_TEXT",
     "ACCENT",
+    "ACCENT_HOVER",
+    "ACCENT_MUTED",
+    "SUBTLE_BUTTON",
+    "SUBTLE_BUTTON_HOVER",
     "configure_app_style",
     "force_panel_backgrounds",
 ]

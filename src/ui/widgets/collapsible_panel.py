@@ -10,7 +10,7 @@ class CollapsiblePanel(tk.Frame):
 
     The header and body use classic Tk widgets with explicit backgrounds.  This
     avoids a Windows-specific ttk repaint issue where the panel briefly appears
-    with the intended beige background and then returns to white after the whole
+    with the intended palette and then returns to white after the whole
     application finishes drawing.
     """
 
@@ -35,7 +35,7 @@ class CollapsiblePanel(tk.Frame):
         self._indicator_var = tk.StringVar()
         self._hint_var = tk.StringVar(value=header_hint or "")
 
-        self.header = tk.Frame(self, background=PANEL_HEADER, padx=8, pady=5)
+        self.header = tk.Frame(self, background=PANEL_HEADER, padx=10, pady=6)
         self.header.pack(fill="x")
         self.header.columnconfigure(2, weight=1)
 
@@ -46,8 +46,8 @@ class CollapsiblePanel(tk.Frame):
             anchor="center",
             cursor="hand2",
             background=PANEL_HEADER,
-            foreground=TEXT,
-            font=("TkDefaultFont", 9, "bold"),
+            foreground=MUTED_TEXT,
+            font=("TkDefaultFont", 8, "bold"),
         )
         self.toggle_indicator.grid(row=0, column=0, sticky="w")
 

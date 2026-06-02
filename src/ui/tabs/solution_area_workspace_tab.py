@@ -135,12 +135,18 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             justify="left",
             style="WorkspaceHeader.TLabel",
         ).grid(row=0, column=1, padx=(16, 10), sticky="ew")
-        ttk.Button(header, text="Свернуть анализ", command=self.close_analysis).grid(
-            row=0, column=2, padx=(0, 6), sticky="e"
-        )
-        ttk.Button(header, text="Раскрыть всё", command=self.open_all).grid(
-            row=0, column=3, sticky="e"
-        )
+        ttk.Button(
+            header,
+            text="Свернуть анализ",
+            command=self.close_analysis,
+            style="Subtle.TButton",
+        ).grid(row=0, column=2, padx=(0, 6), sticky="e")
+        ttk.Button(
+            header,
+            text="Раскрыть всё",
+            command=self.open_all,
+            style="Subtle.TButton",
+        ).grid(row=0, column=3, sticky="e")
 
         main = ttk.Panedwindow(self, orient="horizontal", style="Workspace.TPanedwindow")
         main.pack(fill="both", expand=True, padx=12, pady=(0, 12))

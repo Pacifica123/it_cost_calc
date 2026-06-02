@@ -240,14 +240,17 @@ class CalculatorApp(tk.Tk):
         self.minsize(min(1280, target_width), min(740, target_height))
 
     def _build_toolbar(self) -> None:
-        toolbar = ttk.Frame(self, padding=(12, 10))
+        toolbar = ttk.Frame(self, padding=(12, 10), style="App.TFrame")
         toolbar.pack(fill="x")
 
-        ttk.Button(toolbar, text="Загрузить демо-данные", command=self.load_demo_data).pack(
-            side="left"
-        )
+        ttk.Button(
+            toolbar,
+            text="Загрузить демо-данные",
+            command=self.load_demo_data,
+            style="Toolbar.TButton",
+        ).pack(side="left")
         ttk.Label(toolbar, textvariable=self.demo_status_var).pack(side="left", padx=(12, 0))
-        ttk.Button(toolbar, text="Выход", command=self.shutdown).pack(side="right")
+        ttk.Button(toolbar, text="Выход", command=self.shutdown, style="Subtle.TButton").pack(side="right")
 
 
     def _refresh_solution_component_views(self) -> None:
