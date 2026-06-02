@@ -16,7 +16,7 @@ from ui.tabs.configuration_selection_tab import ConfigurationSelectionTab
 from ui.tabs.criteria_importance_tab import CriteriaImportanceTab
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
 from ui.tabs.opex_tab import OpexTab
-from ui.theme import WORKSPACE, force_panel_backgrounds
+from ui.theme import SUBTLE_BUTTON, SUBTLE_BUTTON_HOVER, TEXT, WORKSPACE, force_panel_backgrounds
 from ui.widgets import CollapsiblePanel
 
 
@@ -119,40 +119,36 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         energy_tab: Any | None,
         data_root: Any | None,
     ) -> None:
-        header = ttk.Frame(self, padding=(12, 10), style="WorkspaceHeader.TFrame")
+        header = tk.Frame(self, background=WORKSPACE, padx=12, pady=10)
         header.pack(fill="x")
         header.columnconfigure(1, weight=1)
-        ttk.Label(
+        tk.Label(
             header,
             text=self.scope_title,
             font=("TkDefaultFont", 12, "bold"),
-            style="WorkspaceHeader.TLabel",
+            background=WORKSPACE,
+            foreground=TEXT,
         ).grid(row=0, column=0, sticky="w")
-        ttk.Label(
+        tk.Label(
             header,
             text=self._workspace_hint(),
             wraplength=720,
             justify="left",
-            style="WorkspaceHeader.TLabel",
+            background=WORKSPACE,
+            foreground=TEXT,
         ).grid(row=0, column=1, padx=(16, 10), sticky="ew")
-        ttk.Button(
-            header,
-            text="Свернуть анализ",
-            command=self.close_analysis,
-            style="Subtle.TButton",
-        ).grid(row=0, column=2, padx=(0, 6), sticky="e")
-        ttk.Button(
-            header,
-            text="Раскрыть всё",
-            command=self.open_all,
-            style="Subtle.TButton",
-        ).grid(row=0, column=3, sticky="e")
+        self._build_header_button(header, "Свернуть анализ", self.close_analysis).grid(
+            row=0, column=2, padx=(0, 6), sticky="e"
+        )
+        self._build_header_button(header, "Раскрыть всё", self.open_all).grid(
+            row=0, column=3, sticky="e"
+        )
 
-        main = ttk.Panedwindow(self, orient="horizontal", style="Workspace.TPanedwindow")
+        main = ttk.Panedwindow(self, orient="horizontal")
         main.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
-        data_side = ttk.Panedwindow(main, orient="vertical", style="Workspace.TPanedwindow")
-        analysis_side = ttk.Panedwindow(main, orient="vertical", style="Workspace.TPanedwindow")
+        data_side = ttk.Panedwindow(main, orient="vertical")
+        analysis_side = ttk.Panedwindow(main, orient="vertical")
         main.add(data_side, weight=4)
         main.add(analysis_side, weight=8)
 
@@ -167,6 +163,22 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             data_root=data_root,
         )
         self.after_idle(self._force_panel_backgrounds)
+
+    def _build_header_button(self, parent: tk.Misc, text: str, command) -> tk.Button:
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            background=SUBTLE_BUTTON,
+            activebackground=SUBTLE_BUTTON_HOVER,
+            foreground=TEXT,
+            activeforeground=TEXT,
+            relief="flat",
+            bd=0,
+            padx=10,
+            pady=6,
+            cursor="hand2",
+        )
 
     def _workspace_hint(self) -> str:
         if self.scope == ANALYSIS_SCOPE_SOFTWARE:
@@ -333,7 +345,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         return panel
 
     def _build_cost_relation_table(self, parent: tk.Misc) -> None:
-        text = ttk.Label(
+        text = tk.Label(
             parent,
             text=(
                 "Матрица фиксирует не место строки в интерфейсе, а экономический смысл. "
@@ -342,7 +354,8 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             ),
             wraplength=760,
             justify="left",
-            style="PanelBody.TLabel",
+            background=parent.cget("background") if "background" in parent.keys() else WORKSPACE,
+            foreground=TEXT,
         )
         text.pack(fill="x", padx=6, pady=(0, 6))
 

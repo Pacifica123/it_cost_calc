@@ -235,7 +235,11 @@ def force_panel_backgrounds(widget: tk.Misc) -> None:
 def _safe_configure(widget: tk.Misc, **kwargs) -> None:
     try:
         widget.configure(**kwargs)
-    except tk.TclError:
+    except (tk.TclError, AttributeError):
+        # ttkbootstrap can raise AttributeError instead of TclError when a
+        # custom ttk style is applied before its Style singleton exists.  The
+        # colour pass is best-effort; direct Tk backgrounds above still keep the
+        # panel hierarchy visible.
         return
 
 

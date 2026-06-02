@@ -40,7 +40,7 @@ from infrastructure.repositories.json_entity_repository import JsonEntityReposit
 from infrastructure.repositories.treeview_crud_repository import TreeviewCrudRepository
 from infrastructure.storage import JsonFileStorage
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL
-from ui.theme import configure_app_style
+from ui.theme import ACCENT, ACCENT_HOVER, BACKGROUND, SUBTLE_BUTTON, SUBTLE_BUTTON_HOVER, TEXT, configure_app_style
 from ui.tabs import (
     energy_tab,
     export_tab,
@@ -240,17 +240,43 @@ class CalculatorApp(tk.Tk):
         self.minsize(min(1280, target_width), min(740, target_height))
 
     def _build_toolbar(self) -> None:
-        toolbar = ttk.Frame(self, padding=(12, 10), style="App.TFrame")
+        toolbar = tk.Frame(self, background=BACKGROUND, padx=12, pady=10)
         toolbar.pack(fill="x")
 
-        ttk.Button(
+        tk.Button(
             toolbar,
             text="Загрузить демо-данные",
             command=self.load_demo_data,
-            style="Toolbar.TButton",
+            background=ACCENT,
+            activebackground=ACCENT_HOVER,
+            foreground="#ffffff",
+            activeforeground="#ffffff",
+            relief="flat",
+            bd=0,
+            padx=12,
+            pady=8,
+            cursor="hand2",
         ).pack(side="left")
-        ttk.Label(toolbar, textvariable=self.demo_status_var).pack(side="left", padx=(12, 0))
-        ttk.Button(toolbar, text="Выход", command=self.shutdown, style="Subtle.TButton").pack(side="right")
+        tk.Label(
+            toolbar,
+            textvariable=self.demo_status_var,
+            background=BACKGROUND,
+            foreground=TEXT,
+        ).pack(side="left", padx=(12, 0))
+        tk.Button(
+            toolbar,
+            text="Выход",
+            command=self.shutdown,
+            background=SUBTLE_BUTTON,
+            activebackground=SUBTLE_BUTTON_HOVER,
+            foreground=TEXT,
+            activeforeground=TEXT,
+            relief="flat",
+            bd=0,
+            padx=12,
+            pady=8,
+            cursor="hand2",
+        ).pack(side="right")
 
 
     def _refresh_solution_component_views(self) -> None:
