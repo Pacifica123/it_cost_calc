@@ -33,6 +33,9 @@
 - `architecture/solution_component_demo_control.md` — финальная C9-связка демонстрации, smoke-проверки и защитного объяснения редактора компонентов;
 - `architecture/global_interface_reorganization_plan.md` — план глобальной реорганизации интерфейса: укрупнение вкладок, перенос GA/AHP/обоснования внутрь ПО/ТО, матрица ПО/ТО × CAPEX/OPEX и умный экспорт;
 - `architecture/global_interface_reorganization_implementation.md` — сводка реализации новой структуры вкладок, раскрываемых панелей и контекстного экспорта;
+- `architecture/decision_methods_workspace_reallocation_plan.md` — план разделения GA, AHP, Pareto и гибридной оценки внутри рабочих областей ПО/ТО без дублирования AHP;
+- `architecture/hybrid_decision_assessment_workspace_plan.md` — план отдельной панели гибридной итоговой оценки как витрины согласованности методов;
+- `architecture/optimization_refactor_patch_sequence.md` — последовательность будущих devctl-патчей для интерфейсной и методической переработки аналитики;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -62,6 +65,8 @@
 - `research/criteria_importance.md` — анализ важности критериев;
 - `research/genetic_algorithm.md` — генетический алгоритм подбора конфигурации и связка ГА + AHP;
 - `research/parsing.md` — парсинг каталога оборудования;
+- `research/decision_criteria_unification_plan.md` — план унификации критериев и ограничений для GA, AHP, Pareto и гибридной оценки;
+- `research/equipment_metrics_and_catalog_parsing_plan.md` — план перехода от абстрактной производительности к конкретным характеристикам оборудования и best-effort парсингу;
 - `research/ideas/genetic_algorithm_plain_manifest.md` — простое md-объяснение роли ГА;
 - `research/ideas/future_independent_ga_ahp_assessment.md` — идея независимого сопоставления оценок ГА и AHP;
 - `research/ideas/future_hybrid_ga_ahp_score.md` — идея гибридной итоговой оценки ГА и AHP.
@@ -99,14 +104,19 @@
 22. `architecture/solution_component_demo_control.md`
 23. `architecture/global_interface_reorganization_plan.md`
 24. `architecture/global_interface_reorganization_implementation.md`
-25. `architecture/system_schema.md`
-26. `architecture/module_map.md`
-27. `architecture/data_map.md`
-28. `research/genetic_algorithm.md`
-29. `research/ideas/genetic_algorithm_plain_manifest.md`
-30. `research/ideas/future_independent_ga_ahp_assessment.md`
-31. `research/ideas/future_hybrid_ga_ahp_score.md`
-32. `demo/ga_ahp_defense_guide.md`
-33. `demo/demo_data_contract.md`
-34. `demo/solution_component_editor_defense_guide.md`
-35. `traceability.md`
+25. `architecture/decision_methods_workspace_reallocation_plan.md`
+26. `architecture/hybrid_decision_assessment_workspace_plan.md`
+27. `architecture/optimization_refactor_patch_sequence.md`
+28. `architecture/system_schema.md`
+29. `architecture/module_map.md`
+30. `architecture/data_map.md`
+31. `research/decision_criteria_unification_plan.md`
+32. `research/equipment_metrics_and_catalog_parsing_plan.md`
+33. `research/genetic_algorithm.md`
+34. `research/ideas/genetic_algorithm_plain_manifest.md`
+35. `research/ideas/future_independent_ga_ahp_assessment.md`
+36. `research/ideas/future_hybrid_ga_ahp_score.md`
+37. `demo/ga_ahp_defense_guide.md`
+38. `demo/demo_data_contract.md`
+39. `demo/solution_component_editor_defense_guide.md`
+40. `traceability.md`
