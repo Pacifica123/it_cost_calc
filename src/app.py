@@ -63,8 +63,7 @@ class CalculatorApp(tk.Tk):
         logger.info("Инициализация настольного приложения. Лог-файл: %s", self.log_path)
 
         self.title("Калькулятор стоимости ИТ-инфраструктуры")
-        self.geometry("1280x720")
-        self.minsize(1180, 680)
+        self._configure_initial_window_geometry()
         configure_app_style(self)
         self.protocol("WM_DELETE_WINDOW", self.shutdown)
 
@@ -200,6 +199,23 @@ class CalculatorApp(tk.Tk):
         self.update_total_costs()
         self.export_tab.update_summary()
         logger.info("Настольное приложение инициализировано")
+
+
+    def _configure_initial_window_geometry(self) -> None:
+        """Choose a larger, centered start size for dense analytical workspaces."""
+
+        screen_width = max(int(self.winfo_screenwidth()), 1)
+        screen_height = max(int(self.winfo_screenheight()), 1)
+
+        target_width = max(1360, int(screen_width * 0.78))
+        target_height = max(780, int(screen_height * 0.78))
+        target_width = min(target_width, screen_width - 80 if screen_width > 900 else screen_width)
+        target_height = min(target_height, screen_height - 90 if screen_height > 700 else screen_height)
+
+        x = max((screen_width - target_width) // 2, 0)
+        y = max((screen_height - target_height) // 2, 0)
+        self.geometry(f"{target_width}x{target_height}+{x}+{y}")
+        self.minsize(min(1280, target_width), min(740, target_height))
 
     def _build_toolbar(self) -> None:
         toolbar = ttk.Frame(self, padding=(12, 10))

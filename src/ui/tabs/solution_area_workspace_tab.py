@@ -16,7 +16,7 @@ from ui.tabs.configuration_selection_tab import ConfigurationSelectionTab
 from ui.tabs.criteria_importance_tab import CriteriaImportanceTab
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
 from ui.tabs.opex_tab import OpexTab
-from ui.theme import BACKGROUND
+from ui.theme import BACKGROUND, SURFACE
 from ui.widgets import CollapsiblePanel
 
 
@@ -119,19 +119,21 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         energy_tab: Any | None,
         data_root: Any | None,
     ) -> None:
-        header = ttk.Frame(self, padding=(10, 8), style="App.TFrame")
+        header = ttk.Frame(self, padding=(12, 10), style="WorkspaceHeader.TFrame")
         header.pack(fill="x")
         header.columnconfigure(1, weight=1)
         ttk.Label(
             header,
             text=self.scope_title,
             font=("TkDefaultFont", 12, "bold"),
+            style="WorkspaceHeader.TLabel",
         ).grid(row=0, column=0, sticky="w")
         ttk.Label(
             header,
             text=self._workspace_hint(),
             wraplength=720,
             justify="left",
+            style="WorkspaceHeader.TLabel",
         ).grid(row=0, column=1, padx=(16, 10), sticky="ew")
         ttk.Button(header, text="Свернуть анализ", command=self.close_analysis).grid(
             row=0, column=2, padx=(0, 6), sticky="e"
@@ -145,8 +147,8 @@ class SolutionAreaWorkspaceTab(tk.Frame):
 
         data_side = ttk.Panedwindow(main, orient="vertical")
         analysis_side = ttk.Panedwindow(main, orient="vertical")
-        main.add(data_side, weight=5)
-        main.add(analysis_side, weight=7)
+        main.add(data_side, weight=4)
+        main.add(analysis_side, weight=8)
 
         self.after_idle(lambda: self._set_initial_pane_positions(main, data_side, analysis_side))
 
@@ -176,12 +178,12 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             width = max(main.winfo_width(), 1)
             height = max(self.winfo_height(), 1)
             if width > 900:
-                main.sashpos(0, int(width * 0.44))
+                main.sashpos(0, int(width * 0.36))
             if height > 520:
-                data_side.sashpos(0, int(height * 0.38))
-                data_side.sashpos(1, int(height * 0.72))
-                analysis_side.sashpos(0, int(height * 0.72))
-                analysis_side.sashpos(1, int(height * 0.84))
+                data_side.sashpos(0, int(height * 0.44))
+                data_side.sashpos(1, int(height * 0.74))
+                analysis_side.sashpos(0, int(height * 0.84))
+                analysis_side.sashpos(1, int(height * 0.92))
         except tk.TclError:
             return
 
@@ -193,9 +195,19 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             hint="разовые активы",
         )
         if self.scope == ANALYSIS_SCOPE_SOFTWARE:
-            self.capex_tab: CapexTab = SoftwareTab(capex_panel.content, self.equipment_service)
+            self.capex_tab: CapexTab = SoftwareTab(
+                capex_panel.content,
+                self.equipment_service,
+                columns_count=1,
+                compact_tables=True,
+            )
         else:
-            self.capex_tab = TechnicalEquipmentTab(capex_panel.content, self.equipment_service)
+            self.capex_tab = TechnicalEquipmentTab(
+                capex_panel.content,
+                self.equipment_service,
+                columns_count=1,
+                compact_tables=True,
+            )
         self.capex_tab.pack(fill="both", expand=True)
         parent.add(capex_panel, weight=1)
 
@@ -222,7 +234,8 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             self.equipment_service,
             entity_config=config,
             intro_text=intro,
-            columns_count=2,
+            columns_count=1,
+            compact_tables=True,
         )
         self.opex_tab.pack(fill="both", expand=True)
         parent.add(opex_panel, weight=1)
@@ -322,6 +335,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             ),
             wraplength=760,
             justify="left",
+            style="Surface.TLabel",
         )
         text.pack(fill="x", padx=6, pady=(0, 6))
 

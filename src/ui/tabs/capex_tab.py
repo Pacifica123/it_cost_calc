@@ -36,13 +36,17 @@ class CapexTab(BaseScrollableTab):
         *,
         entity_config: EntityConfig | None = None,
         intro_text: str | None = None,
+        columns_count: int = 2,
+        compact_tables: bool = False,
     ):
         super().__init__(parent)
         self.equipment_service = equipment_service
         self.entity_config = dict(entity_config or self.ENTITY_CONFIG)
+        self.columns_count = max(1, int(columns_count))
+        self.compact_tables = compact_tables
 
-        self.inner_frame.columnconfigure(0, weight=1)
-        self.inner_frame.columnconfigure(1, weight=1)
+        for column in range(self.columns_count):
+            self.inner_frame.columnconfigure(column, weight=1, uniform="capex-columns")
 
         if intro_text:
             import tkinter as tk
@@ -55,7 +59,18 @@ class CapexTab(BaseScrollableTab):
                 wraplength=880,
                 background=SURFACE,
             )
-            label.grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 0), sticky="ew")
+            label.grid(
+                row=0,
+                column=0,
+                columnspan=self.columns_count,
+                padx=10,
+                pady=(10, 0),
+                sticky="ew",
+            )
+            label.bind(
+                "<Configure>",
+                lambda event, widget=label: widget.configure(wraplength=max(260, event.width - 20)),
+            )
             row_offset = 1
         else:
             row_offset = 0
@@ -70,10 +85,11 @@ class CapexTab(BaseScrollableTab):
                 on_add=lambda e=entity_name: self.add_row(e),
                 on_edit=lambda e=entity_name: self.edit_row(e),
                 on_delete=lambda e=entity_name: self.delete_row(e),
+                compact=self.compact_tables,
             )
             section.grid(
-                row=row_offset + index // 2,
-                column=index % 2,
+                row=row_offset + index // self.columns_count,
+                column=index % self.columns_count,
                 padx=10,
                 pady=10,
                 sticky="nsew",
@@ -139,11 +155,20 @@ class TechnicalEquipmentTab(CapexTab):
         "network": ("Сетевое оборудование", ("name", "quantity", "price")),
     }
 
-    def __init__(self, parent, equipment_service: EquipmentService):
+    def __init__(
+        self,
+        parent,
+        equipment_service: EquipmentService,
+        *,
+        columns_count: int = 2,
+        compact_tables: bool = False,
+    ):
         super().__init__(
             parent,
             equipment_service,
             entity_config=self.ENTITY_CONFIG,
+            columns_count=columns_count,
+            compact_tables=compact_tables,
             intro_text=(
                 "ТО — техническое обеспечение: серверы, клиентские устройства и сеть. "
                 "Именно эта область участвует в расчётах мощности и клиентских мест."
@@ -156,11 +181,20 @@ class SoftwareTab(CapexTab):
         "licenses": ("Лицензии ПО", ("name", "quantity", "price")),
     }
 
-    def __init__(self, parent, equipment_service: EquipmentService):
+    def __init__(
+        self,
+        parent,
+        equipment_service: EquipmentService,
+        *,
+        columns_count: int = 1,
+        compact_tables: bool = False,
+    ):
         super().__init__(
             parent,
             equipment_service,
             entity_config=self.ENTITY_CONFIG,
+            columns_count=columns_count,
+            compact_tables=compact_tables,
             intro_text=(
                 "ПО — программное обеспечение: лицензии и программные позиции. "
                 "Для этой области анализы используют стоимость и количество лицензий, "

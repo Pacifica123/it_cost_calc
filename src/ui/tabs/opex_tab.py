@@ -41,11 +41,13 @@ class OpexTab(BaseScrollableTab):
         entity_config: OperationalEntityConfig | None = None,
         intro_text: str | None = None,
         columns_count: int = 3,
+        compact_tables: bool = False,
     ):
         super().__init__(parent)
         self.equipment_service = equipment_service
         self.entity_config = dict(entity_config or self.ENTITY_CONFIG)
         self.columns_count = max(1, int(columns_count))
+        self.compact_tables = compact_tables
 
         for column in range(self.columns_count):
             self.inner_frame.columnconfigure(column, weight=1)
@@ -68,6 +70,10 @@ class OpexTab(BaseScrollableTab):
                 pady=(10, 0),
                 sticky="ew",
             )
+            label.bind(
+                "<Configure>",
+                lambda event, widget=label: widget.configure(wraplength=max(260, event.width - 20)),
+            )
             row_offset = 1
 
         self.tables: dict[str, EntityTableSection] = {}
@@ -80,6 +86,7 @@ class OpexTab(BaseScrollableTab):
                 on_add=lambda e=entity_name: self.add_row(e),
                 on_edit=lambda e=entity_name: self.edit_row(e),
                 on_delete=lambda e=entity_name: self.delete_row(e),
+                compact=self.compact_tables,
             )
             section.grid(
                 row=row_offset + index // self.columns_count,
