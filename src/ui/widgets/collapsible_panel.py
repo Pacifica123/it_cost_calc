@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
 
-from ui.theme import PANEL, PANEL_BORDER
+from ui.theme import MUTED_TEXT, PANEL, PANEL_BODY, PANEL_BORDER, PANEL_HEADER, TEXT
 
 
 class CollapsiblePanel(tk.Frame):
     """Reusable disclosure panel for dense Tk interfaces.
 
-    The indicator is a compact text arrow instead of a full button.  This keeps
-    the affordance visible but prevents the bright platform button from
-    dominating dense ПО/ТО workspaces.
+    The header and body use classic Tk widgets with explicit backgrounds.  This
+    avoids a Windows-specific ttk repaint issue where the panel briefly appears
+    with the intended beige background and then returns to white after the whole
+    application finishes drawing.
     """
 
     def __init__(
@@ -35,40 +35,47 @@ class CollapsiblePanel(tk.Frame):
         self._indicator_var = tk.StringVar()
         self._hint_var = tk.StringVar(value=header_hint or "")
 
-        self.header = ttk.Frame(self, padding=(8, 5), style="PanelHeader.TFrame")
+        self.header = tk.Frame(self, background=PANEL_HEADER, padx=8, pady=5)
         self.header.pack(fill="x")
         self.header.columnconfigure(2, weight=1)
 
-        self.toggle_indicator = ttk.Label(
+        self.toggle_indicator = tk.Label(
             self.header,
             textvariable=self._indicator_var,
-            style="Disclosure.TLabel",
             width=2,
             anchor="center",
             cursor="hand2",
+            background=PANEL_HEADER,
+            foreground=TEXT,
+            font=("TkDefaultFont", 9, "bold"),
         )
         self.toggle_indicator.grid(row=0, column=0, sticky="w")
 
-        self.title_label = ttk.Label(
+        self.title_label = tk.Label(
             self.header,
             text=title,
-            style="PanelTitle.TLabel",
             cursor="hand2",
+            background=PANEL_HEADER,
+            foreground=TEXT,
+            font=("TkDefaultFont", 9, "bold"),
         )
         self.title_label.grid(row=0, column=1, sticky="w", padx=(4, 10))
 
-        self.hint_label: ttk.Label | None = None
+        self.hint_label: tk.Label | None = None
         if header_hint:
-            self.hint_label = ttk.Label(
+            self.hint_label = tk.Label(
                 self.header,
                 textvariable=self._hint_var,
-                style="PanelHint.TLabel",
                 wraplength=520,
                 justify="left",
+                cursor="hand2",
+                background=PANEL_HEADER,
+                foreground=MUTED_TEXT,
+                font=("TkDefaultFont", 8),
             )
             self.hint_label.grid(row=0, column=2, sticky="ew")
 
-        self.content = ttk.Frame(self, padding=(10, 10), style="PanelBody.TFrame")
+        self.content = tk.Frame(self, background=PANEL_BODY, padx=10, pady=10)
         self._bind_header_toggle()
         self._sync_visibility()
 

@@ -198,8 +198,30 @@ class CalculatorApp(tk.Tk):
 
         self.update_total_costs()
         self.export_tab.update_summary()
+        self._stabilize_visual_theme()
         logger.info("Настольное приложение инициализировано")
 
+
+    def _stabilize_visual_theme(self) -> None:
+        """Re-apply styles after all tabs have created their nested widgets.
+
+        Some Windows ttk redraws happen after the root window is already visible.
+        Running the theme pass again prevents the intended beige panel hierarchy
+        from flashing correctly and then returning to the default white surface.
+        """
+
+        configure_app_style(self)
+        for workspace in getattr(self, "workspace_tabs_by_scope", {}).values():
+            if hasattr(workspace, "_force_panel_backgrounds"):
+                workspace._force_panel_backgrounds()
+        self.after_idle(self._refresh_visual_theme)
+        self.after(250, self._refresh_visual_theme)
+
+    def _refresh_visual_theme(self) -> None:
+        configure_app_style(self)
+        for workspace in getattr(self, "workspace_tabs_by_scope", {}).values():
+            if hasattr(workspace, "_force_panel_backgrounds"):
+                workspace._force_panel_backgrounds()
 
     def _configure_initial_window_geometry(self) -> None:
         """Choose a larger, centered start size for dense analytical workspaces."""

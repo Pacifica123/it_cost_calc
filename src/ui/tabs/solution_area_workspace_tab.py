@@ -16,7 +16,7 @@ from ui.tabs.configuration_selection_tab import ConfigurationSelectionTab
 from ui.tabs.criteria_importance_tab import CriteriaImportanceTab
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
 from ui.tabs.opex_tab import OpexTab
-from ui.theme import WORKSPACE
+from ui.theme import WORKSPACE, force_panel_backgrounds
 from ui.widgets import CollapsiblePanel
 
 
@@ -160,6 +160,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             energy_tab=energy_tab,
             data_root=data_root,
         )
+        self.after_idle(self._force_panel_backgrounds)
 
     def _workspace_hint(self) -> str:
         if self.scope == ANALYSIS_SCOPE_SOFTWARE:
@@ -359,9 +360,16 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             tree.insert("", "end", values=row)
         tree.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 
+    def _force_panel_backgrounds(self) -> None:
+        """Re-apply backgrounds after all nested legacy widgets are created."""
+
+        for panel in self.panels.values():
+            force_panel_backgrounds(panel.content)
+
     def refresh_all(self) -> None:
         self.capex_tab.refresh_all()
         self.opex_tab.refresh_all()
+        self._force_panel_backgrounds()
 
     def open_all(self) -> None:
         for panel in self.panels.values():

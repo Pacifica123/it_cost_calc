@@ -3,6 +3,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from ui.theme import PANEL_BODY, PANEL_BORDER, TEXT
+
 
 class EntityTableSection:
     """Compact CRUD table block used inside dense ПО/ТО workspaces."""
@@ -29,7 +31,19 @@ class EntityTableSection:
         height: int | None = None,
     ):
         self.compact = compact
-        self.frame = ttk.LabelFrame(parent, text=title, padding=(8, 6), style="Panel.TLabelframe")
+        self.frame = tk.LabelFrame(
+            parent,
+            text=title,
+            padx=8,
+            pady=6,
+            background=PANEL_BODY,
+            foreground=TEXT,
+            highlightbackground=PANEL_BORDER,
+            highlightcolor=PANEL_BORDER,
+            highlightthickness=1,
+            bd=1,
+            relief="groove",
+        )
         self.frame.columnconfigure(0, weight=1)
         self.frame.rowconfigure(0, weight=1)
 
