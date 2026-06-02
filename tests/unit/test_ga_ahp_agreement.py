@@ -94,13 +94,13 @@ def test_agreement_report_warns_about_inactive_constant_criteria():
                         "score": 0.9,
                         "selected_items": [{"name": "A"}],
                         "raw_scores_by_criterion": {
-                            "category_coverage": 4.0,
+                            "support_score": 4.0,
                             "client_capacity": 6.0,
                             "total_power_watts": 0.0,
                             "capital_cost": 500.0,
                         },
                         "directed_scores_by_criterion": {
-                            "category_coverage": 4.0,
+                            "support_score": 4.0,
                             "client_capacity": 6.0,
                             "total_power_watts": -0.0,
                             "capital_cost": -500.0,
@@ -111,13 +111,13 @@ def test_agreement_report_warns_about_inactive_constant_criteria():
                         "score": 0.8,
                         "selected_items": [{"name": "B"}],
                         "raw_scores_by_criterion": {
-                            "category_coverage": 4.0,
+                            "support_score": 4.0,
                             "client_capacity": 4.0,
                             "total_power_watts": 0.0,
                             "capital_cost": 400.0,
                         },
                         "directed_scores_by_criterion": {
-                            "category_coverage": 4.0,
+                            "support_score": 4.0,
                             "client_capacity": 4.0,
                             "total_power_watts": -0.0,
                             "capital_cost": -400.0,
@@ -126,13 +126,13 @@ def test_agreement_report_warns_about_inactive_constant_criteria():
                 ],
                 "ga_result": {
                     "criteria_metadata": [
-                        {"name": "category_coverage", "direction": "max"},
+                        {"name": "support_score", "direction": "max"},
                         {"name": "client_capacity", "direction": "max"},
                         {"name": "total_power_watts", "direction": "min"},
                         {"name": "capital_cost", "direction": "min"},
                     ],
                     "criterion_names": [
-                        "category_coverage",
+                        "support_score",
                         "client_capacity",
                         "total_power_watts",
                         "capital_cost",
@@ -153,7 +153,7 @@ def test_agreement_report_warns_about_inactive_constant_criteria():
     diagnostics = report["criterion_diagnostics"]
     inactive_names = [row["criterion"] for row in diagnostics["inactive_criteria"]]
     assert diagnostics["status"] == "has_inactive_criteria"
-    assert inactive_names == ["category_coverage", "total_power_watts"]
+    assert inactive_names == ["support_score", "total_power_watts"]
     assert diagnostics["inactive_criteria_count"] == 2
     assert diagnostics["active_criteria_count"] == 2
     assert (

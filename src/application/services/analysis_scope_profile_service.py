@@ -130,10 +130,10 @@ class AnalysisScopeProfileService:
     def default_category_policy(self, scope: str | None) -> dict[str, str]:
         """Return the default tri-state policy for all scope capital categories.
 
-        The policy is the unified replacement for scattered checkboxes such as
-        ``required_categories`` and the old soft ``category_coverage`` score:
-        ``required`` means the category must be present, ``excluded`` means it
-        must be absent and ``optional`` means the optimizer may use it freely.
+        The policy is the unified replacement for scattered checkboxes and the
+        former soft category-coverage criterion: ``required`` means the category
+        must be present, ``excluded`` means it must be absent and ``optional``
+        means the optimizer may use it freely.
         """
 
         profile = self.get_profile(scope)
@@ -296,8 +296,6 @@ class AnalysisScopeProfileService:
         return constraint_id
 
     def _metric_callable(self, metric: str, power_lookup: Mapping[str, float]):
-        if metric == "category_coverage":
-            return self._category_coverage
         if metric == "client_capacity":
             return self._client_capacity
         if metric == "software_license_quantity":
@@ -319,17 +317,6 @@ class AnalysisScopeProfileService:
         if metric == "functionality_score":
             return lambda subset: self._average_property(subset, "functionality_score")
         return lambda subset: self._sum_property(subset, metric)
-
-    def _category_coverage(self, subset: Sequence[Any]) -> float:
-        return float(
-            len(
-                {
-                    str(self._properties(item).get("source_category") or self._properties(item).get("category"))
-                    for item in subset
-                    if self._properties(item).get("source_category") or self._properties(item).get("category")
-                }
-            )
-        )
 
     def _client_capacity(self, subset: Sequence[Any]) -> float:
         return sum(self._item_client_capacity(self._properties(item)) for item in subset)

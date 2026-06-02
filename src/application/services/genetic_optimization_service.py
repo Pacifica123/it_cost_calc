@@ -127,8 +127,9 @@ class GeneticOptimizationService:
         Args:
             source: Repository/service/dict with runtime ``entities``.
             categories: Entity categories to convert into candidates.
-            criteria: Universal GA criteria. Defaults are generic cost/quantity/
-                category-coverage criteria based on candidate properties.
+            criteria: Universal GA criteria. Defaults are generic quantity and
+                cost criteria based on candidate properties. Category presence is
+                handled only by hard required/excluded constraints.
             constraints: Universal GA constraints. Defaults are derived from
                 ``max_budget``, tri-state category policy and selected item count.
             weights/pairwise_matrix: Criterion weights for the GA core.
@@ -335,11 +336,6 @@ class GeneticOptimizationService:
             {
                 "name": "selected_quantity",
                 "func": lambda subset: self._sum_property(subset, "quantity"),
-                "direction": "max",
-            },
-            {
-                "name": "category_coverage",
-                "func": self._category_coverage,
                 "direction": "max",
             },
             {
@@ -606,17 +602,6 @@ class GeneticOptimizationService:
 
     def _sum_property(self, subset: Sequence[RuntimeOptimizationItem], property_name: str) -> float:
         return sum(self._number(item.properties.get(property_name), default=0.0) for item in subset)
-
-    def _category_coverage(self, subset: Sequence[RuntimeOptimizationItem]) -> float:
-        return float(
-            len(
-                {
-                    str(item.properties.get("source_category") or item.properties.get("category"))
-                    for item in subset
-                    if item.properties.get("source_category") or item.properties.get("category")
-                }
-            )
-        )
 
     def _number(self, value: Any, *, default: float) -> float:
         try:

@@ -111,8 +111,6 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.max_power_var = tk.StringVar(value="")
         self.target_users_var = tk.StringVar(value="3")
 
-        self.coverage_weight_var = tk.StringVar(value="0.35")
-        self.client_weight_var = tk.StringVar(value="0.25")
         self.power_weight_var = tk.StringVar(value="0.15")
         self.cost_weight_var = tk.StringVar(value="0.25")
 
@@ -1013,17 +1011,6 @@ class GeneticOptimizationTab(BaseScrollableTab):
         head_count = max(1, limit // 3)
         tail_count = limit - head_count
         return list(history[:head_count]) + list(history[-tail_count:])
-
-    def _category_coverage(self, subset: Sequence[Any]) -> float:
-        return float(
-            len(
-                {
-                    str(item.properties.get("source_category") or item.properties.get("category"))
-                    for item in subset
-                    if item.properties.get("source_category") or item.properties.get("category")
-                }
-            )
-        )
 
     def _client_capacity(self, subset: Sequence[Any]) -> float:
         return sum(self._item_client_capacity(item.properties) for item in subset)
