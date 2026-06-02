@@ -5,11 +5,11 @@ from tkinter import ttk
 
 
 class CollapsiblePanel(ttk.Frame):
-    """Small reusable disclosure panel for dense Tk interfaces.
+    """Reusable disclosure panel for dense Tk interfaces.
 
-    The panel keeps a visible header and can hide or show its content area. It is
-    deliberately lightweight so it can be used inside ordinary frames as well as
-    inside ``ttk.Panedwindow`` containers where users resize neighbouring areas.
+    The indicator is a compact text arrow instead of a full button.  This keeps
+    the affordance visible but prevents the bright platform button from
+    dominating dense ПО/ТО workspaces.
     """
 
     def __init__(
@@ -20,32 +20,54 @@ class CollapsiblePanel(ttk.Frame):
         initially_open: bool = True,
         header_hint: str | None = None,
     ) -> None:
-        super().__init__(parent, padding=4)
+        super().__init__(parent, padding=0, style="Panel.TFrame")
         self.title = title
         self._opened = bool(initially_open)
         self._indicator_var = tk.StringVar()
         self._hint_var = tk.StringVar(value=header_hint or "")
 
-        header = ttk.Frame(self)
-        header.pack(fill="x")
+        self.header = ttk.Frame(self, padding=(8, 5), style="PanelHeader.TFrame")
+        self.header.pack(fill="x")
+        self.header.columnconfigure(2, weight=1)
 
-        self.toggle_button = ttk.Button(header, command=self.toggle, width=3)
-        self.toggle_button.pack(side="left")
-
-        ttk.Label(header, text=title, font=("TkDefaultFont", 10, "bold")).pack(
-            side="left", padx=(6, 8)
+        self.toggle_indicator = ttk.Label(
+            self.header,
+            textvariable=self._indicator_var,
+            style="Disclosure.TLabel",
+            width=2,
+            anchor="center",
+            cursor="hand2",
         )
-        if header_hint:
-            ttk.Label(header, textvariable=self._hint_var).pack(side="left", fill="x", expand=True)
+        self.toggle_indicator.grid(row=0, column=0, sticky="w")
 
-        self.content = ttk.Frame(self)
+        self.title_label = ttk.Label(
+            self.header,
+            text=title,
+            style="PanelTitle.TLabel",
+            cursor="hand2",
+        )
+        self.title_label.grid(row=0, column=1, sticky="w", padx=(4, 10))
+
+        self.hint_label: ttk.Label | None = None
+        if header_hint:
+            self.hint_label = ttk.Label(
+                self.header,
+                textvariable=self._hint_var,
+                style="PanelHint.TLabel",
+                wraplength=520,
+                justify="left",
+            )
+            self.hint_label.grid(row=0, column=2, sticky="ew")
+
+        self.content = ttk.Frame(self, padding=(8, 8), style="Surface.TFrame")
+        self._bind_header_toggle()
         self._sync_visibility()
 
     @property
     def opened(self) -> bool:
         return self._opened
 
-    def toggle(self) -> None:
+    def toggle(self, _event=None) -> None:
         self._opened = not self._opened
         self._sync_visibility()
 
@@ -60,10 +82,15 @@ class CollapsiblePanel(ttk.Frame):
     def set_hint(self, text: str) -> None:
         self._hint_var.set(text)
 
+    def _bind_header_toggle(self) -> None:
+        for widget in (self.header, self.toggle_indicator, self.title_label):
+            widget.bind("<Button-1>", self.toggle)
+        if self.hint_label is not None:
+            self.hint_label.bind("<Button-1>", self.toggle)
+
     def _sync_visibility(self) -> None:
-        self._indicator_var.set("▼" if self._opened else "▶")
-        self.toggle_button.configure(text=self._indicator_var.get())
+        self._indicator_var.set("▾" if self._opened else "▸")
         if self._opened:
-            self.content.pack(fill="both", expand=True, pady=(6, 0))
+            self.content.pack(fill="both", expand=True, padx=1, pady=(0, 1))
         else:
             self.content.pack_forget()

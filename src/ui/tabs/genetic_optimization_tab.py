@@ -111,22 +111,24 @@ class GeneticOptimizationTab(BaseScrollableTab):
         )
 
     def _build_content(self) -> None:
-        self.inner_frame.columnconfigure(0, weight=1)
-        self.inner_frame.columnconfigure(1, weight=2)
+        self.inner_frame.columnconfigure(0, weight=0, minsize=260)
+        self.inner_frame.columnconfigure(1, weight=1)
 
         settings = ttk.LabelFrame(self.inner_frame, text="Параметры запуска и ограничения")
         settings.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        settings.columnconfigure(0, weight=0, minsize=128)
+        settings.columnconfigure(1, weight=1)
 
-        self._add_entry(settings, 0, "Размер популяции", self.pop_size_var)
-        self._add_entry(settings, 1, "Количество поколений", self.generations_var)
-        self._add_entry(settings, 2, "Вероятность мутации", self.mutation_rate_var)
+        self._add_entry(settings, 0, "Популяция", self.pop_size_var)
+        self._add_entry(settings, 1, "Поколений", self.generations_var)
+        self._add_entry(settings, 2, "Мутация", self.mutation_rate_var)
         self._add_entry(settings, 3, "Seed", self.seed_var)
         ttk.Separator(settings, orient="horizontal").grid(
             row=4, column=0, columnspan=2, sticky="ew", pady=(8, 8)
         )
         self._add_entry(settings, 5, "Бюджет, руб.", self.max_budget_var)
-        self._add_entry(settings, 6, "Максимальная мощность, Вт", self.max_power_var)
-        self._add_entry(settings, 7, "Минимум пользователей/клиентских мест", self.target_users_var)
+        self._add_entry(settings, 6, "Макс. мощность, Вт", self.max_power_var)
+        self._add_entry(settings, 7, "Мин. пользователей/мест", self.target_users_var)
 
         required_box = ttk.LabelFrame(settings, text="Обязательные категории")
         required_box.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -149,7 +151,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
             ttk.Label(
                 scope_box,
                 text=f"Зафиксировано внутри текущей вкладки: {fixed_label}",
-                wraplength=330,
+                wraplength=280,
                 justify="left",
             ).grid(row=0, column=0, padx=6, pady=4, sticky="w")
         else:
@@ -164,12 +166,14 @@ class GeneticOptimizationTab(BaseScrollableTab):
         ttk.Label(
             settings,
             textvariable=self.scope_hint_var,
-            wraplength=360,
+            wraplength=300,
             justify="left",
         ).grid(row=10, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
         weights = ttk.LabelFrame(self.inner_frame, text="Веса критериев")
         weights.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        weights.columnconfigure(0, weight=0, minsize=128)
+        weights.columnconfigure(1, weight=1)
         self._add_entry(weights, 0, "Покрытие категорий", self.coverage_weight_var)
         self._add_entry(weights, 1, "Клиентские места", self.client_weight_var)
         self._add_entry(weights, 2, "Энергопотребление", self.power_weight_var)
@@ -177,16 +181,19 @@ class GeneticOptimizationTab(BaseScrollableTab):
         ttk.Label(
             weights,
             text="Веса можно задавать не нормированными: сервис сам приведёт их к сумме 1.",
-            wraplength=360,
+            wraplength=300,
             justify="left",
         ).grid(row=4, column=0, columnspan=2, sticky="w", padx=6, pady=(8, 0))
 
         actions = ttk.Frame(self.inner_frame)
         actions.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="ew")
-        ttk.Button(actions, text="Запустить ГА", command=self.run_optimization).pack(side="left")
-        ttk.Button(actions, text="ГА + AHP", command=self.run_ahp_ranking).pack(side="left", padx=(8, 0))
-        ttk.Label(actions, textvariable=self.status_var, wraplength=360, justify="left").pack(
-            side="left", padx=(12, 0), fill="x", expand=True
+        actions.columnconfigure(0, weight=1)
+        action_buttons = ttk.Frame(actions)
+        action_buttons.grid(row=0, column=0, sticky="w")
+        ttk.Button(action_buttons, text="Запустить ГА", command=self.run_optimization).pack(side="left")
+        ttk.Button(action_buttons, text="ГА + AHP", command=self.run_ahp_ranking).pack(side="left", padx=(8, 0))
+        ttk.Label(actions, textvariable=self.status_var, wraplength=240, justify="left").grid(
+            row=1, column=0, sticky="ew", pady=(6, 0)
         )
 
         result_box = ttk.LabelFrame(self.inner_frame, text="Лучшее найденное решение")
@@ -197,7 +204,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         ttk.Label(
             result_box,
             textvariable=self.explanation_var,
-            wraplength=680,
+            wraplength=620,
             justify="left",
         ).grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
 
@@ -253,7 +260,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         ttk.Label(
             ahp_tab,
             textvariable=self.ahp_agreement_var,
-            wraplength=680,
+            wraplength=620,
             justify="left",
         ).pack(fill="x", padx=4, pady=(4, 8))
         self.ahp_ranking_table = self._build_tree(
@@ -283,7 +290,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         ttk.Label(
             hybrid_tab,
             textvariable=self.hybrid_summary_var,
-            wraplength=680,
+            wraplength=620,
             justify="left",
         ).pack(fill="x", padx=4, pady=(4, 8))
         self.hybrid_ranking_table = self._build_tree(
@@ -320,7 +327,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         *,
         width: int = 16,
     ) -> None:
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=4)
+        ttk.Label(parent, text=label, wraplength=120, justify="left").grid(row=row, column=0, sticky="w", padx=6, pady=4)
         ttk.Entry(parent, textvariable=variable, width=width).grid(
             row=row, column=1, sticky="ew", padx=6, pady=4
         )

@@ -61,8 +61,13 @@ class ExportTab(BaseScrollableTab):
             text="Обновить сводку",
             command=self.update_summary,
         ).grid(row=2, column=0, padx=6, pady=(0, 6), sticky="w")
+        ttk.Button(
+            control_box,
+            text="Открыть папку с отчётами",
+            command=self._open_reports_folder,
+        ).grid(row=2, column=2, padx=6, pady=(0, 6), sticky="e")
 
-        self.summary_text = tk.Text(root, height=28, width=90, wrap="word")
+        self.summary_text = tk.Text(root, height=28, width=90, wrap="word", background="#ffffff")
         self.summary_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
     def _export_selected(self) -> None:
@@ -84,6 +89,13 @@ class ExportTab(BaseScrollableTab):
 
     def _format_paths(self, paths: dict) -> str:
         return "\n".join(f"- {key}: {value}" for key, value in paths.items())
+
+    def _open_reports_folder(self) -> None:
+        try:
+            path = self.app.open_generated_reports_folder()
+            self.summary_text.insert(tk.END, f"\n\nОткрыта папка отчётов: {path}")
+        except Exception as error:
+            messagebox.showerror("Папка отчётов", str(error), parent=self)
 
     def update_summary(self) -> None:
         mode = self.export_mode_var.get()

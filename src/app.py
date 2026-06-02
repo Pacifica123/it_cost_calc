@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -38,6 +40,7 @@ from infrastructure.repositories.json_entity_repository import JsonEntityReposit
 from infrastructure.repositories.treeview_crud_repository import TreeviewCrudRepository
 from infrastructure.storage import JsonFileStorage
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL
+from ui.theme import configure_app_style
 from ui.tabs import (
     energy_tab,
     export_tab,
@@ -61,6 +64,8 @@ class CalculatorApp(tk.Tk):
 
         self.title("Калькулятор стоимости ИТ-инфраструктуры")
         self.geometry("1280x720")
+        self.minsize(1180, 680)
+        configure_app_style(self)
         self.protocol("WM_DELETE_WINDOW", self.shutdown)
 
         storage = JsonFileStorage()
@@ -561,6 +566,28 @@ class CalculatorApp(tk.Tk):
             f"{json.dumps(npv_report, ensure_ascii=False, indent=2, default=str)}\n"
             "```"
         )
+
+    def open_generated_reports_folder(self) -> Path:
+        """Open the generated reports folder in the operating system file manager."""
+
+        export_root = self.data_root / "generated"
+        export_root.mkdir(parents=True, exist_ok=True)
+        logger.info("Запрос на открытие папки отчётов: %s", export_root)
+
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(export_root)  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(export_root)])
+            else:
+                subprocess.Popen(["xdg-open", str(export_root)])
+        except Exception as error:  # noqa: BLE001 - GUI должен показать пользователю причину сбоя
+            logger.exception("Не удалось открыть папку отчётов: %s", export_root)
+            raise RuntimeError(
+                f"Не удалось открыть папку отчётов автоматически: {error}\n"
+                f"Путь к папке: {export_root}"
+            ) from error
+        return export_root
 
     def _format_money(self, value) -> str:
         try:

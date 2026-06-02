@@ -10,6 +10,7 @@ from shared.validation import parse_float, parse_int, require_text
 from ui.dialogs import RecordFormDialog
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 from ui.widgets import EntityTableSection
+from ui.theme import SURFACE
 
 
 EntityConfig = Mapping[str, tuple[str, tuple[str, ...]]]
@@ -51,7 +52,8 @@ class CapexTab(BaseScrollableTab):
                 text=intro_text,
                 anchor="w",
                 justify="left",
-                wraplength=1080,
+                wraplength=880,
+                background=SURFACE,
             )
             label.grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 0), sticky="ew")
             row_offset = 1

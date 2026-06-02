@@ -16,6 +16,7 @@ from ui.tabs.configuration_selection_tab import ConfigurationSelectionTab
 from ui.tabs.criteria_importance_tab import CriteriaImportanceTab
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
 from ui.tabs.opex_tab import OpexTab
+from ui.theme import BACKGROUND
 from ui.widgets import CollapsiblePanel
 
 
@@ -88,7 +89,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         data_root: Any | None,
         profile_service: AnalysisScopeProfileService,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, background=BACKGROUND)
         self.scope = scope
         self.equipment_service = equipment_service
         self.crud = crud
@@ -118,20 +119,25 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         energy_tab: Any | None,
         data_root: Any | None,
     ) -> None:
-        header = ttk.Frame(self, padding=(10, 8))
+        header = ttk.Frame(self, padding=(10, 8), style="App.TFrame")
         header.pack(fill="x")
-        ttk.Label(header, text=self.scope_title, font=("TkDefaultFont", 12, "bold")).pack(
-            side="left"
-        )
+        header.columnconfigure(1, weight=1)
+        ttk.Label(
+            header,
+            text=self.scope_title,
+            font=("TkDefaultFont", 12, "bold"),
+        ).grid(row=0, column=0, sticky="w")
         ttk.Label(
             header,
             text=self._workspace_hint(),
-            wraplength=980,
+            wraplength=720,
             justify="left",
-        ).pack(side="left", padx=(16, 0), fill="x", expand=True)
-        ttk.Button(header, text="Раскрыть всё", command=self.open_all).pack(side="right")
-        ttk.Button(header, text="Свернуть аналитику", command=self.close_analysis).pack(
-            side="right", padx=(0, 6)
+        ).grid(row=0, column=1, padx=(16, 10), sticky="ew")
+        ttk.Button(header, text="Свернуть анализ", command=self.close_analysis).grid(
+            row=0, column=2, padx=(0, 6), sticky="e"
+        )
+        ttk.Button(header, text="Раскрыть всё", command=self.open_all).grid(
+            row=0, column=3, sticky="e"
         )
 
         main = ttk.Panedwindow(self, orient="horizontal")
@@ -139,8 +145,10 @@ class SolutionAreaWorkspaceTab(tk.Frame):
 
         data_side = ttk.Panedwindow(main, orient="vertical")
         analysis_side = ttk.Panedwindow(main, orient="vertical")
-        main.add(data_side, weight=1)
-        main.add(analysis_side, weight=2)
+        main.add(data_side, weight=5)
+        main.add(analysis_side, weight=7)
+
+        self.after_idle(lambda: self._set_initial_pane_positions(main, data_side, analysis_side))
 
         self._add_cost_input_panels(data_side)
         self._add_analysis_panels(
@@ -153,21 +161,36 @@ class SolutionAreaWorkspaceTab(tk.Frame):
 
     def _workspace_hint(self) -> str:
         if self.scope == ANALYSIS_SCOPE_SOFTWARE:
-            return (
-                "Программное обеспечение теперь содержит исходные лицензии, подписки, "
-                "GA/AHP/Pareto-обоснование и финансовую классификацию ПО в одном рабочем пространстве."
-            )
-        return (
-            "Техническое обеспечение теперь содержит оборудование, эксплуатационные расходы, "
-            "GA/AHP/Pareto-обоснование и связь ТО с CAPEX/OPEX в одном рабочем пространстве."
-        )
+            return "Лицензии, подписки, GA/AHP/Pareto и финансовая классификация ПО в одном рабочем пространстве."
+        return "Оборудование, эксплуатация, GA/AHP/Pareto и связь ТО с CAPEX/OPEX в одном рабочем пространстве."
+
+    def _set_initial_pane_positions(
+        self,
+        main: ttk.Panedwindow,
+        data_side: ttk.Panedwindow,
+        analysis_side: ttk.Panedwindow,
+    ) -> None:
+        """Give dense panes usable first sizes without taking resizing away from the user."""
+
+        try:
+            width = max(main.winfo_width(), 1)
+            height = max(self.winfo_height(), 1)
+            if width > 900:
+                main.sashpos(0, int(width * 0.44))
+            if height > 520:
+                data_side.sashpos(0, int(height * 0.38))
+                data_side.sashpos(1, int(height * 0.72))
+                analysis_side.sashpos(0, int(height * 0.72))
+                analysis_side.sashpos(1, int(height * 0.84))
+        except tk.TclError:
+            return
 
     def _add_cost_input_panels(self, parent: ttk.Panedwindow) -> None:
         capex_panel = self._panel(
             parent,
             key="capex",
             title=f"{self.scope_label}: капитальные позиции",
-            hint="разовые приобретения и активы",
+            hint="разовые активы",
         )
         if self.scope == ANALYSIS_SCOPE_SOFTWARE:
             self.capex_tab: CapexTab = SoftwareTab(capex_panel.content, self.equipment_service)
@@ -180,7 +203,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             parent,
             key="opex",
             title=f"{self.scope_label}: операционные и проектные затраты",
-            hint="подписки, аренда, внедрение и обслуживание",
+            hint="подписки, аренда, внедрение",
         )
         if self.scope == ANALYSIS_SCOPE_SOFTWARE:
             config: Mapping[str, tuple[str, tuple[str, ...]]] = SOFTWARE_OPEX_CONFIG
@@ -208,7 +231,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             parent,
             key="cost_relation",
             title="Матрица ПО/ТО × CAPEX/OPEX",
-            hint="поясняет финансовую природу строк",
+            hint="финансовая классификация",
             initially_open=False,
         )
         self._build_cost_relation_table(relation_panel.content)
@@ -227,7 +250,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             parent,
             key="ga",
             title=f"{self.scope_label}: генетический подбор и GA + AHP",
-            hint="область анализа зафиксирована текущей вкладкой",
+            hint="область зафиксирована вкладкой",
         )
         self.genetic_optimization_tab = GeneticOptimizationTab(
             ga_panel.content,
@@ -246,7 +269,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             parent,
             key="ahp",
             title=f"{self.scope_label}: AHP-анализ конфигураций",
-            hint="ручное и демо-ранжирование альтернатив",
+            hint="ранжирование альтернатив",
             initially_open=False,
         )
         self.configuration_selection_tab = ConfigurationSelectionTab(
@@ -263,7 +286,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             parent,
             key="criteria",
             title=f"{self.scope_label}: обоснование выбора ИТ-решений",
-            hint="Pareto/критерии/отношения важности",
+            hint="Pareto и критерии",
             initially_open=False,
         )
         self.criteria_importance_tab = CriteriaImportanceTab(
@@ -297,7 +320,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
                 "Разовая бессрочная лицензия ближе к CAPEX, подписка — к OPEX; "
                 "миграция и тестирование остаются разовыми операционными работами."
             ),
-            wraplength=940,
+            wraplength=760,
             justify="left",
         )
         text.pack(fill="x", padx=6, pady=(0, 6))
