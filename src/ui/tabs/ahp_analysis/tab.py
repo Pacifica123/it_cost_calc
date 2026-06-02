@@ -112,6 +112,16 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
                     command=self._on_analysis_scope_changed,
                 ).pack(side="left")
 
+        ttk.Label(
+            root,
+            text=(
+                "Источник альтернатив AHP: таблица конфигураций текущей области. "
+                "GA может формировать отдельный пул кандидатов, но AHP остаётся самостоятельным ранжированием, а не частью GA-панели."
+            ),
+            wraplength=850,
+            justify="left",
+        ).pack(fill="x", padx=6, pady=(0, 6))
+
         self.cfg_table = ttk.Treeview(
             root,
             columns=("id", "name", "people", "devices_count"),

@@ -15,6 +15,7 @@ from ui.tabs.capex_tab import CapexTab, SoftwareTab, TechnicalEquipmentTab
 from ui.tabs.configuration_selection_tab import ConfigurationSelectionTab
 from ui.tabs.criteria_importance_tab import CriteriaImportanceTab
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
+from ui.tabs.hybrid_decision_assessment_tab import HybridDecisionAssessmentTab
 from ui.tabs.opex_tab import OpexTab
 from ui.theme import SUBTLE_BUTTON, SUBTLE_BUTTON_HOVER, TEXT, WORKSPACE, force_panel_backgrounds
 from ui.widgets import CollapsiblePanel
@@ -206,8 +207,9 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             if height > 520:
                 data_side.sashpos(0, int(height * 0.44))
                 data_side.sashpos(1, int(height * 0.74))
-                analysis_side.sashpos(0, int(height * 0.84))
-                analysis_side.sashpos(1, int(height * 0.92))
+                analysis_side.sashpos(0, int(height * 0.72))
+                analysis_side.sashpos(1, int(height * 0.82))
+                analysis_side.sashpos(2, int(height * 0.91))
             self._schedule_rebalance_all_adaptive_panes()
         except tk.TclError:
             return
@@ -287,8 +289,8 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         ga_panel = self._panel(
             parent,
             key="ga",
-            title=f"{self.scope_label}: генетический подбор и GA + AHP",
-            hint="область зафиксирована вкладкой",
+            title=f"{self.scope_label}: GA: поиск кандидатных конфигураций",
+            hint="чистый поиск без AHP-дублирования",
         )
         self.genetic_optimization_tab = GeneticOptimizationTab(
             ga_panel.content,
@@ -323,8 +325,8 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         criteria_panel = self._panel(
             parent,
             key="criteria",
-            title=f"{self.scope_label}: обоснование выбора ИТ-решений",
-            hint="Pareto и критерии",
+            title=f"{self.scope_label}: Pareto и критериальное обоснование",
+            hint="компромиссы и доминирование",
             initially_open=False,
         )
         self.criteria_importance_tab = CriteriaImportanceTab(
@@ -336,6 +338,26 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         )
         self.criteria_importance_tab.pack(fill="both", expand=True)
         self._add_adaptive_panel(parent, criteria_panel, weight=2)
+
+        hybrid_panel = self._panel(
+            parent,
+            key="hybrid",
+            title=f"{self.scope_label}: гибридная итоговая оценка",
+            hint="сводка GA, AHP и расхождений",
+            initially_open=False,
+        )
+        self.hybrid_decision_assessment_tab = HybridDecisionAssessmentTab(
+            hybrid_panel.content,
+            run_genetic_optimization_use_case,
+            run_genetic_ahp_ranking_use_case=run_genetic_ahp_ranking_use_case,
+            energy_tab=energy_tab,
+            data_root=data_root,
+            profile_service=self.profile_service,
+            initial_analysis_scope=self.scope,
+            lock_analysis_scope=True,
+        )
+        self.hybrid_decision_assessment_tab.pack(fill="both", expand=True)
+        self._add_adaptive_panel(parent, hybrid_panel, weight=2)
 
     def _add_adaptive_panel(
         self,
@@ -535,7 +557,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         self._schedule_rebalance_all_adaptive_panes()
 
     def close_analysis(self) -> None:
-        for key in ("ga", "ahp", "criteria"):
+        for key in ("ga", "ahp", "criteria", "hybrid"):
             panel = self.panels.get(key)
             if panel is not None:
                 panel.close()

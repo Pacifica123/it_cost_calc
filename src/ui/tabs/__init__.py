@@ -18,6 +18,7 @@ _MODULE_EXPORTS = {
     "energy_tab": "ui.tabs.energy_tab",
     "export_tab": "ui.tabs.export_tab",
     "genetic_optimization_tab": "ui.tabs.genetic_optimization_tab",
+    "hybrid_decision_assessment_tab": "ui.tabs.hybrid_decision_assessment_tab",
     "infrastructure_tab": "ui.tabs.infrastructure_tab",
     "solution_component_editor_tab": "ui.tabs.solution_component_editor_tab",
     "solution_area_workspace_tab": "ui.tabs.solution_area_workspace_tab",

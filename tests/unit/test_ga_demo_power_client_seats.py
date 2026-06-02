@@ -77,3 +77,25 @@ def test_ahp_aggregate_counts_client_seats_not_client_category_quantity():
     aggregate = aggregate_configuration(config)
 
     assert aggregate["counts"]["client"] == 3
+
+
+def test_genetic_tab_category_policy_supports_required_excluded_optional_states():
+    from application.services.analysis_scope_profile_service import (
+        CATEGORY_POLICY_EXCLUDED,
+        CATEGORY_POLICY_OPTIONAL,
+        CATEGORY_POLICY_REQUIRED,
+        AnalysisScopeProfileService,
+    )
+
+    service = AnalysisScopeProfileService()
+    policy = service.normalize_category_policy(
+        "technical",
+        {
+            "server": CATEGORY_POLICY_REQUIRED,
+            "client": CATEGORY_POLICY_EXCLUDED,
+            "network": CATEGORY_POLICY_OPTIONAL,
+        },
+    )
+
+    assert service.required_categories("technical", category_policy=policy) == ["server"]
+    assert service.excluded_categories("technical", category_policy=policy) == ["client"]

@@ -116,3 +116,67 @@ def test_use_case_delegates_to_configured_service():
     assert service.received == {"max_budget": 1000, "ga_params": {"seed": 1}}
 
 
+
+
+def test_service_can_exclude_category_as_hard_filter():
+    repository = InMemoryEntityRepository(
+        {
+            "server": [{"name": "Server A", "quantity": 1, "price": 100.0, "quality": 10}],
+            "client": [{"name": "Client A", "quantity": 1, "price": 10.0, "quality": 1}],
+            "network": [{"name": "Router A", "quantity": 1, "price": 30.0, "quality": 5}],
+        }
+    )
+    service = GeneticOptimizationService(repository)
+
+    summary = service.run(
+        categories=("server", "client", "network"),
+        criteria=[{"name": "quality", "func": _quality, "direction": "max"}],
+        weights=[1.0],
+        required_categories=("server",),
+        excluded_categories=("client",),
+        ga_params={
+            "pop_size": 6,
+            "generations": 4,
+            "mutation_rate": 0.02,
+            "elite": 1,
+            "seed": 11,
+            "stagnation_limit": 20,
+            "max_random_attempts": 60,
+        },
+    )
+
+    assert summary["status"] == "ok"
+    assert "server" in summary["selected_by_category"]
+    assert "client" not in summary["selected_by_category"]
+    excluded = [
+        constraint
+        for constraint in summary["constraints"]
+        if constraint["name"] == "excluded_category_client"
+    ]
+    assert excluded and excluded[0]["passed"] is True
+
+
+def test_runtime_candidates_normalize_equipment_metrics_for_profile_criteria():
+    repository = InMemoryEntityRepository(
+        {
+            "client": [
+                {
+                    "name": "Workstation",
+                    "quantity": 2,
+                    "price": 100.0,
+                    "ram_score": 16,
+                    "cpu_score": 8,
+                    "storage_gb": 512,
+                    "energy": 120,
+                }
+            ]
+        }
+    )
+    service = GeneticOptimizationService(repository)
+
+    candidate = service.build_candidates(categories=("client",))[0]
+
+    assert candidate.properties["ram_gb"] == 16
+    assert candidate.properties["cpu_cores"] == 8
+    assert candidate.properties["storage_gb"] == 512
+    assert candidate.properties["max_power"] == 120

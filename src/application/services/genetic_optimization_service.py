@@ -115,6 +115,7 @@ class GeneticOptimizationService:
         pairwise_matrix: Any | None = None,
         max_budget: float | None = None,
         required_categories: Sequence[str] | None = None,
+        excluded_categories: Sequence[str] | None = None,
         min_selected_items: int = 1,
         max_selected_items: int | None = None,
         include_zero_quantity: bool = False,
@@ -129,7 +130,7 @@ class GeneticOptimizationService:
             criteria: Universal GA criteria. Defaults are generic cost/quantity/
                 category-coverage criteria based on candidate properties.
             constraints: Universal GA constraints. Defaults are derived from
-                ``max_budget``, ``required_categories`` and selected item count.
+                ``max_budget``, tri-state category policy and selected item count.
             weights/pairwise_matrix: Criterion weights for the GA core.
             ga_params: Additional parameters passed to ``run_ga_mvp``.
         """
@@ -167,6 +168,7 @@ class GeneticOptimizationService:
             dynamic_constraints,
             max_budget=max_budget,
             required_categories=required_categories,
+            excluded_categories=excluded_categories,
             min_selected_items=min_selected_items,
             max_selected_items=max_selected_items,
         )
@@ -306,6 +308,10 @@ class GeneticOptimizationService:
                 "capital_cost": total_cost,
                 "selected_count": 1.0,
                 "client_seats": self._number(properties.get("client_seats"), default=0.0),
+                "ram_gb": self._number(properties.get("ram_gb", properties.get("ram_score")), default=0.0),
+                "cpu_cores": self._number(properties.get("cpu_cores", properties.get("cpu_score")), default=0.0),
+                "storage_gb": self._number(properties.get("storage_gb"), default=0.0),
+                "max_power": self._number(properties.get("max_power", properties.get("energy")), default=0.0),
             }
         )
         return properties
@@ -349,6 +355,7 @@ class GeneticOptimizationService:
         *,
         max_budget: float | None,
         required_categories: Sequence[str] | None,
+        excluded_categories: Sequence[str] | None,
         min_selected_items: int,
         max_selected_items: int | None,
     ) -> list[ConstraintSpec | Callable[[list[RuntimeOptimizationItem]], Any]]:
@@ -397,6 +404,22 @@ class GeneticOptimizationService:
                     ),
                     "operator": ">=",
                     "bound": 1.0,
+                }
+            )
+
+        for category in excluded_categories or ():
+            category_name = str(category)
+            result.append(
+                {
+                    "name": f"excluded_category_{category_name}",
+                    "func": lambda subset, expected=category_name: sum(
+                        1
+                        for item in subset
+                        if item.properties.get("source_category") == expected
+                        or item.properties.get("category") == expected
+                    ),
+                    "operator": "<=",
+                    "bound": 0.0,
                 }
             )
 
@@ -550,6 +573,18 @@ class GeneticOptimizationService:
             "categories": categories,
             "client_seats": sum(
                 self._number(item.get("client_seats"), default=0.0)
+                for item in selected_items
+            ),
+            "ram_gb": sum(
+                self._number(item.get("ram_gb"), default=0.0)
+                for item in selected_items
+            ),
+            "cpu_cores": sum(
+                self._number(item.get("cpu_cores"), default=0.0)
+                for item in selected_items
+            ),
+            "storage_gb": sum(
+                self._number(item.get("storage_gb"), default=0.0)
                 for item in selected_items
             ),
             "software_license_quantity": sum(

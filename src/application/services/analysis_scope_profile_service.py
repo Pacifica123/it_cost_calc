@@ -21,6 +21,14 @@ from shared.constants import (
     SOFTWARE_CAPITAL_CATEGORIES,
     TECHNICAL_CAPITAL_CATEGORIES,
 )
+CATEGORY_POLICY_REQUIRED = "required"
+CATEGORY_POLICY_EXCLUDED = "excluded"
+CATEGORY_POLICY_OPTIONAL = "optional"
+CATEGORY_POLICY_VALUES = {
+    CATEGORY_POLICY_REQUIRED,
+    CATEGORY_POLICY_EXCLUDED,
+    CATEGORY_POLICY_OPTIONAL,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,8 +127,46 @@ class AnalysisScopeProfileService:
         profile = self.get_profile(scope)
         return [float(profile.default_weights.get(criterion.id, 1.0)) for criterion in profile.criteria]
 
+    def default_category_policy(self, scope: str | None) -> dict[str, str]:
+        """Return the default tri-state policy for all scope capital categories.
+
+        The policy is the unified replacement for scattered checkboxes such as
+        ``required_categories`` and the old soft ``category_coverage`` score:
+        ``required`` means the category must be present, ``excluded`` means it
+        must be absent and ``optional`` means the optimizer may use it freely.
+        """
+
+        profile = self.get_profile(scope)
+        required = set(profile.default_required_categories())
+        return {
+            category: (
+                CATEGORY_POLICY_REQUIRED
+                if category in required
+                else CATEGORY_POLICY_OPTIONAL
+            )
+            for category in profile.capital_categories
+        }
+
+    def normalize_category_policy(
+        self,
+        scope: str | None,
+        policy_by_category: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        profile = self.get_profile(scope)
+        policy = self.default_category_policy(profile.scope)
+        for category, raw_policy in dict(policy_by_category or {}).items():
+            if category not in policy:
+                continue
+            value = str(raw_policy or CATEGORY_POLICY_OPTIONAL)
+            if value not in CATEGORY_POLICY_VALUES:
+                value = CATEGORY_POLICY_OPTIONAL
+            policy[category] = value
+        return policy
+
     def profile_metadata(self, scope: str | None) -> dict[str, Any]:
-        return deepcopy(self.get_profile(scope).to_dict())
+        payload = deepcopy(self.get_profile(scope).to_dict())
+        payload["category_policy"] = self.default_category_policy(scope)
+        return payload
 
     def build_ga_criteria(
         self,
@@ -194,7 +240,16 @@ class AnalysisScopeProfileService:
         scope: str | None,
         *,
         enabled_categories: Mapping[str, bool] | None = None,
+        category_policy: Mapping[str, str] | None = None,
     ) -> list[str]:
+        if category_policy is not None:
+            policy = self.normalize_category_policy(scope, category_policy)
+            return [
+                category
+                for category, value in policy.items()
+                if value == CATEGORY_POLICY_REQUIRED
+            ]
+
         profile = self.get_profile(scope)
         enabled = dict(enabled_categories or {})
         result: list[str] = []
@@ -204,6 +259,19 @@ class AnalysisScopeProfileService:
             if enabled.get(descriptor.category, descriptor.required):
                 result.append(descriptor.category)
         return result
+
+    def excluded_categories(
+        self,
+        scope: str | None,
+        *,
+        category_policy: Mapping[str, str] | None = None,
+    ) -> list[str]:
+        policy = self.normalize_category_policy(scope, category_policy)
+        return [
+            category
+            for category, value in policy.items()
+            if value == CATEGORY_POLICY_EXCLUDED
+        ]
 
     def criterion_label(self, criterion_id: str, *, scope: str | None = None) -> str:
         profile = self.get_profile(scope)
@@ -238,6 +306,12 @@ class AnalysisScopeProfileService:
             return lambda subset, lookup=power_lookup: self._total_power(subset, lookup)
         if metric in {"selected_software_items", "selected_count"}:
             return lambda subset: float(len(subset))
+        if metric in {"ram_gb", "total_ram_gb"}:
+            return lambda subset: self._sum_property(subset, "ram_gb")
+        if metric in {"cpu_cores", "total_cpu_cores"}:
+            return lambda subset: self._sum_property(subset, "cpu_cores")
+        if metric in {"storage_gb", "total_storage_gb"}:
+            return lambda subset: self._sum_property(subset, "storage_gb")
         if metric in {"capital_cost", "total_cost", "ownership_cost"}:
             return lambda subset: self._sum_property(subset, "total_cost")
         if metric == "support_score":
@@ -322,32 +396,39 @@ TECHNICAL_PROFILE = AnalysisScopeProfile(
     ),
     criteria=(
         AnalysisCriterionProfile(
-            id="category_coverage",
-            label="Покрытие технических контуров",
+            id="total_ram_gb",
+            label="ОЗУ, ГБ",
             direction="max",
-            metric="category_coverage",
-            description="Наличие серверного, клиентского и сетевого контура.",
+            metric="total_ram_gb",
+            description="Суммарный объём оперативной памяти выбранных технических компонентов.",
         ),
         AnalysisCriterionProfile(
-            id="client_capacity",
-            label="Покрытие рабочих мест",
+            id="total_cpu_cores",
+            label="CPU, ядра",
             direction="max",
-            metric="client_capacity",
-            description="Количество рабочих мест по client_seats; периферия не занимает место пользователя.",
+            metric="total_cpu_cores",
+            description="Суммарное количество вычислительных ядер там, где оно явно задано.",
+        ),
+        AnalysisCriterionProfile(
+            id="total_storage_gb",
+            label="Накопитель, ГБ",
+            direction="max",
+            metric="total_storage_gb",
+            description="Суммарный объём внешней/постоянной памяти.",
         ),
         AnalysisCriterionProfile(
             id="total_power_watts",
             label="Энергопотребление",
             direction="min",
             metric="total_power_watts",
-            description="Суммарная мощность выбранных технических компонентов.",
+            description="Суммарная мощность выбранных технических компонентов; связана с OPEX электроэнергии.",
         ),
         AnalysisCriterionProfile(
             id="capital_cost",
             label="Стоимость",
             direction="min",
             metric="capital_cost",
-            description="Капитальная стоимость выбранного набора.",
+            description="Капитальная стоимость выбранного набора; остаётся мягким tie-breaker внутри бюджета.",
         ),
     ),
     constraints=(
@@ -393,21 +474,24 @@ TECHNICAL_PROFILE = AnalysisScopeProfile(
         ),
     ),
     default_weights={
-        "category_coverage": 0.35,
-        "client_capacity": 0.25,
-        "total_power_watts": 0.15,
-        "capital_cost": 0.25,
+        "total_ram_gb": 0.25,
+        "total_cpu_cores": 0.25,
+        "total_storage_gb": 0.15,
+        "total_power_watts": 0.20,
+        "capital_cost": 0.15,
     },
     metric_extractors={
-        "category_coverage": "count unique technical capital categories",
-        "client_capacity": "sum client_seats, workstation fallback only",
+        "total_ram_gb": "sum ram_gb; empty metric means no data",
+        "total_cpu_cores": "sum cpu_cores; empty metric means no data",
+        "total_storage_gb": "sum storage_gb; empty metric means no data",
         "total_power_watts": "quantity × max_power with energy-tab lookup fallback",
         "capital_cost": "sum total_cost",
     },
     explanation_rules={
         "ui_hint": (
             "Режим ТО: анализируются серверы, клиентские устройства и сеть. "
-            "Клиентская ёмкость считается по client_seats, поэтому МФУ не заменяет рабочее место."
+            "Категории задаются фильтром +/−/нейтрально, минимум рабочих мест является жёстким фильтром, "
+            "а качество оценивается по явным метрикам оборудования."
         ),
         "winner_template": "Выбрана конфигурация ТО с учётом технических контуров, мощности и рабочих мест.",
     },
@@ -429,25 +513,25 @@ SOFTWARE_PROFILE = AnalysisScopeProfile(
     ),
     criteria=(
         AnalysisCriterionProfile(
-            id="selected_software_items",
-            label="Разнообразие ПО",
+            id="functionality_score",
+            label="Функциональная пригодность",
             direction="max",
-            metric="selected_software_items",
-            description="Количество выбранных программных компонентов.",
+            metric="functionality_score",
+            description="Средняя функциональная оценка ПО, если она явно задана в данных.",
         ),
         AnalysisCriterionProfile(
-            id="software_license_quantity",
-            label="Количество лицензий или пользователей",
+            id="support_score",
+            label="Сопровождение",
             direction="max",
-            metric="software_license_quantity",
-            description="Лицензионная ёмкость без подмены клиентскими устройствами.",
+            metric="support_score",
+            description="Средняя оценка поддержки/сопровождения, если она явно задана.",
         ),
         AnalysisCriterionProfile(
             id="capital_cost",
             label="Стоимость владения ПО",
             direction="min",
             metric="capital_cost",
-            description="Стоимость лицензий и программных компонентов в выбранном наборе.",
+            description="Стоимость лицензий и программных компонентов в выбранном наборе; минимум лицензий задаётся фильтром.",
         ),
     ),
     constraints=(
@@ -494,19 +578,19 @@ SOFTWARE_PROFILE = AnalysisScopeProfile(
         ),
     ),
     default_weights={
-        "selected_software_items": 0.35,
-        "software_license_quantity": 0.30,
+        "functionality_score": 0.40,
+        "support_score": 0.25,
         "capital_cost": 0.35,
     },
     metric_extractors={
-        "selected_software_items": "count selected software rows",
-        "software_license_quantity": "sum quantity/license_units",
+        "functionality_score": "average explicit functionality_score",
+        "support_score": "average explicit support_score",
         "capital_cost": "sum total_cost",
     },
     explanation_rules={
         "ui_hint": (
-            "Режим ПО: анализируются лицензии и программные сервисы. Мощность не является "
-            "обязательным критерием; поле минимума трактуется как минимум лицензий/пользователей."
+            "Режим ПО: анализируются лицензии и программные сервисы. Категории задаются "
+            "фильтром +/−/нейтрально; поле минимума трактуется как жёсткий минимум лицензий/пользователей."
         ),
         "winner_template": "Выбран набор ПО без технических ограничений по серверу, сети и мощности.",
     },
@@ -534,6 +618,9 @@ IT_SOLUTION_PROFILE = AnalysisScopeProfile(
 DEFAULT_ANALYSIS_SCOPE_PROFILES = (TECHNICAL_PROFILE, SOFTWARE_PROFILE)
 
 __all__ = [
+    "CATEGORY_POLICY_EXCLUDED",
+    "CATEGORY_POLICY_OPTIONAL",
+    "CATEGORY_POLICY_REQUIRED",
     "AnalysisConstraintProfile",
     "AnalysisCriterionProfile",
     "AnalysisScopeProfile",

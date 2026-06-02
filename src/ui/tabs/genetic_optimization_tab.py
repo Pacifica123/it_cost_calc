@@ -7,7 +7,12 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any, Mapping, Sequence
 
-from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
+from application.services.analysis_scope_profile_service import (
+    CATEGORY_POLICY_EXCLUDED,
+    CATEGORY_POLICY_OPTIONAL,
+    CATEGORY_POLICY_REQUIRED,
+    AnalysisScopeProfileService,
+)
 from application.use_cases.run_genetic_optimization import RunGeneticOptimizationUseCase
 from application.use_cases.run_genetic_ahp_ranking import RunGeneticAhpRankingUseCase
 from infrastructure.exporters.ga_ahp_json_exporter import export_ga_ahp_report_json
@@ -25,6 +30,24 @@ CATEGORY_LABELS = {
     "network": "Сеть",
     "licenses": "Лицензии",
 }
+
+CATEGORY_POLICY_SYMBOLS = {
+    CATEGORY_POLICY_REQUIRED: "+",
+    CATEGORY_POLICY_EXCLUDED: "−",
+    CATEGORY_POLICY_OPTIONAL: " ",
+}
+
+CATEGORY_POLICY_HINTS = {
+    CATEGORY_POLICY_REQUIRED: "обязательно учесть",
+    CATEGORY_POLICY_EXCLUDED: "обязательно убрать",
+    CATEGORY_POLICY_OPTIONAL: "без разницы",
+}
+
+_CATEGORY_POLICY_CYCLE = (
+    CATEGORY_POLICY_OPTIONAL,
+    CATEGORY_POLICY_REQUIRED,
+    CATEGORY_POLICY_EXCLUDED,
+)
 
 TERMINATION_LABELS = {
     "max_generations": "достигнут лимит поколений",
@@ -95,13 +118,16 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.require_client_var = tk.BooleanVar(value=True)
         self.require_network_var = tk.BooleanVar(value=True)
         self.require_licenses_var = tk.BooleanVar(value=False)
+        self.category_policy_vars: dict[str, tk.StringVar] = {}
+        self.category_policy_buttons: dict[str, ttk.Button] = {}
+        self.category_policy_parent: tk.Widget | None = None
 
         self.status_var = tk.StringVar(value="ГА ещё не запускался.")
         self.ahp_agreement_var = tk.StringVar(
-            value="Согласованность ГА и AHP появится после запуска сценария «ГА + AHP»."
+            value="Согласованность методов появится после расчёта гибридной оценки."
         )
         self.hybrid_summary_var = tk.StringVar(
-            value="Гибридная итоговая оценка появится после запуска сценария «ГА + AHP»."
+            value="Гибридная итоговая оценка рассчитывается в отдельной панели."
         )
         self.explanation_var = tk.StringVar(
             value=(
@@ -128,21 +154,11 @@ class GeneticOptimizationTab(BaseScrollableTab):
         )
         self._add_entry(settings, 5, "Бюджет, руб.", self.max_budget_var)
         self._add_entry(settings, 6, "Макс. мощность, Вт", self.max_power_var)
-        self._add_entry(settings, 7, "Мин. пользователей/мест", self.target_users_var)
+        self._add_entry(settings, 7, "Мин. мест/лицензий", self.target_users_var)
 
-        required_box = ttk.LabelFrame(settings, text="Обязательные категории")
+        required_box = ttk.LabelFrame(settings, text="Фильтр категорий: + / − / пусто")
         required_box.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        for index, (text, variable) in enumerate(
-            (
-                ("Серверы", self.require_server_var),
-                ("Клиенты", self.require_client_var),
-                ("Сеть", self.require_network_var),
-                ("Лицензии", self.require_licenses_var),
-            )
-        ):
-            ttk.Checkbutton(required_box, text=text, variable=variable).grid(
-                row=index // 2, column=index % 2, padx=6, pady=4, sticky="w"
-            )
+        self._build_category_policy_controls(required_box)
 
         scope_box = ttk.LabelFrame(settings, text="Область анализа")
         scope_box.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -170,20 +186,21 @@ class GeneticOptimizationTab(BaseScrollableTab):
             justify="left",
         ).grid(row=10, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
-        weights = ttk.LabelFrame(self.inner_frame, text="Веса критериев")
+        weights = ttk.LabelFrame(self.inner_frame, text="Мягкие веса GA")
         weights.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
         weights.columnconfigure(0, weight=0, minsize=128)
         weights.columnconfigure(1, weight=1)
-        self._add_entry(weights, 0, "Покрытие категорий", self.coverage_weight_var)
-        self._add_entry(weights, 1, "Клиентские места", self.client_weight_var)
-        self._add_entry(weights, 2, "Энергопотребление", self.power_weight_var)
-        self._add_entry(weights, 3, "Стоимость", self.cost_weight_var)
+        self._add_entry(weights, 0, "Энергия", self.power_weight_var)
+        self._add_entry(weights, 1, "Стоимость", self.cost_weight_var)
         ttk.Label(
             weights,
-            text="Веса можно задавать не нормированными: сервис сам приведёт их к сумме 1.",
+            text=(
+                "Покрытие категорий и минимум мест/лицензий теперь являются фильтрами. "
+                "Технические метрики оборудования берутся из профиля области; стоимость оставлена как мягкий tie-breaker внутри бюджета."
+            ),
             wraplength=300,
             justify="left",
-        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=6, pady=(8, 0))
+        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(8, 0))
 
         actions = ttk.Frame(self.inner_frame)
         actions.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="ew")
@@ -191,7 +208,6 @@ class GeneticOptimizationTab(BaseScrollableTab):
         action_buttons = ttk.Frame(actions)
         action_buttons.grid(row=0, column=0, sticky="w")
         ttk.Button(action_buttons, text="Запустить ГА", command=self.run_optimization).pack(side="left")
-        ttk.Button(action_buttons, text="ГА + AHP", command=self.run_ahp_ranking).pack(side="left", padx=(8, 0))
         ttk.Label(actions, textvariable=self.status_var, wraplength=240, justify="left").grid(
             row=1, column=0, sticky="ew", pady=(6, 0)
         )
@@ -214,13 +230,9 @@ class GeneticOptimizationTab(BaseScrollableTab):
         composition_tab = ttk.Frame(tables)
         metrics_tab = ttk.Frame(tables)
         history_tab = ttk.Frame(tables)
-        ahp_tab = ttk.Frame(tables)
-        hybrid_tab = ttk.Frame(tables)
         tables.add(composition_tab, text="Состав")
         tables.add(metrics_tab, text="Метрики")
         tables.add(history_tab, text="Сходимость")
-        tables.add(ahp_tab, text="AHP-ранжирование")
-        tables.add(hybrid_tab, text="Гибридная оценка")
 
         self.composition_table = self._build_tree(
             composition_tab,
@@ -257,66 +269,70 @@ class GeneticOptimizationTab(BaseScrollableTab):
             },
         )
 
-        ttk.Label(
-            ahp_tab,
-            textvariable=self.ahp_agreement_var,
-            wraplength=620,
-            justify="left",
-        ).pack(fill="x", padx=4, pady=(4, 8))
-        self.ahp_ranking_table = self._build_tree(
-            ahp_tab,
-            columns=(
-                "rank",
-                "name",
-                "ahp_score",
-                "ga_rank",
-                "ga_score",
-                "rank_delta",
-                "row_status",
-                "cost",
-            ),
-            headings={
-                "rank": "Место AHP",
-                "name": "Кандидатная конфигурация",
-                "ahp_score": "AHP score",
-                "ga_rank": "ГА-ранг",
-                "ga_score": "ГА score",
-                "rank_delta": "Δ ранга",
-                "row_status": "Статус",
-                "cost": "Стоимость",
-            },
-        )
-
-        ttk.Label(
-            hybrid_tab,
-            textvariable=self.hybrid_summary_var,
-            wraplength=620,
-            justify="left",
-        ).pack(fill="x", padx=4, pady=(4, 8))
-        self.hybrid_ranking_table = self._build_tree(
-            hybrid_tab,
-            columns=(
-                "rank",
-                "name",
-                "hybrid_score",
-                "ga_rank",
-                "ahp_rank",
-                "score_disagreement",
-                "comment",
-            ),
-            headings={
-                "rank": "Гибридный ранг",
-                "name": "Кандидатная конфигурация",
-                "hybrid_score": "Hybrid score",
-                "ga_rank": "ГА-ранг",
-                "ahp_rank": "AHP-ранг",
-                "score_disagreement": "Расхождение",
-                "comment": "Комментарий",
-            },
-        )
 
         self._sync_scope_hint()
         self.update_scrollregion()
+
+    def _build_category_policy_controls(self, parent: tk.Widget) -> None:
+        self.category_policy_parent = parent
+        for child in parent.winfo_children():
+            child.destroy()
+        self.category_policy_buttons.clear()
+        ttk.Label(
+            parent,
+            text="Клик по кнопке циклически меняет состояние: пусто → + → − → пусто.",
+            wraplength=280,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 2))
+        profile = self.profile_service.get_profile(self._analysis_scope())
+        for index, category in enumerate(profile.capital_categories):
+            variable = self.category_policy_vars.setdefault(
+                category,
+                tk.StringVar(value=CATEGORY_POLICY_OPTIONAL),
+            )
+            button = ttk.Button(
+                parent,
+                text=self._category_policy_button_text(category),
+                command=lambda category=category: self._cycle_category_policy(category),
+                width=26,
+            )
+            self.category_policy_buttons[category] = button
+            button.grid(row=index + 1, column=0, columnspan=2, padx=6, pady=3, sticky="ew")
+        self._sync_category_policy_buttons()
+
+    def _cycle_category_policy(self, category: str) -> None:
+        variable = self.category_policy_vars.setdefault(
+            category,
+            tk.StringVar(value=CATEGORY_POLICY_OPTIONAL),
+        )
+        current = variable.get()
+        try:
+            index = _CATEGORY_POLICY_CYCLE.index(current)
+        except ValueError:
+            index = 0
+        variable.set(_CATEGORY_POLICY_CYCLE[(index + 1) % len(_CATEGORY_POLICY_CYCLE)])
+        self._sync_category_policy_buttons()
+
+    def _category_policy_button_text(self, category: str) -> str:
+        policy = self.category_policy_vars.get(category)
+        value = policy.get() if policy is not None else CATEGORY_POLICY_OPTIONAL
+        symbol = CATEGORY_POLICY_SYMBOLS.get(value, " ")
+        hint = CATEGORY_POLICY_HINTS.get(value, "без разницы")
+        return f"[{symbol}] {CATEGORY_LABELS.get(category, category)} — {hint}"
+
+    def _sync_category_policy_buttons(self) -> None:
+        for category, button in self.category_policy_buttons.items():
+            try:
+                button.configure(text=self._category_policy_button_text(category))
+            except tk.TclError:
+                continue
+
+    def _category_policy(self, *, analysis_scope: str) -> dict[str, str]:
+        raw = {
+            category: variable.get()
+            for category, variable in self.category_policy_vars.items()
+        }
+        return self.profile_service.normalize_category_policy(analysis_scope, raw)
 
     def _add_entry(
         self,
@@ -375,6 +391,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
             analysis_scope=analysis_scope,
         )
         required_categories = self._required_categories(analysis_scope=analysis_scope)
+        excluded_categories = self._excluded_categories(analysis_scope=analysis_scope)
         self._last_analysis_scope = analysis_scope
 
         try:
@@ -387,6 +404,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
                 weights=weights,
                 max_budget=max_budget,
                 required_categories=required_categories,
+                excluded_categories=excluded_categories,
                 ga_params=ga_params,
             )
         except Exception as error:  # noqa: BLE001 - GUI должен показать пользователю причину отказа
@@ -400,7 +418,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
         if self.run_genetic_ahp_ranking_use_case is None:
             messagebox.showerror(
                 "AHP недоступен",
-                "Use case для связки ГА + AHP не настроен.",
+                "Use case для гибридной оценки не настроен.",
                 parent=self,
             )
             return
@@ -428,6 +446,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
             analysis_scope=analysis_scope,
         )
         required_categories = self._required_categories(analysis_scope=analysis_scope)
+        excluded_categories = self._excluded_categories(analysis_scope=analysis_scope)
         self._last_analysis_scope = analysis_scope
 
         try:
@@ -442,10 +461,11 @@ class GeneticOptimizationTab(BaseScrollableTab):
                 ahp_top_limit=8,
                 max_budget=max_budget,
                 required_categories=required_categories,
+                excluded_categories=excluded_categories,
                 ga_params=ga_params,
             )
         except Exception as error:  # noqa: BLE001 - GUI должен показать пользователю причину отказа
-            messagebox.showerror("Ошибка запуска ГА + AHP", str(error), parent=self)
+            messagebox.showerror("Ошибка запуска гибридной оценки", str(error), parent=self)
             return
 
         self.last_result = result
@@ -503,10 +523,6 @@ class GeneticOptimizationTab(BaseScrollableTab):
 
         profile = self.profile_service.get_profile(analysis_scope)
         value_by_criterion = {
-            "category_coverage": self.coverage_weight_var,
-            "selected_software_items": self.coverage_weight_var,
-            "client_capacity": self.client_weight_var,
-            "software_license_quantity": self.client_weight_var,
             "total_power_watts": self.power_weight_var,
             "capital_cost": self.cost_weight_var,
         }
@@ -535,11 +551,22 @@ class GeneticOptimizationTab(BaseScrollableTab):
 
     def _sync_scope_hint(self) -> None:
         profile = self.profile_service.get_profile(self._analysis_scope())
-        defaults = set(profile.default_required_categories())
-        self.require_server_var.set("server" in defaults)
-        self.require_client_var.set("client" in defaults)
-        self.require_network_var.set("network" in defaults)
-        self.require_licenses_var.set("licenses" in defaults)
+        if (
+            self.category_policy_parent is not None
+            and set(self.category_policy_buttons) != set(profile.capital_categories)
+        ):
+            self._build_category_policy_controls(self.category_policy_parent)
+        policy = self.profile_service.default_category_policy(profile.scope)
+        for category in tuple(self.category_policy_vars):
+            if category not in profile.capital_categories:
+                self.category_policy_vars.pop(category, None)
+        for category, value in policy.items():
+            self.category_policy_vars.setdefault(category, tk.StringVar()).set(value)
+        self.require_server_var.set(policy.get("server") == CATEGORY_POLICY_REQUIRED)
+        self.require_client_var.set(policy.get("client") == CATEGORY_POLICY_REQUIRED)
+        self.require_network_var.set(policy.get("network") == CATEGORY_POLICY_REQUIRED)
+        self.require_licenses_var.set(policy.get("licenses") == CATEGORY_POLICY_REQUIRED)
+        self._sync_category_policy_buttons()
         self.scope_hint_var.set(
             profile.explanation_rules.get("ui_hint")
             or f"Выбран профиль: {profile.title}."
@@ -548,12 +575,13 @@ class GeneticOptimizationTab(BaseScrollableTab):
     def _required_categories(self, *, analysis_scope: str) -> list[str]:
         return self.profile_service.required_categories(
             analysis_scope,
-            enabled_categories={
-                "server": bool(self.require_server_var.get()),
-                "client": bool(self.require_client_var.get()),
-                "network": bool(self.require_network_var.get()),
-                "licenses": bool(self.require_licenses_var.get()),
-            },
+            category_policy=self._category_policy(analysis_scope=analysis_scope),
+        )
+
+    def _excluded_categories(self, *, analysis_scope: str) -> list[str]:
+        return self.profile_service.excluded_categories(
+            analysis_scope,
+            category_policy=self._category_policy(analysis_scope=analysis_scope),
         )
 
     def _power_lookup(self) -> dict[str, float]:
@@ -603,7 +631,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
             self._clear_tree(self.ahp_ranking_table)
         if hasattr(self, "ahp_agreement_var"):
             self.ahp_agreement_var.set(
-                "Согласованность ГА и AHP появится после запуска сценария «ГА + AHP»."
+                "Согласованность методов появится после расчёта гибридной оценки."
             )
 
         ga_result = result.get("ga_result", {}) if isinstance(result.get("ga_result"), Mapping) else {}
@@ -682,14 +710,14 @@ class GeneticOptimizationTab(BaseScrollableTab):
         scope = getattr(self, "_last_analysis_scope", self._analysis_scope())
         if scope == ANALYSIS_SCOPE_SOFTWARE:
             self.explanation_var.set(
-                "Выбран набор ПО с максимальной нормализованной оценкой по заданным весам. "
+                "Выбран набор ПО с максимальной нормализованной GA-оценкой по текущему профилю критериев. "
                 f"Итоговая стоимость: {self._format_money(totals.get('capital_cost'))}; "
                 f"лицензий: {self._format_number(self._software_quantity_from_dicts(selected_items))}; "
                 f"причина остановки: {termination}."
             )
         else:
             self.explanation_var.set(
-                "Выбрана конфигурация ТО с максимальной нормализованной оценкой по заданным весам. "
+                "Выбрана конфигурация ТО с максимальной нормализованной GA-оценкой по текущему профилю критериев. "
                 f"Итоговая стоимость: {self._format_money(totals.get('capital_cost'))}; "
                 f"клиентских мест: {self._format_number(self._client_capacity_from_dicts(selected_items))}; "
                 f"мощность: {self._format_number(sum(self._item_power(item, power_lookup) for item in selected_items))} Вт; "
@@ -992,6 +1020,9 @@ class GeneticOptimizationTab(BaseScrollableTab):
         if name.startswith("required_category_"):
             category = name.removeprefix("required_category_")
             return f"Обязательная категория: {CATEGORY_LABELS.get(category, category)}"
+        if name.startswith("excluded_category_"):
+            category = name.removeprefix("excluded_category_")
+            return f"Исключённая категория: {CATEGORY_LABELS.get(category, category)}"
         profile_label = self.profile_service.constraint_label(name, scope=self._analysis_scope())
         if profile_label != name:
             return profile_label
