@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
+from typing import Any, Callable, Mapping
 
 from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.services.scoped_candidate_pool_service import ScopedCandidatePoolService
@@ -46,12 +47,15 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         profile_service: AnalysisScopeProfileService | None = None,
         initial_analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
         lock_analysis_scope: bool = False,
+        on_result_ready: Callable[[str, Mapping[str, Any]], None] | None = None,
     ):
         super().__init__(parent)
         self.crud = crud
         self.profile_service = profile_service or AnalysisScopeProfileService()
         self.initial_analysis_scope = initial_analysis_scope
         self.lock_analysis_scope = lock_analysis_scope
+        self.on_result_ready = on_result_ready
+        self.last_report: dict[str, Any] | None = None
         self.configurations: dict[str, dict] = {}
         initial_scope = (
             self.initial_analysis_scope
@@ -475,6 +479,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         source_label: str = "общий пул альтернатив",
         message: str | None = None,
     ) -> None:
+        self.last_report = None
         snapshot = self.candidate_pool_service.replace(
             self._analysis_scope(),
             candidates or [],
@@ -623,6 +628,10 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         except Exception as exc:
             messagebox.showerror("Ошибка при выполнении AHP", str(exc), parent=self)
             return
+
+        self.last_report = report
+        if self.on_result_ready is not None:
+            self.on_result_ready(self._analysis_scope(), report)
 
         out_path = self.reports_dir / "ahp_report_sample.json"
         try:

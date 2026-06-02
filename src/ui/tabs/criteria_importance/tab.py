@@ -2,6 +2,7 @@
 
 import json
 import tkinter as tk
+from typing import Any, Callable, Mapping
 from tkinter import ttk, messagebox, filedialog
 
 from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
@@ -41,12 +42,14 @@ class CriteriaImportanceTab(
         profile_service: AnalysisScopeProfileService | None = None,
         initial_analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
         lock_analysis_scope: bool = False,
+        on_result_ready: Callable[[str, Mapping[str, Any]], None] | None = None,
     ):
         super().__init__(parent)
         self.crud = crud
         self.profile_service = profile_service or AnalysisScopeProfileService()
         self.initial_analysis_scope = initial_analysis_scope
         self.lock_analysis_scope = lock_analysis_scope
+        self.on_result_ready = on_result_ready
         self.case_data = None
         self.scoped_cases = {}
         self.candidate_pool_service = ScopedCandidatePoolService(profile_service=self.profile_service)
@@ -406,6 +409,8 @@ class CriteriaImportanceTab(
             return
         try:
             self.analysis_report = run_importance_pipeline(self.case_data)
+            if self.on_result_ready is not None:
+                self.on_result_ready(self._analysis_scope(), self.analysis_report)
             self._set_result(self._format_report(self.analysis_report))
             self._populate_result_tables(self.analysis_report)
             self.result_notebook.select(0)

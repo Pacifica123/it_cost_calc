@@ -147,3 +147,7 @@
 | Патч 3 | Выполнен | `AnalysisScopeProfileService`, `analysis_scope_profiles.md`, раздел Этапа 3 в roadmap |
 
 После этой сверки нижний чеклист roadmap можно читать как фактическую историю выполненных devctl-патчей, а не как отдельный параллельный план.
+
+## Связанные документы
+
+- [Реализация scoped hybrid assessment поверх общего пула](scoped_hybrid_assessment_implementation.md)

@@ -97,6 +97,12 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         self.crud = crud
         self.profile_service = profile_service
         self.candidate_pool_service = ScopedCandidatePoolService(profile_service=self.profile_service)
+        self.decision_state: dict[str, Any] = {
+            "candidate_pool_snapshot": None,
+            "ahp_result": None,
+            "pareto_result": None,
+            "hybrid_result": None,
+        }
         self.panels: dict[str, CollapsiblePanel] = {}
         self._adaptive_pane_groups: list[dict[str, Any]] = []
         self._adaptive_after_ids: list[str] = []
@@ -321,6 +327,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             profile_service=self.profile_service,
             initial_analysis_scope=self.scope,
             lock_analysis_scope=True,
+            on_result_ready=self._receive_ahp_result,
         )
         self.configuration_selection_tab.pack(fill="both", expand=True)
         self._add_adaptive_panel(parent, ahp_panel, weight=2)
@@ -338,6 +345,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             profile_service=self.profile_service,
             initial_analysis_scope=self.scope,
             lock_analysis_scope=True,
+            on_result_ready=self._receive_pareto_result,
         )
         self.criteria_importance_tab.pack(fill="both", expand=True)
         self._add_adaptive_panel(parent, criteria_panel, weight=2)
@@ -383,11 +391,35 @@ class SolutionAreaWorkspaceTab(tk.Frame):
                 snapshot.candidates,
                 source_label=source_label,
             )
+        self.decision_state["candidate_pool_snapshot"] = snapshot
+        self.decision_state["ahp_result"] = None
+        self.decision_state["pareto_result"] = None
+        self.decision_state["hybrid_result"] = None
         if hasattr(self, "criteria_importance_tab"):
             self.criteria_importance_tab.load_candidate_pool(
                 snapshot.candidates,
                 source_label=source_label,
             )
+        if hasattr(self, "hybrid_decision_assessment_tab"):
+            self.hybrid_decision_assessment_tab.load_candidate_pool(
+                snapshot.candidates,
+                source_label=source_label,
+            )
+            self.hybrid_decision_assessment_tab.clear_method_results()
+
+    def _receive_ahp_result(self, analysis_scope: str, report: Mapping[str, Any]) -> None:
+        if analysis_scope != self.scope:
+            return
+        self.decision_state["ahp_result"] = report
+        if hasattr(self, "hybrid_decision_assessment_tab"):
+            self.hybrid_decision_assessment_tab.update_ahp_result(report)
+
+    def _receive_pareto_result(self, analysis_scope: str, report: Mapping[str, Any]) -> None:
+        if analysis_scope != self.scope:
+            return
+        self.decision_state["pareto_result"] = report
+        if hasattr(self, "hybrid_decision_assessment_tab"):
+            self.hybrid_decision_assessment_tab.update_pareto_result(report)
 
     def _add_adaptive_panel(
         self,

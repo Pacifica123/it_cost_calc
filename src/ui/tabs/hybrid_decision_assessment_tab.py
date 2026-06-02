@@ -2,108 +2,90 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
-from shared.constants import ANALYSIS_SCOPE_SOFTWARE
+from application.services.hybrid_decision_assessment_service import HybridDecisionAssessmentService
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
 
 
-class HybridDecisionAssessmentTab(GeneticOptimizationTab):
-    """Runs the existing GA→AHP orchestration as a separate hybrid panel.
+_UNSET = object()
 
-    The implementation deliberately reuses the already tested application use
-    case, but removes this scenario from the visual GA block.  In the UI it is a
-    fourth decision method panel: GA searches candidates, AHP has its own panel,
-    Pareto/criteria keeps its own panel, and this tab only presents the combined
-    consistency/hybrid view.
+
+class HybridDecisionAssessmentTab(GeneticOptimizationTab):
+    """Shows a scoped GA + AHP + Pareto-status summary without rerunning GA.
+
+    The class inherits formatting helpers from ``GeneticOptimizationTab`` but
+    deliberately replaces the content and action flow: the hybrid block reads the
+    shared candidate pool and the latest standalone AHP/Pareto results pushed by
+    the sibling panels in the same ПО/ТО workspace.
     """
 
     def _build_variables(self) -> None:
         super()._build_variables()
+        self.hybrid_service = HybridDecisionAssessmentService()
+        self.lambda_var = tk.StringVar(value="0.5")
+        self.pool_status_var = tk.StringVar(value="Общий пул альтернатив ещё не передавался из GA.")
+        self.ahp_status_var = tk.StringVar(value="AHP-результат ещё не получен.")
+        self.pareto_status_var = tk.StringVar(value="Pareto-результат ещё не получен.")
         self.status_var.set("Гибридная оценка ещё не рассчитывалась.")
         self.explanation_var.set(
-            "Гибридная панель собирает GA-кандидатов, независимый AHP-рейтинг и итоговую "
-            "сводную оценку в одном месте. Чистый результат GA теперь находится в отдельном блоке."
+            "Гибридная панель не запускает GA и AHP заново. Она берёт общий пул кандидатов, "
+            "последний самостоятельный AHP-результат и Pareto-статус из соседних блоков текущей области."
         )
-        self.ahp_agreement_var.set(
-            "После расчёта здесь появится сравнение лидеров GA и AHP по одному пулу кандидатов."
-        )
-        self.hybrid_summary_var.set(
-            "После расчёта здесь появится итоговый гибридный лидер и предупреждения о расхождениях."
-        )
+        self.hybrid_summary_var.set("После расчёта здесь появится сводная рекомендация.")
+        self._candidate_pool: list[Mapping[str, Any]] = []
+        self._candidate_pool_source_label = "общий пул альтернатив"
+        self._ahp_report: Mapping[str, Any] | None = None
+        self._pareto_report: Mapping[str, Any] | None = None
 
     def _build_content(self) -> None:
         self.inner_frame.columnconfigure(0, weight=0, minsize=280)
         self.inner_frame.columnconfigure(1, weight=1)
 
-        settings = ttk.LabelFrame(self.inner_frame, text="Гибрид: входные ограничения")
-        settings.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        settings.columnconfigure(0, weight=0, minsize=132)
-        settings.columnconfigure(1, weight=1)
+        controls = ttk.LabelFrame(self.inner_frame, text="Гибрид: источники и режим")
+        controls.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        controls.columnconfigure(1, weight=1)
 
-        self._add_entry(settings, 0, "Популяция", self.pop_size_var)
-        self._add_entry(settings, 1, "Поколений", self.generations_var)
-        self._add_entry(settings, 2, "Мутация", self.mutation_rate_var)
-        self._add_entry(settings, 3, "Seed", self.seed_var)
-        ttk.Separator(settings, orient="horizontal").grid(
-            row=4, column=0, columnspan=2, sticky="ew", pady=(8, 8)
-        )
-        self._add_entry(settings, 5, "Бюджет, руб.", self.max_budget_var)
-        self._add_entry(settings, 6, "Макс. мощность, Вт", self.max_power_var)
-        self._add_entry(settings, 7, "Мин. мест/лицензий", self.target_users_var)
-
-        category_box = ttk.LabelFrame(settings, text="Фильтр категорий: + / − / пусто")
-        category_box.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        self._build_category_policy_controls(category_box)
-
-        scope_box = ttk.LabelFrame(settings, text="Область анализа")
-        scope_box.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        ttk.Label(controls, text="Область").grid(row=0, column=0, sticky="w", padx=6, pady=4)
         fixed_label = self.profile_service.labels().get(self._analysis_scope(), self._analysis_scope())
+        ttk.Label(controls, text=f"{fixed_label} (зафиксирована)").grid(
+            row=0, column=1, sticky="w", padx=6, pady=4
+        )
+        ttk.Label(controls, text="λ к GA").grid(row=1, column=0, sticky="w", padx=6, pady=4)
+        ttk.Entry(controls, textvariable=self.lambda_var, width=8).grid(
+            row=1, column=1, sticky="w", padx=6, pady=4
+        )
         ttk.Label(
-            scope_box,
-            text=f"Зафиксировано внутри текущей вкладки: {fixed_label}",
-            wraplength=280,
-            justify="left",
-        ).grid(row=0, column=0, padx=6, pady=4, sticky="w")
-        ttk.Label(
-            settings,
-            textvariable=self.scope_hint_var,
-            wraplength=300,
-            justify="left",
-        ).grid(row=10, column=0, columnspan=2, sticky="ew", pady=(6, 0))
-
-        weights = ttk.LabelFrame(self.inner_frame, text="Мягкие веса для расчёта")
-        weights.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
-        weights.columnconfigure(0, weight=0, minsize=132)
-        weights.columnconfigure(1, weight=1)
-        self._add_entry(weights, 0, "Энергия", self.power_weight_var)
-        self._add_entry(weights, 1, "Стоимость", self.cost_weight_var)
-        ttk.Label(
-            weights,
+            controls,
             text=(
-                "Минимум рабочих мест/лицензий и политика категорий являются фильтрами. "
-                "Оставшиеся веса используются для GA и AHP-сравнения одного пула кандидатов."
+                "λ=0.5 — нейтральный компромисс. Значение ближе к 1 усиливает GA, "
+                "ближе к 0 усиливает AHP. Pareto остаётся статусом/предупреждением, а не скрытым весом."
             ),
             wraplength=300,
             justify="left",
-        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(8, 0))
+        ).grid(row=2, column=0, columnspan=2, sticky="ew", padx=6, pady=(0, 8))
+
+        status_box = ttk.LabelFrame(self.inner_frame, text="Состояние методов")
+        status_box.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+        for row, variable in enumerate(
+            (self.pool_status_var, self.ahp_status_var, self.pareto_status_var, self.status_var)
+        ):
+            ttk.Label(status_box, textvariable=variable, wraplength=300, justify="left").grid(
+                row=row, column=0, sticky="ew", padx=6, pady=4
+            )
 
         actions = ttk.Frame(self.inner_frame)
         actions.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="ew")
-        actions.columnconfigure(0, weight=1)
         ttk.Button(
             actions,
-            text="Рассчитать гибридную оценку",
-            command=self.run_ahp_ranking,
-        ).grid(row=0, column=0, sticky="w")
-        ttk.Label(actions, textvariable=self.status_var, wraplength=260, justify="left").grid(
-            row=1, column=0, sticky="ew", pady=(6, 0)
-        )
+            text="Обновить гибридную витрину",
+            command=self.run_hybrid_assessment,
+        ).pack(side="left")
 
-        result_box = ttk.LabelFrame(self.inner_frame, text="Сводная витрина GA / AHP / Hybrid")
+        result_box = ttk.LabelFrame(self.inner_frame, text="Сводная витрина GA / AHP / Pareto / Hybrid")
         result_box.grid(row=0, column=1, rowspan=3, padx=10, pady=10, sticky="nsew")
         result_box.columnconfigure(0, weight=1)
         result_box.rowconfigure(1, weight=1)
@@ -111,100 +93,147 @@ class HybridDecisionAssessmentTab(GeneticOptimizationTab):
         ttk.Label(
             result_box,
             textvariable=self.explanation_var,
-            wraplength=720,
+            wraplength=760,
             justify="left",
         ).grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
 
-        tables = ttk.Notebook(result_box)
-        tables.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
-
-        ahp_tab = ttk.Frame(tables)
-        hybrid_tab = ttk.Frame(tables)
-        tables.add(ahp_tab, text="AHP по GA-кандидатам")
-        tables.add(hybrid_tab, text="Гибридный рейтинг")
-
-        ttk.Label(
-            ahp_tab,
-            textvariable=self.ahp_agreement_var,
-            wraplength=720,
-            justify="left",
-        ).pack(fill="x", padx=4, pady=(4, 8))
-        self.ahp_ranking_table = self._build_tree(
-            ahp_tab,
-            columns=(
-                "rank",
-                "name",
-                "ahp_score",
-                "ga_rank",
-                "ga_score",
-                "rank_delta",
-                "row_status",
-                "cost",
-            ),
-            headings={
-                "rank": "Место AHP",
-                "name": "Кандидатная конфигурация",
-                "ahp_score": "AHP score",
-                "ga_rank": "GA-ранг",
-                "ga_score": "GA score",
-                "rank_delta": "Δ ранга",
-                "row_status": "Статус",
-                "cost": "Стоимость",
-            },
-        )
-
-        ttk.Label(
-            hybrid_tab,
-            textvariable=self.hybrid_summary_var,
-            wraplength=720,
-            justify="left",
-        ).pack(fill="x", padx=4, pady=(4, 8))
-        self.hybrid_ranking_table = self._build_tree(
-            hybrid_tab,
+        table_wrap = ttk.Frame(result_box)
+        table_wrap.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
+        table_wrap.columnconfigure(0, weight=1)
+        table_wrap.rowconfigure(0, weight=1)
+        self.hybrid_ranking_table = ttk.Treeview(
+            table_wrap,
             columns=(
                 "rank",
                 "name",
                 "hybrid_score",
                 "ga_rank",
                 "ahp_rank",
-                "score_disagreement",
+                "pareto",
+                "rank_disagreement",
                 "comment",
             ),
-            headings={
-                "rank": "Гибридный ранг",
-                "name": "Кандидатная конфигурация",
-                "hybrid_score": "Hybrid score",
-                "ga_rank": "GA-ранг",
-                "ahp_rank": "AHP-ранг",
-                "score_disagreement": "Расхождение",
-                "comment": "Комментарий",
-            },
+            show="headings",
+            height=14,
         )
+        headings = {
+            "rank": "Ранг",
+            "name": "Альтернатива",
+            "hybrid_score": "Hybrid score",
+            "ga_rank": "GA",
+            "ahp_rank": "AHP",
+            "pareto": "Pareto",
+            "rank_disagreement": "Δ ранга",
+            "comment": "Комментарий",
+        }
+        for column, heading in headings.items():
+            self.hybrid_ranking_table.heading(column, text=heading)
+            width = 250 if column == "name" else 130
+            if column in {"rank", "ga_rank", "ahp_rank"}:
+                width = 70
+            self.hybrid_ranking_table.column(column, width=width, anchor="w")
+        scrollbar = ttk.Scrollbar(table_wrap, orient="vertical", command=self.hybrid_ranking_table.yview)
+        self.hybrid_ranking_table.configure(yscrollcommand=scrollbar.set)
+        self.hybrid_ranking_table.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
 
-        self._sync_scope_hint()
+        ttk.Label(
+            result_box,
+            textvariable=self.hybrid_summary_var,
+            wraplength=760,
+            justify="left",
+        ).grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 8))
+
         self.update_scrollregion()
 
-    def _render_result(self, result: Mapping[str, Any], power_lookup: Mapping[str, float]) -> None:
-        """Keep GA details out of the hybrid panel and show only pool status."""
+    def load_candidate_pool(
+        self,
+        candidates: Sequence[Mapping[str, Any]],
+        *,
+        source_label: str = "общий пул альтернатив",
+    ) -> None:
+        self._candidate_pool = [dict(candidate) for candidate in candidates or []]
+        self._candidate_pool_source_label = source_label
+        self.pool_status_var.set(f"Пул получен: {len(self._candidate_pool)} альтернатив; источник: {source_label}.")
+        self.status_var.set("Гибридная оценка ожидает самостоятельные результаты AHP/Pareto.")
+        self.hybrid_summary_var.set("Пул обновлён; после AHP/Pareto нажмите обновление гибридной витрины.")
+        self._clear_tree(self.hybrid_ranking_table)
 
-        if result.get("status") == "error":
-            self.status_var.set("GA не сформировал пул для гибридной оценки.")
-            self.explanation_var.set(str(result.get("error") or "Нет допустимых кандидатов."))
+    def clear_method_results(self) -> None:
+        self._ahp_report = None
+        self._pareto_report = None
+        self.ahp_status_var.set("AHP-результат сброшен: пул изменился.")
+        self.pareto_status_var.set("Pareto-результат сброшен: пул изменился.")
+
+    def update_ahp_result(self, report: Mapping[str, Any] | None) -> None:
+        self._ahp_report = report
+        if report is None:
+            self.ahp_status_var.set("AHP-результат ещё не получен.")
+            return
+        count = self._ahp_ranking_count(report)
+        self.ahp_status_var.set(f"AHP-результат получен: {count} ранжированных альтернатив.")
+
+    def update_pareto_result(self, report: Mapping[str, Any] | None) -> None:
+        self._pareto_report = report
+        if report is None:
+            self.pareto_status_var.set("Pareto-результат ещё не получен.")
+            return
+        count = len(report.get("ranking", [])) if isinstance(report.get("ranking"), list) else 0
+        nondominated = len(report.get("final_nondominated", [])) if isinstance(report.get("final_nondominated"), list) else 0
+        self.pareto_status_var.set(
+            f"Pareto-результат получен: {count} альтернатив, недоминируемых: {nondominated}."
+        )
+
+    def run_hybrid_assessment(self) -> None:
+        try:
+            lambda_value = float(self.lambda_var.get())
+        except ValueError:
+            messagebox.showerror("Ошибка ввода", "λ должен быть числом от 0 до 1.", parent=self)
             return
 
-        candidate_count = len(result.get("candidate_solutions", []))
-        totals = result.get("totals", {}) if isinstance(result.get("totals"), Mapping) else {}
-        scope = getattr(self, "_last_analysis_scope", self._analysis_scope())
-        unit_label = "лицензий" if scope == ANALYSIS_SCOPE_SOFTWARE else "клиентских мест"
-        units = (
-            self._software_quantity_from_dicts(result.get("selected_items", []))
-            if scope == ANALYSIS_SCOPE_SOFTWARE
-            else self._client_capacity_from_dicts(result.get("selected_items", []))
+        assessment = self.hybrid_service.assess(
+            self._candidate_pool,
+            ahp_report=self._ahp_report,
+            pareto_report=self._pareto_report,
+            lambda_value=lambda_value,
+            source_label=self._candidate_pool_source_label,
         )
-        self.status_var.set(
-            f"Пул GA-кандидатов: {candidate_count}; стоимость лучшего GA: "
-            f"{self._format_money(totals.get('capital_cost'))}; {unit_label}: {self._format_number(units)}."
-        )
+        self.last_result = {"hybrid_assessment": assessment}
+        self._render_assessment(assessment)
+
+    def _render_assessment(self, assessment: Mapping[str, Any]) -> None:
+        self._clear_tree(self.hybrid_ranking_table)
+        if assessment.get("status") == "ok":
+            self.status_var.set("Гибридная оценка рассчитана по общему пулу и последним результатам методов.")
+            self.hybrid_summary_var.set(str(assessment.get("summary") or "Гибридная оценка рассчитана."))
+        else:
+            self.status_var.set(str(assessment.get("reason") or "Гибридная оценка не рассчитана."))
+            warnings = assessment.get("warnings") if isinstance(assessment.get("warnings"), list) else []
+            self.hybrid_summary_var.set(" ".join(str(item) for item in warnings) or self.status_var.get())
+
+        for row in assessment.get("ranking", []) if isinstance(assessment.get("ranking"), list) else []:
+            if not isinstance(row, Mapping):
+                continue
+            self.hybrid_ranking_table.insert(
+                "",
+                "end",
+                values=(
+                    row.get("rank", "—"),
+                    row.get("name", "—"),
+                    self._format_number(row.get("hybrid_score"), digits=4),
+                    row.get("ga_rank", "—"),
+                    row.get("ahp_rank", "—"),
+                    row.get("pareto_status", "нет данных"),
+                    self._format_number(row.get("rank_disagreement"), digits=0),
+                    row.get("comment", ""),
+                ),
+            )
+        self.update_scrollregion()
+
+    def _ahp_ranking_count(self, report: Mapping[str, Any]) -> int:
+        final = report.get("final") if isinstance(report.get("final"), Mapping) else {}
+        ranking = final.get("ranking") if isinstance(final, Mapping) else []
+        return len(ranking) if isinstance(ranking, list) else 0
 
 
 __all__ = ["HybridDecisionAssessmentTab"]
