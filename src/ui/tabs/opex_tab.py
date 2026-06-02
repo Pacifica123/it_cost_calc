@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import tkinter as tk
 from tkinter import messagebox
+from typing import Mapping
 
 from application.services.equipment_service import EquipmentService
 from shared.validation import parse_float, require_text
 from ui.dialogs import RecordFormDialog
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 from ui.widgets import EntityTableSection
+
+
+OperationalEntityConfig = Mapping[str, tuple[str, tuple[str, ...]]]
 
 
 class OpexTab(BaseScrollableTab):
@@ -27,15 +32,44 @@ class OpexTab(BaseScrollableTab):
         "server_administration": ("Администрирование серверов", ("name", "monthly_cost")),
     }
 
-    def __init__(self, parent, equipment_service: EquipmentService):
+    def __init__(
+        self,
+        parent,
+        equipment_service: EquipmentService,
+        *,
+        entity_config: OperationalEntityConfig | None = None,
+        intro_text: str | None = None,
+        columns_count: int = 3,
+    ):
         super().__init__(parent)
         self.equipment_service = equipment_service
+        self.entity_config = dict(entity_config or self.ENTITY_CONFIG)
+        self.columns_count = max(1, int(columns_count))
 
-        for column in range(3):
+        for column in range(self.columns_count):
             self.inner_frame.columnconfigure(column, weight=1)
 
+        row_offset = 0
+        if intro_text:
+            label = tk.Label(
+                self.inner_frame,
+                text=intro_text,
+                anchor="w",
+                justify="left",
+                wraplength=1080,
+            )
+            label.grid(
+                row=0,
+                column=0,
+                columnspan=self.columns_count,
+                padx=10,
+                pady=(10, 0),
+                sticky="ew",
+            )
+            row_offset = 1
+
         self.tables: dict[str, EntityTableSection] = {}
-        for index, (entity_name, (title, columns)) in enumerate(self.ENTITY_CONFIG.items()):
+        for index, (entity_name, (title, columns)) in enumerate(self.entity_config.items()):
             section = EntityTableSection(
                 self.inner_frame,
                 title=title,
@@ -45,7 +79,13 @@ class OpexTab(BaseScrollableTab):
                 on_edit=lambda e=entity_name: self.edit_row(e),
                 on_delete=lambda e=entity_name: self.delete_row(e),
             )
-            section.grid(row=index // 3, column=index % 3, padx=10, pady=10, sticky="nsew")
+            section.grid(
+                row=row_offset + index // self.columns_count,
+                column=index % self.columns_count,
+                padx=10,
+                pady=10,
+                sticky="nsew",
+            )
             self.tables[entity_name] = section
 
         self.refresh_all()

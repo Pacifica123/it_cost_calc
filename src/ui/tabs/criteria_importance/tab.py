@@ -32,13 +32,28 @@ class CriteriaImportanceTab(
     CriteriaImportanceDataMixin,
     BaseScrollableTab,
 ):
-    def __init__(self, parent, crud, *, profile_service: AnalysisScopeProfileService | None = None):
+    def __init__(
+        self,
+        parent,
+        crud,
+        *,
+        profile_service: AnalysisScopeProfileService | None = None,
+        initial_analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
+        lock_analysis_scope: bool = False,
+    ):
         super().__init__(parent)
         self.crud = crud
         self.profile_service = profile_service or AnalysisScopeProfileService()
+        self.initial_analysis_scope = initial_analysis_scope
+        self.lock_analysis_scope = lock_analysis_scope
         self.case_data = None
         self.scoped_cases = {}
-        self.analysis_scope_var = tk.StringVar(value=ANALYSIS_SCOPE_TECHNICAL)
+        initial_scope = (
+            self.initial_analysis_scope
+            if self.initial_analysis_scope in self.profile_service.profiles()
+            else ANALYSIS_SCOPE_TECHNICAL
+        )
+        self.analysis_scope_var = tk.StringVar(value=initial_scope)
         self.analysis_report = None
         self._build_ui()
         self._reset_case()
@@ -58,14 +73,18 @@ class CriteriaImportanceTab(
         scope_box = tk.Frame(toolbar)
         scope_box.pack(side="left", padx=(12, 0))
         tk.Label(scope_box, text="Область:").pack(side="left")
-        for value, label in self.profile_service.labels().items():
-            ttk.Radiobutton(
-                scope_box,
-                text=label,
-                value=value,
-                variable=self.analysis_scope_var,
-                command=self._on_analysis_scope_changed,
-            ).pack(side="left")
+        if self.lock_analysis_scope:
+            fixed_label = self.profile_service.labels().get(self._analysis_scope(), self._analysis_scope())
+            tk.Label(scope_box, text=f"{fixed_label} (зафиксирована)").pack(side="left")
+        else:
+            for value, label in self.profile_service.labels().items():
+                ttk.Radiobutton(
+                    scope_box,
+                    text=label,
+                    value=value,
+                    variable=self.analysis_scope_var,
+                    command=self._on_analysis_scope_changed,
+                ).pack(side="left")
 
         top_label = tk.Label(
             root,

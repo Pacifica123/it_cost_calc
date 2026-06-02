@@ -37,12 +37,27 @@ except Exception:
 
 
 class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterMixin, BaseScrollableTab):
-    def __init__(self, parent, crud, *, profile_service: AnalysisScopeProfileService | None = None):
+    def __init__(
+        self,
+        parent,
+        crud,
+        *,
+        profile_service: AnalysisScopeProfileService | None = None,
+        initial_analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
+        lock_analysis_scope: bool = False,
+    ):
         super().__init__(parent)
         self.crud = crud
         self.profile_service = profile_service or AnalysisScopeProfileService()
+        self.initial_analysis_scope = initial_analysis_scope
+        self.lock_analysis_scope = lock_analysis_scope
         self.configurations: dict[str, dict] = {}
-        self.analysis_scope_var = tk.StringVar(value=ANALYSIS_SCOPE_TECHNICAL)
+        initial_scope = (
+            self.initial_analysis_scope
+            if self.initial_analysis_scope in self.profile_service.profiles()
+            else ANALYSIS_SCOPE_TECHNICAL
+        )
+        self.analysis_scope_var = tk.StringVar(value=initial_scope)
         self.scoped_demo_payloads: dict[str, dict] = {}
         self.soft_criteria_vars = {
             criterion_id: tk.BooleanVar(value=True) for criterion_id in DEFAULT_SOFT_CRITERIA
@@ -84,14 +99,18 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         scope_box = tk.Frame(ctrl)
         scope_box.pack(side="left", padx=(12, 0))
         tk.Label(scope_box, text="Область:").pack(side="left")
-        for value, label in self.profile_service.labels().items():
-            ttk.Radiobutton(
-                scope_box,
-                text=label,
-                value=value,
-                variable=self.analysis_scope_var,
-                command=self._on_analysis_scope_changed,
-            ).pack(side="left")
+        if self.lock_analysis_scope:
+            fixed_label = self.profile_service.labels().get(self._analysis_scope(), self._analysis_scope())
+            tk.Label(scope_box, text=f"{fixed_label} (зафиксирована)").pack(side="left")
+        else:
+            for value, label in self.profile_service.labels().items():
+                ttk.Radiobutton(
+                    scope_box,
+                    text=label,
+                    value=value,
+                    variable=self.analysis_scope_var,
+                    command=self._on_analysis_scope_changed,
+                ).pack(side="left")
 
         self.cfg_table = ttk.Treeview(
             root,
@@ -239,7 +258,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         self.summary_text.insert(
             "1.0",
             "Сначала загрузите конфигурации вручную из JSON или общей кнопкой \"Загрузить демо-данные\". "
-            "Переключатель ТО/ПО определяет, какие подготовленные конфигурации анализируются.",
+            "Область анализа берётся из текущей рабочей вкладки ПО/ТО или из ручного переключателя режима.",
         )
 
     def _analysis_scope(self) -> str:

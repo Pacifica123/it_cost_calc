@@ -50,8 +50,12 @@ class GeneticOptimizationTab(BaseScrollableTab):
         energy_tab: Any | None = None,
         data_root: str | Path | None = None,
         profile_service: AnalysisScopeProfileService | None = None,
+        initial_analysis_scope: str = ANALYSIS_SCOPE_TECHNICAL,
+        lock_analysis_scope: bool = False,
     ):
         super().__init__(parent, width=1180, height=620)
+        self.initial_analysis_scope = initial_analysis_scope
+        self.lock_analysis_scope = lock_analysis_scope
         self.run_genetic_optimization_use_case = run_genetic_optimization_use_case
         self.run_genetic_ahp_ranking_use_case = run_genetic_ahp_ranking_use_case
         self.energy_tab = energy_tab
@@ -62,6 +66,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
 
         self._build_variables()
         self._build_content()
+        self._sync_scope_hint()
 
     def _build_variables(self) -> None:
         self.pop_size_var = tk.StringVar(value="40")
@@ -69,7 +74,12 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.mutation_rate_var = tk.StringVar(value="0.04")
         self.seed_var = tk.StringVar(value="42")
 
-        self.analysis_scope_var = tk.StringVar(value=ANALYSIS_SCOPE_TECHNICAL)
+        initial_scope = (
+            self.initial_analysis_scope
+            if self.initial_analysis_scope in self.profile_service.profiles()
+            else ANALYSIS_SCOPE_TECHNICAL
+        )
+        self.analysis_scope_var = tk.StringVar(value=initial_scope)
         self.scope_hint_var = tk.StringVar()
 
         self.max_budget_var = tk.StringVar(value="600000")
@@ -134,14 +144,23 @@ class GeneticOptimizationTab(BaseScrollableTab):
 
         scope_box = ttk.LabelFrame(settings, text="Область анализа")
         scope_box.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        for index, (value, label) in enumerate(self.profile_service.labels().items()):
-            ttk.Radiobutton(
+        if self.lock_analysis_scope:
+            fixed_label = self.profile_service.labels().get(self._analysis_scope(), self._analysis_scope())
+            ttk.Label(
                 scope_box,
-                text=label,
-                value=value,
-                variable=self.analysis_scope_var,
-                command=self._sync_scope_hint,
-            ).grid(row=0, column=index, padx=6, pady=4, sticky="w")
+                text=f"Зафиксировано внутри текущей вкладки: {fixed_label}",
+                wraplength=330,
+                justify="left",
+            ).grid(row=0, column=0, padx=6, pady=4, sticky="w")
+        else:
+            for index, (value, label) in enumerate(self.profile_service.labels().items()):
+                ttk.Radiobutton(
+                    scope_box,
+                    text=label,
+                    value=value,
+                    variable=self.analysis_scope_var,
+                    command=self._sync_scope_hint,
+                ).grid(row=0, column=index, padx=6, pady=4, sticky="w")
         ttk.Label(
             settings,
             textvariable=self.scope_hint_var,

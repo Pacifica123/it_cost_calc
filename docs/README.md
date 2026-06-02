@@ -32,6 +32,7 @@
 - `architecture/solution_component_sandbox_conversion.md` — ручная конвертация старых sandbox-записей в SolutionComponent без автоматической миграции;
 - `architecture/solution_component_demo_control.md` — финальная C9-связка демонстрации, smoke-проверки и защитного объяснения редактора компонентов;
 - `architecture/global_interface_reorganization_plan.md` — план глобальной реорганизации интерфейса: укрупнение вкладок, перенос GA/AHP/обоснования внутрь ПО/ТО, матрица ПО/ТО × CAPEX/OPEX и умный экспорт;
+- `architecture/global_interface_reorganization_implementation.md` — сводка реализации новой структуры вкладок, раскрываемых панелей и контекстного экспорта;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -97,14 +98,15 @@
 21. `architecture/solution_component_sandbox_conversion.md`
 22. `architecture/solution_component_demo_control.md`
 23. `architecture/global_interface_reorganization_plan.md`
-24. `architecture/system_schema.md`
-25. `architecture/module_map.md`
-26. `architecture/data_map.md`
-27. `research/genetic_algorithm.md`
-28. `research/ideas/genetic_algorithm_plain_manifest.md`
-29. `research/ideas/future_independent_ga_ahp_assessment.md`
-30. `research/ideas/future_hybrid_ga_ahp_score.md`
-31. `demo/ga_ahp_defense_guide.md`
-32. `demo/demo_data_contract.md`
-33. `demo/solution_component_editor_defense_guide.md`
-34. `traceability.md`
+24. `architecture/global_interface_reorganization_implementation.md`
+25. `architecture/system_schema.md`
+26. `architecture/module_map.md`
+27. `architecture/data_map.md`
+28. `research/genetic_algorithm.md`
+29. `research/ideas/genetic_algorithm_plain_manifest.md`
+30. `research/ideas/future_independent_ga_ahp_assessment.md`
+31. `research/ideas/future_hybrid_ga_ahp_score.md`
+32. `demo/ga_ahp_defense_guide.md`
+33. `demo/demo_data_contract.md`
+34. `demo/solution_component_editor_defense_guide.md`
+35. `traceability.md`

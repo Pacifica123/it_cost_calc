@@ -1,61 +1,93 @@
-"""Export tab consumes application use cases instead of formatting data inline."""
+"""Export tab with live context and full/partial export modes."""
 
 from __future__ import annotations
 
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from shared.formatting import format_cost_summary
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
+
+
+EXPORT_MODE_LABELS = {
+    "full_decision_report": "Полный DecisionReport: JSON/Markdown/CSV",
+    "cost_summary": "Только CAPEX/OPEX/TCO с оговорками",
+    "technical_analysis": "Только аналитика ТО: GA/AHP/Pareto",
+    "software_analysis": "Только аналитика ПО: GA/AHP/Pareto",
+    "npv": "Только NPV с оговорками",
+    "raw_costs_csv": "Сырой CSV затрат",
+}
 
 
 class ExportTab(BaseScrollableTab):
     def __init__(self, parent, app):
-        super().__init__(parent)
+        super().__init__(parent, width=1180, height=620)
         self.app = app
+        self.export_mode_var = tk.StringVar(value="full_decision_report")
+        self._build_ui()
+        self.update_summary()
+
+    def _build_ui(self) -> None:
         root = self.inner_frame
+        root.columnconfigure(0, weight=1)
 
-        self.export_button = tk.Button(root, text="Экспортировать в CSV", command=self._export)
-        self.export_button.pack(fill="x")
+        control_box = ttk.LabelFrame(root, text="Экспорт")
+        control_box.pack(fill="x", padx=10, pady=10)
+        control_box.columnconfigure(1, weight=1)
 
-        self.decision_report_button = tk.Button(
-            root,
-            text="Сформировать DecisionReport JSON/Markdown/CSV",
-            command=self._export_decision_report,
+        ttk.Label(control_box, text="Что экспортировать:").grid(
+            row=0, column=0, padx=6, pady=6, sticky="w"
         )
-        self.decision_report_button.pack(fill="x", pady=(6, 0))
+        self.mode_combo = ttk.Combobox(
+            control_box,
+            textvariable=self.export_mode_var,
+            values=list(EXPORT_MODE_LABELS),
+            state="readonly",
+            width=28,
+        )
+        self.mode_combo.grid(row=0, column=1, padx=6, pady=6, sticky="ew")
+        self.mode_combo.bind("<<ComboboxSelected>>", lambda _event: self.update_summary())
 
-        self.summary_text = tk.Text(root, height=10, width=50)
-        self.summary_text.pack(fill="both", expand=True)
+        self.mode_label = ttk.Label(control_box, wraplength=880, justify="left")
+        self.mode_label.grid(row=1, column=0, columnspan=3, padx=6, pady=(0, 6), sticky="ew")
 
-        self.update_summary()
+        ttk.Button(
+            control_box,
+            text="Экспортировать выбранный фрагмент",
+            command=self._export_selected,
+        ).grid(row=0, column=2, padx=6, pady=6, sticky="e")
 
-    def _export(self) -> None:
-        self.app.export_to_csv()
-        self.update_summary()
+        ttk.Button(
+            control_box,
+            text="Обновить сводку",
+            command=self.update_summary,
+        ).grid(row=2, column=0, padx=6, pady=(0, 6), sticky="w")
 
-    def _export_decision_report(self) -> None:
+        self.summary_text = tk.Text(root, height=28, width=90, wrap="word")
+        self.summary_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    def _export_selected(self) -> None:
+        mode = self.export_mode_var.get()
         try:
-            paths = self.app.export_decision_report()
+            paths = self.app.export_selected_fragment(mode)
             self.update_summary()
             self.summary_text.insert(
                 tk.END,
-                "\n\nDecisionReport сформирован:"
-                f"\n- JSON: {paths.get('json')}"
-                f"\n- Markdown: {paths.get('markdown')}"
-                f"\n- CSV альтернатив: {paths.get('csv')}"
-                f"\n- CSV компонентов: {paths.get('components_csv')}",
+                "\n\nЭкспорт выполнен:\n" + self._format_paths(paths),
             )
             messagebox.showinfo(
-                "DecisionReport",
-                "Итоговый отчёт выбора сформирован в data/generated.",
+                "Экспорт",
+                "Файл(ы) сформированы в data/generated.",
                 parent=self,
             )
         except Exception as error:
-            messagebox.showerror("Ошибка DecisionReport", str(error), parent=self)
+            messagebox.showerror("Ошибка экспорта", str(error), parent=self)
+
+    def _format_paths(self, paths: dict) -> str:
+        return "\n".join(f"- {key}: {value}" for key, value in paths.items())
 
     def update_summary(self) -> None:
-        totals = self.app.update_total_costs()
-        summary = format_cost_summary(totals)
+        mode = self.export_mode_var.get()
+        self.mode_label.configure(text=EXPORT_MODE_LABELS.get(mode, mode))
+        summary = self.app.build_export_dashboard_summary()
         self.summary_text.delete("1.0", tk.END)
         self.summary_text.insert(tk.END, summary)
