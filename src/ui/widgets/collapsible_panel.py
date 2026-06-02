@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 
 from ui.theme import MUTED_TEXT, PANEL, PANEL_BODY, PANEL_BORDER, PANEL_HEADER, TEXT
 
@@ -21,6 +22,7 @@ class CollapsiblePanel(tk.Frame):
         title: str,
         initially_open: bool = True,
         header_hint: str | None = None,
+        on_toggle: Callable[["CollapsiblePanel"], None] | None = None,
     ) -> None:
         super().__init__(
             parent,
@@ -32,6 +34,7 @@ class CollapsiblePanel(tk.Frame):
         )
         self.title = title
         self._opened = bool(initially_open)
+        self._on_toggle = on_toggle
         self._indicator_var = tk.StringVar()
         self._hint_var = tk.StringVar(value=header_hint or "")
 
@@ -86,17 +89,31 @@ class CollapsiblePanel(tk.Frame):
     def toggle(self, _event=None) -> None:
         self._opened = not self._opened
         self._sync_visibility()
+        self._notify_toggle()
 
     def open(self) -> None:
+        if self._opened:
+            return
         self._opened = True
         self._sync_visibility()
+        self._notify_toggle()
 
     def close(self) -> None:
+        if not self._opened:
+            return
         self._opened = False
         self._sync_visibility()
+        self._notify_toggle()
 
     def set_hint(self, text: str) -> None:
         self._hint_var.set(text)
+
+    def set_toggle_callback(self, callback: Callable[["CollapsiblePanel"], None] | None) -> None:
+        self._on_toggle = callback
+
+    def _notify_toggle(self) -> None:
+        if self._on_toggle is not None:
+            self._on_toggle(self)
 
     def _bind_header_toggle(self) -> None:
         for widget in (self.header, self.toggle_indicator, self.title_label):

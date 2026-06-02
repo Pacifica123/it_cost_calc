@@ -95,6 +95,9 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         self.crud = crud
         self.profile_service = profile_service
         self.panels: dict[str, CollapsiblePanel] = {}
+        self._adaptive_pane_groups: list[dict[str, Any]] = []
+        self._adaptive_after_ids: list[str] = []
+        self.bind("<Destroy>", self._cancel_adaptive_rebalance_callbacks, add="+")
 
         self._build_layout(
             run_genetic_optimization_use_case=run_genetic_optimization_use_case,
@@ -163,6 +166,8 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             data_root=data_root,
         )
         self.after_idle(self._force_panel_backgrounds)
+        self._schedule_adaptive_after_idle(self._rebalance_all_adaptive_panes)
+        self._schedule_adaptive_after(120, self._rebalance_all_adaptive_panes)
 
     def _build_header_button(self, parent: tk.Misc, text: str, command) -> tk.Button:
         return tk.Button(
@@ -203,6 +208,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
                 data_side.sashpos(1, int(height * 0.74))
                 analysis_side.sashpos(0, int(height * 0.84))
                 analysis_side.sashpos(1, int(height * 0.92))
+            self._schedule_rebalance_all_adaptive_panes()
         except tk.TclError:
             return
 
@@ -228,7 +234,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
                 compact_tables=True,
             )
         self.capex_tab.pack(fill="both", expand=True)
-        parent.add(capex_panel, weight=1)
+        self._add_adaptive_panel(parent, capex_panel, weight=1)
 
         opex_panel = self._panel(
             parent,
@@ -257,7 +263,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             compact_tables=True,
         )
         self.opex_tab.pack(fill="both", expand=True)
-        parent.add(opex_panel, weight=1)
+        self._add_adaptive_panel(parent, opex_panel, weight=1)
 
         relation_panel = self._panel(
             parent,
@@ -267,7 +273,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             initially_open=False,
         )
         self._build_cost_relation_table(relation_panel.content)
-        parent.add(relation_panel, weight=1)
+        self._add_adaptive_panel(parent, relation_panel, weight=1)
 
     def _add_analysis_panels(
         self,
@@ -295,7 +301,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             lock_analysis_scope=True,
         )
         self.genetic_optimization_tab.pack(fill="both", expand=True)
-        parent.add(ga_panel, weight=2)
+        self._add_adaptive_panel(parent, ga_panel, weight=2)
 
         ahp_panel = self._panel(
             parent,
@@ -312,7 +318,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             lock_analysis_scope=True,
         )
         self.configuration_selection_tab.pack(fill="both", expand=True)
-        parent.add(ahp_panel, weight=2)
+        self._add_adaptive_panel(parent, ahp_panel, weight=2)
 
         criteria_panel = self._panel(
             parent,
@@ -329,7 +335,140 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             lock_analysis_scope=True,
         )
         self.criteria_importance_tab.pack(fill="both", expand=True)
-        parent.add(criteria_panel, weight=2)
+        self._add_adaptive_panel(parent, criteria_panel, weight=2)
+
+    def _add_adaptive_panel(
+        self,
+        parent: ttk.Panedwindow,
+        panel: CollapsiblePanel,
+        *,
+        weight: int,
+    ) -> None:
+        """Add a panel to a Panedwindow and bind disclosure state to sash sizes.
+
+        A collapsed block should not leave behind an empty manually-resized
+        pane.  The panel remains in the Panedwindow, but its pane is reduced to
+        header height and the remaining opened siblings receive the released
+        vertical space.
+        """
+
+        parent.add(panel, weight=weight)
+        group = self._get_adaptive_group(parent)
+        group["panels"].append({"panel": panel, "weight": max(int(weight), 1)})
+        panel.set_toggle_callback(lambda _panel, pane=parent: self._schedule_rebalance_pane(pane))
+
+    def _get_adaptive_group(self, pane: ttk.Panedwindow) -> dict[str, Any]:
+        for group in self._adaptive_pane_groups:
+            if group["pane"] is pane:
+                return group
+        group = {"pane": pane, "panels": []}
+        self._adaptive_pane_groups.append(group)
+        return group
+
+    def _schedule_rebalance_pane(self, pane: ttk.Panedwindow) -> None:
+        self._schedule_adaptive_after_idle(lambda pane=pane: self._rebalance_adaptive_pane(pane))
+        self._schedule_adaptive_after(80, lambda pane=pane: self._rebalance_adaptive_pane(pane))
+
+    def _schedule_rebalance_all_adaptive_panes(self) -> None:
+        self._schedule_adaptive_after_idle(self._rebalance_all_adaptive_panes)
+        self._schedule_adaptive_after(80, self._rebalance_all_adaptive_panes)
+
+    def _schedule_adaptive_after_idle(self, callback) -> None:
+        try:
+            self._adaptive_after_ids.append(self.after_idle(callback))
+        except tk.TclError:
+            return
+
+    def _schedule_adaptive_after(self, delay_ms: int, callback) -> None:
+        try:
+            self._adaptive_after_ids.append(self.after(delay_ms, callback))
+        except tk.TclError:
+            return
+
+    def _cancel_adaptive_rebalance_callbacks(self, event: tk.Event) -> None:
+        if event.widget is not self:
+            return
+        for after_id in self._adaptive_after_ids:
+            try:
+                self.after_cancel(after_id)
+            except tk.TclError:
+                continue
+        self._adaptive_after_ids.clear()
+
+    def _rebalance_all_adaptive_panes(self) -> None:
+        for group in self._adaptive_pane_groups:
+            self._rebalance_adaptive_pane(group["pane"])
+
+    def _rebalance_adaptive_pane(self, pane: ttk.Panedwindow) -> None:
+        group = self._get_adaptive_group(pane)
+        entries = group["panels"]
+        if len(entries) <= 1:
+            return
+
+        try:
+            pane.update_idletasks()
+            total_height = pane.winfo_height()
+            if total_height <= 80:
+                return
+
+            sash_gap = 6 * (len(entries) - 1)
+            collapsed_heights: list[int | None] = []
+            open_weight = 0
+            collapsed_total = 0
+            for entry in entries:
+                panel = entry["panel"]
+                if panel.opened:
+                    collapsed_heights.append(None)
+                    open_weight += entry["weight"]
+                else:
+                    height = self._collapsed_panel_height(panel)
+                    collapsed_heights.append(height)
+                    collapsed_total += height
+
+            available_for_open = max(total_height - collapsed_total - sash_gap, 0)
+            heights: list[int] = []
+            used_open_height = 0
+            opened_seen = 0
+            opened_total = sum(1 for value in collapsed_heights if value is None)
+            for index, value in enumerate(collapsed_heights):
+                if value is not None:
+                    heights.append(value)
+                    continue
+
+                opened_seen += 1
+                entry_weight = entries[index]["weight"]
+                if open_weight <= 0:
+                    height = 0
+                elif opened_seen == opened_total:
+                    height = max(available_for_open - used_open_height, 0)
+                else:
+                    height = int(available_for_open * entry_weight / open_weight)
+                    used_open_height += height
+                heights.append(max(height, self._minimum_open_panel_height(total_height, opened_total)))
+
+            self._apply_sash_positions(pane, heights)
+        except tk.TclError:
+            return
+
+    def _collapsed_panel_height(self, panel: CollapsiblePanel) -> int:
+        try:
+            panel.header.update_idletasks()
+            return max(panel.header.winfo_reqheight() + 8, 34)
+        except tk.TclError:
+            return 38
+
+    def _minimum_open_panel_height(self, total_height: int, opened_total: int) -> int:
+        if opened_total <= 0:
+            return 0
+        if total_height < 420:
+            return 80
+        return 120
+
+    def _apply_sash_positions(self, pane: ttk.Panedwindow, heights: list[int]) -> None:
+        position = 0
+        for index, height in enumerate(heights[:-1]):
+            position += max(int(height), 1)
+            pane.sashpos(index, position)
 
     def _panel(
         self,
@@ -393,12 +532,14 @@ class SolutionAreaWorkspaceTab(tk.Frame):
     def open_all(self) -> None:
         for panel in self.panels.values():
             panel.open()
+        self._schedule_rebalance_all_adaptive_panes()
 
     def close_analysis(self) -> None:
         for key in ("ga", "ahp", "criteria"):
             panel = self.panels.get(key)
             if panel is not None:
                 panel.close()
+        self._schedule_rebalance_all_adaptive_panes()
 
 
 class TechnicalSolutionAreaWorkspaceTab(SolutionAreaWorkspaceTab):

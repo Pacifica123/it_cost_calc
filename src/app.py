@@ -60,6 +60,8 @@ class CalculatorApp(tk.Tk):
         self.data_root = self.repo_root / "data"
         self.log_path = configure_logging(repo_root=self.repo_root)
         self._is_shutting_down = False
+        self._theme_after_ids: list[str] = []
+        self.bind("<Destroy>", self._cancel_theme_callbacks, add="+")
         logger.info("Инициализация настольного приложения. Лог-файл: %s", self.log_path)
 
         self.title("Калькулятор стоимости ИТ-инфраструктуры")
@@ -214,8 +216,30 @@ class CalculatorApp(tk.Tk):
         for workspace in getattr(self, "workspace_tabs_by_scope", {}).values():
             if hasattr(workspace, "_force_panel_backgrounds"):
                 workspace._force_panel_backgrounds()
-        self.after_idle(self._refresh_visual_theme)
-        self.after(250, self._refresh_visual_theme)
+        self._schedule_theme_after_idle(self._refresh_visual_theme)
+        self._schedule_theme_after(250, self._refresh_visual_theme)
+
+    def _schedule_theme_after_idle(self, callback) -> None:
+        try:
+            self._theme_after_ids.append(self.after_idle(callback))
+        except tk.TclError:
+            return
+
+    def _schedule_theme_after(self, delay_ms: int, callback) -> None:
+        try:
+            self._theme_after_ids.append(self.after(delay_ms, callback))
+        except tk.TclError:
+            return
+
+    def _cancel_theme_callbacks(self, event: tk.Event) -> None:
+        if event.widget is not self:
+            return
+        for after_id in self._theme_after_ids:
+            try:
+                self.after_cancel(after_id)
+            except tk.TclError:
+                continue
+        self._theme_after_ids.clear()
 
     def _refresh_visual_theme(self) -> None:
         configure_app_style(self)
