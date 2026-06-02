@@ -49,7 +49,7 @@ class EntityTableSection:
         self.table.configure(yscrollcommand=y_scroll.set)
         y_scroll.grid(row=0, column=1, sticky="ns")
 
-        buttons = ttk.Frame(self.frame, style="Surface.TFrame")
+        buttons = ttk.Frame(self.frame, style="PanelBody.TFrame")
         buttons.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         for column in range(3):
             buttons.columnconfigure(column, weight=1, uniform="entity-actions")

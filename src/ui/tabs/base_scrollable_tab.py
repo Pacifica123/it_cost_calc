@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from ui.theme import SURFACE
+from ui.theme import PANEL_BODY
 
 
 class BaseScrollableTab(tk.Frame):
@@ -16,13 +16,13 @@ class BaseScrollableTab(tk.Frame):
     def __init__(self, parent, *, width: int = 585, height: int = 400):
         super().__init__(parent)
 
-        self.configure(background=SURFACE)
+        self.configure(background=PANEL_BODY)
         self._scroll_canvas = tk.Canvas(
             self,
             width=width,
             height=height,
             highlightthickness=0,
-            background=SURFACE,
+            background=PANEL_BODY,
         )
         self._scroll_canvas.pack(side="left", fill="both", expand=True)
 
@@ -30,7 +30,7 @@ class BaseScrollableTab(tk.Frame):
         self.scrollbar.pack(side="right", fill="y")
         self._scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.inner_frame = tk.Frame(self._scroll_canvas, background=SURFACE)
+        self.inner_frame = tk.Frame(self._scroll_canvas, background=PANEL_BODY)
         self._inner_window_id = self._scroll_canvas.create_window(
             (0, 0), window=self.inner_frame, anchor="nw"
         )

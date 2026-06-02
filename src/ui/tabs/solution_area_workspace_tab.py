@@ -16,7 +16,7 @@ from ui.tabs.configuration_selection_tab import ConfigurationSelectionTab
 from ui.tabs.criteria_importance_tab import CriteriaImportanceTab
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
 from ui.tabs.opex_tab import OpexTab
-from ui.theme import BACKGROUND, SURFACE
+from ui.theme import WORKSPACE
 from ui.widgets import CollapsiblePanel
 
 
@@ -89,7 +89,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         data_root: Any | None,
         profile_service: AnalysisScopeProfileService,
     ) -> None:
-        super().__init__(parent, background=BACKGROUND)
+        super().__init__(parent, background=WORKSPACE)
         self.scope = scope
         self.equipment_service = equipment_service
         self.crud = crud
@@ -142,11 +142,11 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             row=0, column=3, sticky="e"
         )
 
-        main = ttk.Panedwindow(self, orient="horizontal")
-        main.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        main = ttk.Panedwindow(self, orient="horizontal", style="Workspace.TPanedwindow")
+        main.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
-        data_side = ttk.Panedwindow(main, orient="vertical")
-        analysis_side = ttk.Panedwindow(main, orient="vertical")
+        data_side = ttk.Panedwindow(main, orient="vertical", style="Workspace.TPanedwindow")
+        analysis_side = ttk.Panedwindow(main, orient="vertical", style="Workspace.TPanedwindow")
         main.add(data_side, weight=4)
         main.add(analysis_side, weight=8)
 
@@ -335,7 +335,7 @@ class SolutionAreaWorkspaceTab(tk.Frame):
             ),
             wraplength=760,
             justify="left",
-            style="Surface.TLabel",
+            style="PanelBody.TLabel",
         )
         text.pack(fill="x", padx=6, pady=(0, 6))
 

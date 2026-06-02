@@ -11,7 +11,7 @@ from shared.validation import parse_float, require_text
 from ui.dialogs import RecordFormDialog
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 from ui.widgets import EntityTableSection
-from ui.theme import SURFACE
+from ui.theme import PANEL_BODY
 
 
 OperationalEntityConfig = Mapping[str, tuple[str, tuple[str, ...]]]
@@ -60,7 +60,7 @@ class OpexTab(BaseScrollableTab):
                 anchor="w",
                 justify="left",
                 wraplength=880,
-                background=SURFACE,
+                background=PANEL_BODY,
             )
             label.grid(
                 row=0,

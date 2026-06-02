@@ -3,8 +3,10 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from ui.theme import PANEL, PANEL_BORDER
 
-class CollapsiblePanel(ttk.Frame):
+
+class CollapsiblePanel(tk.Frame):
     """Reusable disclosure panel for dense Tk interfaces.
 
     The indicator is a compact text arrow instead of a full button.  This keeps
@@ -20,7 +22,14 @@ class CollapsiblePanel(ttk.Frame):
         initially_open: bool = True,
         header_hint: str | None = None,
     ) -> None:
-        super().__init__(parent, padding=0, style="Panel.TFrame")
+        super().__init__(
+            parent,
+            background=PANEL,
+            highlightbackground=PANEL_BORDER,
+            highlightcolor=PANEL_BORDER,
+            highlightthickness=1,
+            bd=0,
+        )
         self.title = title
         self._opened = bool(initially_open)
         self._indicator_var = tk.StringVar()
@@ -59,7 +68,7 @@ class CollapsiblePanel(ttk.Frame):
             )
             self.hint_label.grid(row=0, column=2, sticky="ew")
 
-        self.content = ttk.Frame(self, padding=(8, 8), style="Surface.TFrame")
+        self.content = ttk.Frame(self, padding=(10, 10), style="PanelBody.TFrame")
         self._bind_header_toggle()
         self._sync_visibility()
 
