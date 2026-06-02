@@ -66,9 +66,8 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         self.scoped_demo_payloads: dict[str, dict] = {}
         self.candidate_pool_service = ScopedCandidatePoolService(profile_service=self.profile_service)
         self.candidate_pool_source_var = tk.StringVar(value="Общий пул альтернатив пока не передавался.")
-        self.soft_criteria_vars = {
-            criterion_id: tk.BooleanVar(value=True) for criterion_id in DEFAULT_SOFT_CRITERIA
-        }
+        self.soft_criteria_vars: dict[str, tk.BooleanVar] = {}
+        self._ensure_scope_criteria_vars()
         self.trust_var = tk.IntVar(value=1)
         self.expert_mode_hint_var = tk.StringVar()
         self.custom_pairwise_vars: dict[tuple[str, str], tk.StringVar] = {}
@@ -203,15 +202,9 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         tk.Label(conf_frame, text="Критерии для расчета:").grid(
             row=1, column=0, columnspan=2, sticky="w", pady=(8, 0)
         )
-        criteria_frame = tk.Frame(conf_frame)
-        criteria_frame.grid(row=2, column=0, columnspan=6, sticky="w", pady=(4, 0))
-        for idx, criterion_id in enumerate(DEFAULT_SOFT_CRITERIA):
-            ttk.Checkbutton(
-                criteria_frame,
-                text=self._format_soft_criterion_label(criterion_id),
-                variable=self.soft_criteria_vars[criterion_id],
-                command=self._on_selected_criteria_changed,
-            ).grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 18), pady=2)
+        self.criteria_frame = tk.Frame(conf_frame)
+        self.criteria_frame.grid(row=2, column=0, columnspan=6, sticky="w", pady=(4, 0))
+        self._rebuild_criteria_checkboxes()
 
         self.chk_trust = tk.Checkbutton(
             conf_frame,
@@ -291,30 +284,76 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         return ANALYSIS_SCOPE_TECHNICAL
 
     def _on_analysis_scope_changed(self) -> None:
-        if not self.scoped_demo_payloads:
+        self._ensure_scope_criteria_vars(reset=True)
+        self._rebuild_criteria_checkboxes()
+        self._reset_custom_matrix_to_defaults()
+        self._sync_trust_mode_state()
+        if self.scoped_demo_payloads:
+            self._load_scope_payload(self._analysis_scope())
+
+    def _scope_soft_criteria(self) -> list[str]:
+        profile = self.profile_service.get_profile(self._analysis_scope())
+        return list(profile.criterion_ids() or DEFAULT_SOFT_CRITERIA)
+
+    def _scope_criterion_directions(self, criteria_ids: list[str] | None = None) -> dict[str, str]:
+        profile = self.profile_service.get_profile(self._analysis_scope())
+        direction_by_id = {criterion.id: criterion.direction for criterion in profile.criteria}
+        return {criterion_id: direction_by_id.get(criterion_id, "max") for criterion_id in (criteria_ids or self._scope_soft_criteria())}
+
+    def _ensure_scope_criteria_vars(self, *, reset: bool = False) -> None:
+        current = set(self._scope_soft_criteria())
+        for criterion_id in tuple(self.soft_criteria_vars):
+            if criterion_id not in current:
+                self.soft_criteria_vars.pop(criterion_id, None)
+        for criterion_id in current:
+            if reset or criterion_id not in self.soft_criteria_vars:
+                self.soft_criteria_vars[criterion_id] = tk.BooleanVar(value=True)
+
+    def _rebuild_criteria_checkboxes(self) -> None:
+        if not hasattr(self, "criteria_frame"):
             return
-        self._load_scope_payload(self._analysis_scope())
+        for widget in self.criteria_frame.winfo_children():
+            widget.destroy()
+        self._ensure_scope_criteria_vars()
+        for idx, criterion_id in enumerate(self._scope_soft_criteria()):
+            ttk.Checkbutton(
+                self.criteria_frame,
+                text=self._format_soft_criterion_label(criterion_id),
+                variable=self.soft_criteria_vars[criterion_id],
+                command=self._on_selected_criteria_changed,
+            ).grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 18), pady=2)
 
     def _format_soft_criterion_label(self, criterion_id: str) -> str:
-        return SOFT_CRITERIA_LABELS.get(criterion_id, criterion_id)
+        label = self.profile_service.criterion_label(criterion_id, scope=self._analysis_scope())
+        return label if label != criterion_id else SOFT_CRITERIA_LABELS.get(criterion_id, criterion_id)
 
     def _format_soft_criterion_short_label(self, criterion_id: str) -> str:
-        return SOFT_CRITERIA_SHORT_LABELS.get(criterion_id, self._format_soft_criterion_label(criterion_id))
+        label = SOFT_CRITERIA_SHORT_LABELS.get(criterion_id)
+        if label:
+            return label
+        text = self._format_soft_criterion_label(criterion_id)
+        return text if len(text) <= 18 else text[:16] + "…"
 
     def _configuration_display_name(self, config_id: str) -> str:
         config = self.configurations.get(config_id, {})
         return config.get("name", config_id)
 
     def _selected_soft_criteria(self) -> list[str]:
+        self._ensure_scope_criteria_vars()
         return [
             criterion_id
-            for criterion_id in DEFAULT_SOFT_CRITERIA
+            for criterion_id in self._scope_soft_criteria()
             if self.soft_criteria_vars[criterion_id].get()
         ]
 
     def _pair_key(self, left_id: str, right_id: str) -> tuple[str, str]:
-        left_idx = DEFAULT_SOFT_CRITERIA.index(left_id)
-        right_idx = DEFAULT_SOFT_CRITERIA.index(right_id)
+        criteria_order = self._scope_soft_criteria()
+        try:
+            left_idx = criteria_order.index(left_id)
+            right_idx = criteria_order.index(right_id)
+        except ValueError:
+            left_idx = DEFAULT_SOFT_CRITERIA.index(left_id) if left_id in DEFAULT_SOFT_CRITERIA else 0
+            right_idx = DEFAULT_SOFT_CRITERIA.index(right_id) if right_id in DEFAULT_SOFT_CRITERIA else 1
         if left_idx < right_idx:
             return left_id, right_id
         return right_id, left_id
@@ -345,7 +384,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
     def _reset_custom_matrix_to_defaults(self) -> None:
         self.custom_pairwise_vars.clear()
         self.reciprocal_pairwise_vars.clear()
-        selected = self._selected_soft_criteria() or list(DEFAULT_SOFT_CRITERIA)
+        selected = self._selected_soft_criteria() or self._scope_soft_criteria()
         for row_index, left_id in enumerate(selected):
             for col_index in range(row_index + 1, len(selected)):
                 right_id = selected[col_index]
@@ -460,6 +499,9 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
                 "name": name,
                 "devices": devices,
                 "meta": {"people": people},
+                "totals": dict(config.get("totals", {})) if isinstance(config.get("totals"), Mapping) else {},
+                "metrics": dict(config.get("metrics", {})) if isinstance(config.get("metrics"), Mapping) else {},
+                "metadata": dict(config.get("metadata", {})) if isinstance(config.get("metadata"), Mapping) else {},
             }
             self.cfg_table.insert("", "end", iid=cid, values=(cid, name, people, len(devices)))
 
@@ -541,7 +583,9 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
                 ),
             )
 
-        for criterion_id in DEFAULT_SOFT_CRITERIA:
+        self._ensure_scope_criteria_vars(reset=True)
+        self._rebuild_criteria_checkboxes()
+        for criterion_id in self._scope_soft_criteria():
             self.soft_criteria_vars[criterion_id].set(True)
         self.trust_var.set(1)
         self._reset_custom_matrix_to_defaults()
@@ -590,6 +634,9 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
                     "name": value.get("name", cid),
                     "devices": value["devices"],
                     "meta": value.get("meta", {}),
+                    "totals": value.get("totals", {}),
+                    "metrics": value.get("metrics", {}),
+                    "metadata": value.get("metadata", {}),
                 }
             )
 
@@ -624,6 +671,7 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
                 constraints=constraints,
                 saaty_cap=True,
                 top_pct=0.10,
+                criterion_directions=self._scope_criterion_directions(soft_criteria),
             )
         except Exception as exc:
             messagebox.showerror("Ошибка при выполнении AHP", str(exc), parent=self)

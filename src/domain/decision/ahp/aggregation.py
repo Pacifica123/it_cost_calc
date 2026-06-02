@@ -44,9 +44,14 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
         devs = cfg.get("components", [])
     total_cost = 0.0
     total_energy = 0.0
+    total_ram_gb = 0.0
+    total_cpu_cores = 0.0
+    total_storage_gb = 0.0
     perf_sum = 0.0
     rel_vals = []
     lifespan_vals = []
+    functionality_vals = []
+    support_vals = []
     counts = {}
     for d in devs:
         role = d.get("role") or d.get("source_category") or d.get("category") or d.get("component_type") or "unknown"
@@ -60,13 +65,24 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
         unit_price = float(d.get("price", d.get("unit_price", 0.0)) or 0.0)
         total_cost += float(d.get("cost", d.get("total_cost", quantity * unit_price)) or 0.0)
         total_energy += float(d.get("energy", d.get("max_power", 0.0)) or 0.0)
-        # производительность — суммируем поля, если они есть
-        # допустим поля cpu_score и ram_score и custom perf
-        perf_sum += (
-            float(d.get("cpu_score", 0.0))
-            + float(d.get("ram_score", 0.0))
-            + float(d.get("perf", 0.0))
-        )
+        ram_value = float(d.get("ram_gb", d.get("ram_score", 0.0)) or 0.0)
+        cpu_value = float(d.get("cpu_cores", d.get("cpu_score", 0.0)) or 0.0)
+        storage_value = float(d.get("storage_gb", 0.0) or 0.0)
+        total_ram_gb += quantity * ram_value
+        total_cpu_cores += quantity * cpu_value
+        total_storage_gb += quantity * storage_value
+        # Легаси-производительность оставлена для старых AHP-кейсов,
+        # но scoped ПО/ТО профили используют явные метрики ниже.
+        perf_sum += cpu_value + ram_value + float(d.get("perf", 0.0) or 0.0)
+        for field_name, target in (
+            ("functionality_score", functionality_vals),
+            ("support_score", support_vals),
+        ):
+            if field_name in d:
+                try:
+                    target.append(float(d.get(field_name) or 0.0))
+                except Exception:
+                    pass
         r = d.get("reliability", None)
         rel_centroid = None
         if isinstance(r, dict) and "low" in r and "high" in r:
@@ -90,15 +106,36 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
                 pass
     avg_reliability = float(np.mean(rel_vals)) if len(rel_vals) > 0 else 0.0
     avg_lifespan = float(np.mean(lifespan_vals)) if len(lifespan_vals) > 0 else 0.0
+    avg_functionality = float(np.mean(functionality_vals)) if functionality_vals else 0.0
+    avg_support = float(np.mean(support_vals)) if support_vals else 0.0
     totals = cfg.get("totals", {}) if isinstance(cfg.get("totals"), dict) else {}
     metrics = cfg.get("metrics", {}) if isinstance(cfg.get("metrics"), dict) else {}
     candidate_meta = cfg.get("metadata", {}) if isinstance(cfg.get("metadata"), dict) else {}
     legacy_meta = candidate_meta.get("legacy_meta", {}) if isinstance(candidate_meta.get("legacy_meta"), dict) else {}
     meta = cfg.get("meta", {}) if isinstance(cfg.get("meta"), dict) else legacy_meta
+    resolved_total_cost = float(totals.get("total_cost", totals.get("capital_cost", total_cost)) or 0.0)
+    resolved_total_energy = float(totals.get("total_energy", totals.get("energy", total_energy)) or 0.0)
+    resolved_power = float(
+        totals.get(
+            "total_power_watts",
+            totals.get("power_watts", totals.get("max_power", resolved_total_energy)),
+        )
+        or 0.0
+    )
+    resolved_ram = float(totals.get("total_ram_gb", totals.get("ram_gb", total_ram_gb)) or 0.0)
+    resolved_cpu = float(totals.get("total_cpu_cores", totals.get("cpu_cores", total_cpu_cores)) or 0.0)
+    resolved_storage = float(totals.get("total_storage_gb", totals.get("storage_gb", total_storage_gb)) or 0.0)
     res = {
         "id": cfg.get("id", None),
-        "total_cost": float(totals.get("total_cost", totals.get("capital_cost", total_cost)) or 0.0),
-        "total_energy": float(totals.get("total_energy", totals.get("energy", total_energy)) or 0.0),
+        "total_cost": resolved_total_cost,
+        "capital_cost": resolved_total_cost,
+        "total_energy": resolved_total_energy,
+        "total_power_watts": float(metrics.get("total_power_watts", resolved_power) or 0.0),
+        "total_ram_gb": float(metrics.get("total_ram_gb", resolved_ram) or 0.0),
+        "total_cpu_cores": float(metrics.get("total_cpu_cores", resolved_cpu) or 0.0),
+        "total_storage_gb": float(metrics.get("total_storage_gb", resolved_storage) or 0.0),
+        "functionality_score": float(metrics.get("functionality_score", avg_functionality) or 0.0),
+        "support_score": float(metrics.get("support_score", avg_support) or 0.0),
         "total_performance": float(metrics.get("total_performance", perf_sum) or 0.0),
         "avg_reliability": float(metrics.get("avg_reliability", avg_reliability) or 0.0),
         "counts": dict(metrics.get("counts", counts) or {}),

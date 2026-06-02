@@ -236,6 +236,9 @@ class CandidateConfigurationService:
             "name": model.name,
             "devices": [self._component_to_ahp_device(component) for component in model.components],
             "meta": {**legacy_meta, "people": people},
+            "totals": deepcopy(model.totals),
+            "metrics": deepcopy(model.metrics),
+            "metadata": deepcopy(model.metadata),
         }
 
     def _candidate_people(
@@ -298,6 +301,12 @@ class CandidateConfigurationService:
     def _metrics_from_aggregate(self, aggregate: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "total_performance": aggregate.get("total_performance", 0.0),
+            "total_ram_gb": aggregate.get("total_ram_gb", 0.0),
+            "total_cpu_cores": aggregate.get("total_cpu_cores", 0.0),
+            "total_storage_gb": aggregate.get("total_storage_gb", 0.0),
+            "total_power_watts": aggregate.get("total_power_watts", 0.0),
+            "functionality_score": aggregate.get("functionality_score", 0.0),
+            "support_score": aggregate.get("support_score", 0.0),
             "avg_reliability": aggregate.get("avg_reliability", 0.0),
             "lifespan": aggregate.get("lifespan", 0.0),
             "counts": deepcopy(aggregate.get("counts", {})),
@@ -309,6 +318,10 @@ class CandidateConfigurationService:
             "capital_cost": aggregate.get("total_cost", 0.0),
             "total_cost": aggregate.get("total_cost", 0.0),
             "energy": aggregate.get("total_energy", 0.0),
+            "total_power_watts": aggregate.get("total_power_watts", 0.0),
+            "total_ram_gb": aggregate.get("total_ram_gb", 0.0),
+            "total_cpu_cores": aggregate.get("total_cpu_cores", 0.0),
+            "total_storage_gb": aggregate.get("total_storage_gb", 0.0),
         }
 
     def _totals_from_components(self, components: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

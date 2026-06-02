@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Mapping, Sequence
 
 import numpy as np
 
@@ -16,6 +16,37 @@ from .math_utils import (
 
 logger = logging.getLogger(__name__)
 
+def _normalize_criterion_directions(
+    soft_criteria: Sequence[str],
+    criterion_directions: Mapping[str, str] | None,
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for criterion in soft_criteria:
+        raw = str((criterion_directions or {}).get(criterion, "max")).strip().lower()
+        result[criterion] = "min" if raw in {"min", "minimize", "minimise", "-", "-1"} else "max"
+    return result
+
+
+def _directed_values_for_ahp(values: Sequence[float], direction: str) -> list[float]:
+    """Return positive values where larger always means better for AHP ratios.
+
+    The legacy AHP builder constructs pairwise matrices as ``s_i / s_j`` and
+    therefore cannot receive negative numbers.  For minimization criteria we
+    convert raw values to a simple 1..9 utility scale: the cheapest/least-power
+    alternative gets 9, the worst gets 1, equal values get neutral 1.
+    """
+
+    numeric_values = [float(value) for value in values]
+    if not numeric_values:
+        return []
+    if direction != "min":
+        return [value if value > 0 else 1e-9 for value in numeric_values]
+    minimum = min(numeric_values)
+    maximum = max(numeric_values)
+    if abs(maximum - minimum) < 1e-12:
+        return [1.0 for _value in numeric_values]
+    return [1.0 + 8.0 * ((maximum - value) / (maximum - minimum)) for value in numeric_values]
+
 
 def run_ahp_pipeline(
     configurations: Sequence[Dict[str, Any]],
@@ -24,6 +55,7 @@ def run_ahp_pipeline(
     constraints: Dict[str, Any],
     saaty_cap: bool = True,
     top_pct: float = 0.10,
+    criterion_directions: Mapping[str, str] | None = None,
 ) -> Dict[str, Any]:
     """
     configurations: список исходных конфигураций (см. load_configurations_from_json)
@@ -32,6 +64,10 @@ def run_ahp_pipeline(
         размер матрицы должен быть len(soft_criteria)
     constraints: словарь с жёсткими ограничениями (см. filter_hard_constraints)
     saaty_cap: капать ли матрицы альтернатив в шкалу Саати
+    criterion_directions: направление критериев из общего профиля; для ``min``
+        значения альтернатив переводятся в положительную utility-шкалу, чтобы
+        меньшая стоимость/мощность не выглядела хуже только из-за большей
+        численной величины. Если не передано, сохраняется старое поведение.
 
     Возвращает словарь с полным отчётом, пригодный для вставки в документ.
     """
@@ -83,8 +119,10 @@ def run_ahp_pipeline(
     crit_weights, crit_lam, crit_ci, crit_cr = ahp_priority_and_consistency(crit_agg)
     logger.debug("AHP-веса критериев: %s", crit_weights.tolist())
 
+    directions = _normalize_criterion_directions(soft_criteria, criterion_directions)
     report["criteria"] = {
         "names": list(soft_criteria),
+        "directions": directions,
         "aggregated_matrix": crit_agg.tolist(),
         "weights": crit_weights.tolist(),
         "lambda_max": crit_lam,
@@ -95,6 +133,7 @@ def run_ahp_pipeline(
     n_alt = len(passed)
     alt_ids = [a["id"] for a in passed]
     alt_scores_matrix = np.zeros((len(soft_criteria), n_alt), dtype=float)
+    directed_scores_matrix = np.zeros((len(soft_criteria), n_alt), dtype=float)
     alt_pairwise_matrices = []
     alt_weights_per_criterion = []
     alt_consistency_per_criterion = []
@@ -104,8 +143,10 @@ def run_ahp_pipeline(
         for aggregate in passed:
             value = aggregate.get(crit, None)
             values.append(0.0 if value is None else float(value))
+        directed_values = _directed_values_for_ahp(values, directions.get(crit, "max"))
         alt_scores_matrix[ci, :] = np.array(values, dtype=float)
-        pairwise = build_pairwise_matrix_from_scores(values, saaty_cap=saaty_cap)
+        directed_scores_matrix[ci, :] = np.array(directed_values, dtype=float)
+        pairwise = build_pairwise_matrix_from_scores(directed_values, saaty_cap=saaty_cap)
         alt_pairwise_matrices.append(pairwise)
         weights, lam, ci_value, cr_value = ahp_priority_and_consistency(pairwise)
         alt_weights_per_criterion.append(weights.tolist())
@@ -115,6 +156,7 @@ def run_ahp_pipeline(
     report["alternatives"] = {
         "ids": alt_ids,
         "scores": alt_scores_matrix.tolist(),
+        "directed_scores": directed_scores_matrix.tolist(),
         "pairwise_matrices": [pairwise.tolist() for pairwise in alt_pairwise_matrices],
         "weights_per_criterion": alt_weights_per_criterion,
         "consistency_per_criterion": alt_consistency_per_criterion,

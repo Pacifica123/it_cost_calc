@@ -23,23 +23,35 @@ def criterion_indices(criteria_ids: Iterable[str]) -> list[int]:
 def extract_default_expert_matrices(criteria_ids: Sequence[str]) -> list[np.ndarray]:
     if not criteria_ids:
         raise ValueError("Нужно выбрать хотя бы один критерий")
-    indices = criterion_indices(criteria_ids)
-    matrices: list[np.ndarray] = []
-    for matrix in DEFAULT_EXPERT_MATRICES:
-        subset = np.array(matrix, dtype=float)[np.ix_(indices, indices)]
-        matrices.append(subset)
-    return matrices
+    if all(criterion_id in DEFAULT_SOFT_CRITERIA for criterion_id in criteria_ids):
+        indices = criterion_indices(criteria_ids)
+        matrices: list[np.ndarray] = []
+        for matrix in DEFAULT_EXPERT_MATRICES:
+            subset = np.array(matrix, dtype=float)[np.ix_(indices, indices)]
+            matrices.append(subset)
+        return matrices
+
+    # Scoped ПО/ТО criteria are profile-driven and do not have a historical
+    # expert matrix yet.  In machine mode we deliberately use a neutral pair of
+    # identity matrices: this keeps AHP runnable and makes the UI show that the
+    # selected profile criteria are equally important until the user edits the
+    # expert matrix explicitly.
+    size = len(criteria_ids)
+    neutral = np.ones((size, size), dtype=float)
+    return [neutral, neutral.copy()]
 
 
 def default_pairwise_value(left_id: str, right_id: str) -> float:
-    matrices = extract_default_expert_matrices(DEFAULT_SOFT_CRITERIA)
-    li = DEFAULT_SOFT_CRITERIA.index(left_id)
-    ri = DEFAULT_SOFT_CRITERIA.index(right_id)
-    values = [float(matrix[li, ri]) for matrix in matrices]
-    product = 1.0
-    for value in values:
-        product *= value
-    return product ** (1.0 / len(values))
+    if left_id in DEFAULT_SOFT_CRITERIA and right_id in DEFAULT_SOFT_CRITERIA:
+        matrices = extract_default_expert_matrices(DEFAULT_SOFT_CRITERIA)
+        li = DEFAULT_SOFT_CRITERIA.index(left_id)
+        ri = DEFAULT_SOFT_CRITERIA.index(right_id)
+        values = [float(matrix[li, ri]) for matrix in matrices]
+        product = 1.0
+        for value in values:
+            product *= value
+        return product ** (1.0 / len(values))
+    return 1.0
 
 
 def parse_pairwise_value(raw_value: str | float | int) -> float:
