@@ -31,6 +31,7 @@
 - `architecture/solution_component_decision_report_export.md` — интеграция компонентов редактора с DecisionReport, JSON/Markdown/CSV-экспортом и объяснением исключённых черновиков;
 - `architecture/solution_component_sandbox_conversion.md` — ручная конвертация старых sandbox-записей в SolutionComponent без автоматической миграции;
 - `architecture/solution_component_demo_control.md` — финальная C9-связка демонстрации, smoke-проверки и защитного объяснения редактора компонентов;
+- `architecture/global_interface_reorganization_plan.md` — план глобальной реорганизации интерфейса: укрупнение вкладок, перенос GA/AHP/обоснования внутрь ПО/ТО, матрица ПО/ТО × CAPEX/OPEX и умный экспорт;
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
@@ -95,14 +96,15 @@
 20. `architecture/solution_component_decision_report_export.md`
 21. `architecture/solution_component_sandbox_conversion.md`
 22. `architecture/solution_component_demo_control.md`
-23. `architecture/system_schema.md`
-24. `architecture/module_map.md`
-25. `architecture/data_map.md`
-26. `research/genetic_algorithm.md`
-27. `research/ideas/genetic_algorithm_plain_manifest.md`
-28. `research/ideas/future_independent_ga_ahp_assessment.md`
-29. `research/ideas/future_hybrid_ga_ahp_score.md`
-30. `demo/ga_ahp_defense_guide.md`
-31. `demo/demo_data_contract.md`
-32. `demo/solution_component_editor_defense_guide.md`
-33. `traceability.md`
+23. `architecture/global_interface_reorganization_plan.md`
+24. `architecture/system_schema.md`
+25. `architecture/module_map.md`
+26. `architecture/data_map.md`
+27. `research/genetic_algorithm.md`
+28. `research/ideas/genetic_algorithm_plain_manifest.md`
+29. `research/ideas/future_independent_ga_ahp_assessment.md`
+30. `research/ideas/future_hybrid_ga_ahp_score.md`
+31. `demo/ga_ahp_defense_guide.md`
+32. `demo/demo_data_contract.md`
+33. `demo/solution_component_editor_defense_guide.md`
+34. `traceability.md`
