@@ -131,3 +131,19 @@ def test_ga_screen_source_keeps_primary_action_outside_parameter_grid():
     assert "actions.addWidget(self.run_button, 0)" in source
     assert "layout.addWidget(self.run_button, 3, 3)" not in source
     assert "NoButtons" in source
+
+
+def test_ga_screen_source_uses_single_visible_field_row():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "ui_qt"
+        / "screens"
+        / "decision"
+        / "ga_screen.py"
+    ).read_text(encoding="utf-8")
+
+    assert "QSizePolicy.Policy.Minimum" in source
+    assert "frame.setMinimumHeight(206)" in source
+    assert "first_row = QHBoxLayout()" not in source
+    assert "second_row = QHBoxLayout()" not in source
