@@ -1,20 +1,33 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
 from application.services.cost_aggregation_service import CostAggregationService
+from application.services.decision_report_service import DecisionReportService
 from application.services.entity_catalog_service import EntityCatalogService
 from application.services.electricity_cost_service import ElectricityCostService
 from application.services.equipment_service import EquipmentService
 from application.services.npv_report_service import NPVReportService
 from application.services.solution_component_runtime_service import SolutionComponentRuntimeService
+from application.use_cases.build_decision_report import BuildDecisionReportUseCase
 from application.use_cases.build_npv_report import BuildNpvReportUseCase
 from application.use_cases.calculate_electricity_costs import CalculateElectricityCostsUseCase
 from application.use_cases.load_demo_dataset import LoadDemoDatasetUseCase
+from application.use_cases.export_cost_report import ExportCostReportUseCase
 from application.use_cases.prepare_cost_summary import PrepareCostSummaryUseCase
+from infrastructure.exporters.decision_report_exporter import (
+    export_decision_report_csv,
+    export_decision_report_json,
+    export_decision_report_markdown,
+    export_solution_component_csv,
+)
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
 from infrastructure.storage import JsonFileStorage
 
@@ -87,7 +100,12 @@ class QtAppPresenter:
             self.equipment_service,
             solution_component_runtime_service=self.solution_component_runtime_service,
         )
+        self.export_cost_report_use_case = ExportCostReportUseCase(
+            self.cost_summary_preparer,
+            self.cost_aggregation_service,
+        )
         self.npv_report_builder = BuildNpvReportUseCase(NPVReportService())
+        self.decision_report_builder = BuildDecisionReportUseCase(DecisionReportService())
         self.demo_loader = LoadDemoDatasetUseCase(self.storage, self.equipment_service)
         self._electricity_profile: dict[str, float] = {
             "hours_per_day": 8.0,
@@ -245,6 +263,185 @@ class QtAppPresenter:
 
     def get_npv_report(self) -> dict[str, Any]:
         return deepcopy(self._npv_report)
+
+
+    def generated_reports_dir(self) -> Path:
+        export_root = self.paths.repo_root / "data" / "generated"
+        export_root.mkdir(parents=True, exist_ok=True)
+        return export_root
+
+    def build_export_dashboard_summary(self) -> str:
+        totals = self.prepare_cost_summary()
+        lines = [
+            "Сводка экспорта",
+            "==============",
+            f"CAPEX: {self._format_money(totals.get('total_capital', 0.0))}",
+            f"OPEX разовый: {self._format_money(totals.get('total_operational_one_time', 0.0))}",
+            f"OPEX месяц: {self._format_money(totals.get('total_operational_monthly', 0.0))}",
+            f"Энергия: {self._format_money(totals.get('electricity_costs', 0.0))}",
+        ]
+        tco = totals.get("tco")
+        if isinstance(tco, Mapping):
+            lines.extend(
+                [
+                    f"TCO: {self._format_money(tco.get('total_ownership_cost', 0.0))}",
+                    f"OPEX год: {self._format_money(tco.get('annual_opex', 0.0))}",
+                ]
+            )
+
+        npv_report = self.get_npv_report()
+        lines.append("")
+        if npv_report:
+            lines.append(f"NPV: {self._format_money(npv_report.get('npv', 0.0))}")
+        else:
+            lines.append("NPV: нет расчёта")
+
+        lines.append("")
+        lines.append("GA/AHP/Pareto/Hybrid будут подключены после переноса ПО/ТО.")
+        return "\n".join(lines)
+
+    def export_selected_fragment(self, mode: str) -> dict[str, Path]:
+        export_root = self.generated_reports_dir()
+        if mode == "full_decision_report":
+            return self.export_decision_report()
+        if mode == "raw_costs_csv":
+            return {"csv": self.export_costs_csv(export_root / "total_costs.csv")}
+        if mode == "cost_summary":
+            return {
+                "markdown": self._write_markdown_export(
+                    export_root / "cost_summary_context.md",
+                    "Сводка затрат",
+                    self._cost_summary_markdown(),
+                )
+            }
+        if mode == "technical_analysis":
+            return {
+                "markdown": self._write_markdown_export(
+                    export_root / "technical_analysis_context.md",
+                    "Аналитика ТО",
+                    self._scope_analysis_markdown("technical"),
+                )
+            }
+        if mode == "software_analysis":
+            return {
+                "markdown": self._write_markdown_export(
+                    export_root / "software_analysis_context.md",
+                    "Аналитика ПО",
+                    self._scope_analysis_markdown("software"),
+                )
+            }
+        if mode == "npv":
+            return {
+                "markdown": self._write_markdown_export(
+                    export_root / "npv_context.md",
+                    "NPV-контекст",
+                    self._npv_markdown(),
+                )
+            }
+        raise ValueError(f"Unknown export mode: {mode!r}")
+
+    def export_costs_csv(self, filename: str | Path | None = None) -> Path:
+        path = Path(filename) if filename is not None else self.generated_reports_dir() / "total_costs.csv"
+        self.export_cost_report_use_case.execute(
+            path,
+            electricity_cost=self.get_electricity_cost(),
+            electricity_profile=self.get_electricity_profile(),
+        )
+        return path
+
+    def export_decision_report(self) -> dict[str, Path]:
+        export_root = self.generated_reports_dir()
+        report = self.decision_report_builder.execute(
+            project={
+                "id": "current-it-solution-choice",
+                "title": "Итоговый отчёт выбора ИТ-решения",
+                "goal": "Свести компоненты, стоимость, NPV и будущий анализ ПО/ТО.",
+            },
+            entities=self.entities_snapshot(),
+            cost_totals=self.prepare_cost_summary(),
+            candidate_configurations=None,
+            ahp_result=None,
+            criteria_importance_result=None,
+            genetic_result=None,
+            genetic_ahp_result=None,
+            hybrid_assessment_result=None,
+            npv_report=self.get_npv_report() or None,
+            metadata={
+                "source": "qt_export_screen",
+                "qt_migration_stage": "export_screen",
+                "analysis_note": "ПО/ТО analysis screens are not migrated yet.",
+            },
+        )
+        paths = {
+            "json": export_decision_report_json(report, export_root / "decision_report.json"),
+            "markdown": export_decision_report_markdown(report, export_root / "decision_report.md"),
+            "csv": export_decision_report_csv(report, export_root / "decision_report_candidates.csv"),
+            "components_csv": export_solution_component_csv(
+                report,
+                export_root / "decision_report_solution_components.csv",
+            ),
+        }
+        return paths
+
+    def open_generated_reports_folder(self) -> Path:
+        export_root = self.generated_reports_dir()
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(export_root)  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(export_root)])
+            else:
+                subprocess.Popen(["xdg-open", str(export_root)])
+        except Exception as exc:  # noqa: BLE001 - GUI needs a readable message.
+            raise RuntimeError(f"Не удалось открыть папку: {export_root}") from exc
+        return export_root
+
+    def _write_markdown_export(self, path: Path, title: str, body: str) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"# {title}\n\n{body.rstrip()}\n", encoding="utf-8")
+        return path
+
+    def _cost_summary_markdown(self) -> str:
+        totals = self.prepare_cost_summary()
+        payload = json.dumps(totals, ensure_ascii=False, indent=2, default=str)
+        return (
+            "Фрагмент фиксирует только затраты. Полное обоснование требует GA, AHP, "
+            "Pareto, Hybrid и NPV.\n\n"
+            f"- CAPEX: {self._format_money(totals.get('total_capital', 0.0))}\n"
+            f"- OPEX разовый: {self._format_money(totals.get('total_operational_one_time', 0.0))}\n"
+            f"- OPEX месяц: {self._format_money(totals.get('total_operational_monthly', 0.0))}\n"
+            f"- Энергия: {self._format_money(totals.get('electricity_costs', 0.0))}\n\n"
+            "```json\n"
+            f"{payload}\n"
+            "```"
+        )
+
+    def _scope_analysis_markdown(self, scope: str) -> str:
+        labels = {"technical": "ТО", "software": "ПО"}
+        return (
+            f"Аналитика {labels.get(scope, scope)} будет доступна после переноса маршрута "
+            "Данные → GA → AHP → Pareto → Гибрид. Этот файл создан как маркер "
+            "частичного экспорта в Qt-контуре."
+        )
+
+    def _npv_markdown(self) -> str:
+        npv_report = self.get_npv_report()
+        if not npv_report:
+            return "NPV ещё не рассчитан. Сначала выполните NPV-анализ."
+        return (
+            "Экспортируется только NPV. Он не заменяет GA/AHP/Pareto/Hybrid.\n\n"
+            "```json\n"
+            f"{json.dumps(npv_report, ensure_ascii=False, indent=2, default=str)}\n"
+            "```"
+        )
+
+    @staticmethod
+    def _format_money(value: Any) -> str:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = 0.0
+        return f"{number:,.2f} ₽".replace(",", " ")
 
     def table_rows(self, entity_name: str) -> list[dict[str, Any]]:
         """Return plain rows ready for Qt table models."""

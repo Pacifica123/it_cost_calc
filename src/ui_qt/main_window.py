@@ -9,7 +9,7 @@ from ui_qt.design import ThemeManager
 from ui_qt.navigation import DEFAULT_ROOT_ROUTE_ID, ROOT_ROUTES, require_root_route
 from ui_qt.navigation.root_menu import RootMenu
 from ui_qt.presenters import QtAppPresenter
-from ui_qt.screens import ComponentEditorScreen, EnergyScreen, NpvScreen, PlaceholderScreen
+from ui_qt.screens import ComponentEditorScreen, EnergyScreen, ExportScreen, NpvScreen, PlaceholderScreen
 from ui_qt.widgets import ActionBar, SettingsPanel, StatusStrip
 
 
@@ -78,6 +78,8 @@ class QtMainWindow(QMainWindow):
                 self._screen_factories[route.route_id] = lambda: EnergyScreen(self.presenter)
             elif route.route_id == "npv":
                 self._screen_factories[route.route_id] = lambda: NpvScreen(self.presenter)
+            elif route.route_id == "export":
+                self._screen_factories[route.route_id] = lambda: ExportScreen(self.presenter)
             else:
                 self._screen_factories[route.route_id] = lambda value=route: PlaceholderScreen(value)
 
