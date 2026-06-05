@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 from application.services.equipment_service import EquipmentService
 from application.use_cases.load_demo_dataset import LoadDemoDatasetUseCase
@@ -21,6 +21,39 @@ def create_app() -> "CalculatorApp":
 
     logger.info("Создание экземпляра CalculatorApp")
     return CalculatorApp()
+
+
+def create_qt_app(argv: Sequence[str] | None = None):
+    """Create the parallel Qt application instance.
+
+    The Tkinter application remains the default runtime during the migration;
+    this helper is used by scripts/run_qt_app.py and future Qt smoke checks.
+    """
+
+    from ui_qt.app import create_qt_application
+
+    logger.info("Создание экземпляра QApplication для Qt UI")
+    return create_qt_application(argv)
+
+
+def main_qt(argv: Sequence[str] | None = None) -> int:
+    """Run the parallel PySide6/Qt UI shell."""
+
+    configure_logging()
+    logger.info("Запуск параллельного Qt-интерфейса")
+    from ui_qt.app import run_qt_app
+
+    return run_qt_app(argv)
+
+
+def smoke_check_qt(argv: Sequence[str] | None = None) -> int:
+    """Create the Qt shell without showing a window."""
+
+    configure_logging()
+    logger.info("Smoke-проверка Qt-интерфейса")
+    from ui_qt.app import smoke_check
+
+    return smoke_check(argv)
 
 
 def load_demo_data(
