@@ -95,3 +95,18 @@ def test_ahp_pipeline_uses_min_direction_as_lower_is_better_when_supplied():
     assert report["criteria"]["directions"]["capital_cost"] == "min"
     assert report["final"]["winner_id"] == "cheap"
     assert report["alternatives"]["directed_scores"][0][0] > report["alternatives"]["directed_scores"][0][1]
+
+
+def test_scope_profiles_keep_cost_as_budget_and_report_metric_not_soft_criterion():
+    from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
+
+    service = AnalysisScopeProfileService()
+
+    for profile in service.profiles().values():
+        assert "capital_cost" not in profile.criterion_ids()
+        assert "capital_cost" not in profile.default_weights
+        assert any(
+            constraint.id == "budget" and constraint.metric == "capital_cost"
+            for constraint in profile.constraints
+        )
+        assert "capital_cost" in profile.metric_extractors

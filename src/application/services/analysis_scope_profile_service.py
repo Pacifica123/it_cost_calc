@@ -410,13 +410,6 @@ TECHNICAL_PROFILE = AnalysisScopeProfile(
             metric="total_power_watts",
             description="Суммарная мощность выбранных технических компонентов; связана с OPEX электроэнергии.",
         ),
-        AnalysisCriterionProfile(
-            id="capital_cost",
-            label="Стоимость",
-            direction="min",
-            metric="capital_cost",
-            description="Капитальная стоимость выбранного набора; остаётся мягким tie-breaker внутри бюджета.",
-        ),
     ),
     constraints=(
         AnalysisConstraintProfile(
@@ -461,24 +454,23 @@ TECHNICAL_PROFILE = AnalysisScopeProfile(
         ),
     ),
     default_weights={
-        "total_ram_gb": 0.25,
-        "total_cpu_cores": 0.25,
-        "total_storage_gb": 0.15,
+        "total_ram_gb": 0.30,
+        "total_cpu_cores": 0.30,
+        "total_storage_gb": 0.20,
         "total_power_watts": 0.20,
-        "capital_cost": 0.15,
     },
     metric_extractors={
         "total_ram_gb": "sum ram_gb; empty metric means no data",
         "total_cpu_cores": "sum cpu_cores; empty metric means no data",
         "total_storage_gb": "sum storage_gb; empty metric means no data",
         "total_power_watts": "quantity × max_power with energy-tab lookup fallback",
-        "capital_cost": "sum total_cost",
+        "capital_cost": "sum total_cost; report-only and cost tie-breaker, not a base soft criterion",
     },
     explanation_rules={
         "ui_hint": (
             "Режим ТО: анализируются серверы, клиентские устройства и сеть. "
             "Категории задаются фильтром +/−/нейтрально, минимум рабочих мест является жёстким фильтром, "
-            "а качество оценивается по явным метрикам оборудования."
+            "стоимость ограничивается бюджетом, а качество оценивается по явным метрикам оборудования."
         ),
         "winner_template": "Выбрана конфигурация ТО с учётом технических контуров, мощности и рабочих мест.",
     },
@@ -512,13 +504,6 @@ SOFTWARE_PROFILE = AnalysisScopeProfile(
             direction="max",
             metric="support_score",
             description="Средняя оценка поддержки/сопровождения, если она явно задана.",
-        ),
-        AnalysisCriterionProfile(
-            id="capital_cost",
-            label="Стоимость владения ПО",
-            direction="min",
-            metric="capital_cost",
-            description="Стоимость лицензий и программных компонентов в выбранном наборе; минимум лицензий задаётся фильтром.",
         ),
     ),
     constraints=(
@@ -565,19 +550,19 @@ SOFTWARE_PROFILE = AnalysisScopeProfile(
         ),
     ),
     default_weights={
-        "functionality_score": 0.40,
-        "support_score": 0.25,
-        "capital_cost": 0.35,
+        "functionality_score": 0.60,
+        "support_score": 0.40,
     },
     metric_extractors={
         "functionality_score": "average explicit functionality_score",
         "support_score": "average explicit support_score",
-        "capital_cost": "sum total_cost",
+        "capital_cost": "sum total_cost; report-only and cost tie-breaker, not a base soft criterion",
     },
     explanation_rules={
         "ui_hint": (
             "Режим ПО: анализируются лицензии и программные сервисы. Категории задаются "
-            "фильтром +/−/нейтрально; поле минимума трактуется как жёсткий минимум лицензий/пользователей."
+            "фильтром +/−/нейтрально; поле минимума трактуется как жёсткий минимум лицензий/пользователей, "
+            "а стоимость ограничивается бюджетом и не является базовым мягким критерием."
         ),
         "winner_template": "Выбран набор ПО без технических ограничений по серверу, сети и мощности.",
     },

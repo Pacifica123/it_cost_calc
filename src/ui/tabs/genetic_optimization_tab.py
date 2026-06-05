@@ -111,8 +111,8 @@ class GeneticOptimizationTab(BaseScrollableTab):
         self.max_power_var = tk.StringVar(value="")
         self.target_users_var = tk.StringVar(value="3")
 
-        self.power_weight_var = tk.StringVar(value="0.15")
-        self.cost_weight_var = tk.StringVar(value="0.25")
+        self.power_weight_var = tk.StringVar(value="0.20")
+        self.cost_tie_breaker_var = tk.BooleanVar(value=True)
 
         self.require_server_var = tk.BooleanVar(value=True)
         self.require_client_var = tk.BooleanVar(value=True)
@@ -187,17 +187,21 @@ class GeneticOptimizationTab(BaseScrollableTab):
             justify="left",
         ).grid(row=10, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
-        weights = ttk.LabelFrame(self.inner_frame, text="Мягкие веса GA")
+        weights = ttk.LabelFrame(self.inner_frame, text="Мягкие веса GA и экономия")
         weights.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
         weights.columnconfigure(0, weight=0, minsize=128)
         weights.columnconfigure(1, weight=1)
         self._add_entry(weights, 0, "Энергия", self.power_weight_var)
-        self._add_entry(weights, 1, "Стоимость", self.cost_weight_var)
+        ttk.Checkbutton(
+            weights,
+            text="Предпочитать дешевле при близком качестве",
+            variable=self.cost_tie_breaker_var,
+        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=4)
         ttk.Label(
             weights,
             text=(
-                "Покрытие категорий и минимум мест/лицензий теперь являются фильтрами. "
-                "Технические метрики оборудования берутся из профиля области; стоимость оставлена как мягкий tie-breaker внутри бюджета."
+                "Покрытие категорий, минимум мест/лицензий и бюджет теперь являются фильтрами. "
+                "Стоимость не имеет отдельного веса: более дешёвый вариант выбирается только при близкой основной GA-оценке."
             ),
             wraplength=300,
             justify="left",
@@ -577,6 +581,7 @@ class GeneticOptimizationTab(BaseScrollableTab):
             "generations": parse_int(self.generations_var.get(), "Количество поколений"),
             "mutation_rate": parse_float(self.mutation_rate_var.get(), "Вероятность мутации"),
             "init_mode": "heuristic_init",
+            "cost_tie_breaker_enabled": bool(self.cost_tie_breaker_var.get()),
         }
         if seed_value:
             params["seed"] = parse_int(seed_value, "Seed")
@@ -588,7 +593,6 @@ class GeneticOptimizationTab(BaseScrollableTab):
         profile = self.profile_service.get_profile(analysis_scope)
         value_by_criterion = {
             "total_power_watts": self.power_weight_var,
-            "capital_cost": self.cost_weight_var,
         }
         weights: list[float] = []
         for criterion in profile.criteria:
@@ -749,6 +753,19 @@ class GeneticOptimizationTab(BaseScrollableTab):
                 values=(label, f"{value} {operator_text} {bound}".strip(), "—", status),
             )
 
+        tie_breaker = ga_result.get("cost_tie_breaker")
+        if isinstance(tie_breaker, Mapping):
+            self.metrics_table.insert(
+                "",
+                "end",
+                values=(
+                    "Экономия бюджета",
+                    self._cost_tie_breaker_value(tie_breaker),
+                    "—",
+                    self._cost_tie_breaker_status(tie_breaker),
+                ),
+            )
+
         history = list(ga_result.get("history", []))
         for row in self._history_sample(history):
             self.history_table.insert(
@@ -774,14 +791,16 @@ class GeneticOptimizationTab(BaseScrollableTab):
         scope = getattr(self, "_last_analysis_scope", self._analysis_scope())
         if scope == ANALYSIS_SCOPE_SOFTWARE:
             self.explanation_var.set(
-                "Выбран набор ПО с максимальной нормализованной GA-оценкой по текущему профилю критериев. "
+                "Выбран набор ПО по профильным критериям качества; стоимость использована как бюджетный фильтр "
+                "и tie-breaker между близкими вариантами. "
                 f"Итоговая стоимость: {self._format_money(totals.get('capital_cost'))}; "
                 f"лицензий: {self._format_number(self._software_quantity_from_dicts(selected_items))}; "
                 f"причина остановки: {termination}."
             )
         else:
             self.explanation_var.set(
-                "Выбрана конфигурация ТО с максимальной нормализованной GA-оценкой по текущему профилю критериев. "
+                "Выбрана конфигурация ТО по профильным техническим критериям; стоимость использована как бюджетный фильтр "
+                "и tie-breaker между близкими вариантами. "
                 f"Итоговая стоимость: {self._format_money(totals.get('capital_cost'))}; "
                 f"клиентских мест: {self._format_number(self._client_capacity_from_dicts(selected_items))}; "
                 f"мощность: {self._format_number(sum(self._item_power(item, power_lookup) for item in selected_items))} Вт; "
@@ -1065,6 +1084,24 @@ class GeneticOptimizationTab(BaseScrollableTab):
 
     def _format_money(self, value: Any) -> str:
         return f"{self._format_number(value, digits=2)} руб."
+
+    def _cost_tie_breaker_value(self, payload: Mapping[str, Any]) -> str:
+        selected = payload.get("selected") if isinstance(payload.get("selected"), Mapping) else {}
+        savings = payload.get("budget_savings")
+        parts = [f"выбрано: {self._format_money(selected.get('capital_cost'))}"]
+        if savings is not None:
+            parts.append(f"остаток бюджета: {self._format_money(savings)}")
+        return "; ".join(parts)
+
+    def _cost_tie_breaker_status(self, payload: Mapping[str, Any]) -> str:
+        status = str(payload.get("status") or "unknown")
+        return {
+            "disabled": "выключено",
+            "unavailable": "нет данных",
+            "not_applied": "не применён",
+            "unchanged": "лидер не изменён",
+            "replaced": "выбран дешевле",
+        }.get(status, status)
 
     def _criterion_label(self, name: str) -> str:
         return self.profile_service.criterion_label(name, scope=self._analysis_scope())

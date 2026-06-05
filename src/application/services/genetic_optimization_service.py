@@ -121,6 +121,8 @@ class GeneticOptimizationService:
         include_zero_quantity: bool = False,
         include_solution_components: bool = True,
         ga_params: Mapping[str, Any] | None = None,
+        cost_tie_breaker_enabled: bool | None = None,
+        cost_tie_breaker_tolerance: float = 0.02,
     ) -> dict[str, Any]:
         """Run genetic optimization over runtime entities.
 
@@ -134,6 +136,9 @@ class GeneticOptimizationService:
                 ``max_budget``, tri-state category policy and selected item count.
             weights/pairwise_matrix: Criterion weights for the GA core.
             ga_params: Additional parameters passed to ``run_ga_mvp``.
+            cost_tie_breaker_enabled: When true, the service may replace the
+                pure score leader with a cheaper candidate whose normalized
+                score is within ``cost_tie_breaker_tolerance`` of the leader.
         """
         profile = analysis_profile or (
             self.profile_service.get_profile(analysis_scope) if analysis_scope is not None else None
@@ -189,6 +194,12 @@ class GeneticOptimizationService:
             params["weights"] = self.profile_service.default_weights(profile.scope)
         if pairwise_matrix is not None:
             params["pairwise_matrix"] = pairwise_matrix
+        if cost_tie_breaker_enabled is None:
+            cost_tie_breaker_enabled = bool(params.pop("cost_tie_breaker_enabled", True))
+        else:
+            params.pop("cost_tie_breaker_enabled", None)
+        params["cost_tie_breaker_enabled"] = bool(cost_tie_breaker_enabled)
+        params["cost_tie_breaker_tolerance"] = float(cost_tie_breaker_tolerance)
         if profile is not None:
             params["analysis_scope"] = profile.scope
             params["analysis_profile"] = profile
@@ -200,12 +211,162 @@ class GeneticOptimizationService:
             len(constraint_specs),
         )
         ga_result = self.ga_runner(params)
+        ga_result = self._apply_cost_tie_breaker(
+            ga_result,
+            enabled=bool(cost_tie_breaker_enabled),
+            max_budget=max_budget,
+            tolerance=float(cost_tie_breaker_tolerance),
+        )
         return self._format_result(
             ga_result,
             candidates=candidates,
             categories=effective_categories,
             ga_params=params,
         )
+
+    def _apply_cost_tie_breaker(
+        self,
+        ga_result: Mapping[str, Any],
+        *,
+        enabled: bool,
+        max_budget: float | None,
+        tolerance: float,
+    ) -> dict[str, Any]:
+        result = deepcopy(dict(ga_result))
+        if not enabled:
+            result["cost_tie_breaker"] = {"status": "disabled", "enabled": False}
+            return result
+        top_solutions = [
+            dict(solution)
+            for solution in result.get("top_solutions", [])
+            if isinstance(solution, Mapping)
+        ]
+        try:
+            best_score = float(result.get("best_agg"))
+        except (TypeError, ValueError):
+            best_score = float("nan")
+        if not top_solutions or best_score != best_score:
+            result["cost_tie_breaker"] = {
+                "status": "unavailable",
+                "enabled": True,
+                "reason": "no_top_solutions_or_score",
+            }
+            return result
+
+        threshold = max(0.0, float(tolerance))
+        close_candidates = []
+        for solution in top_solutions:
+            try:
+                score = float(solution.get("agg"))
+            except (TypeError, ValueError):
+                continue
+            if best_score - score > threshold:
+                continue
+            cost = self._solution_capital_cost(solution.get("items", []))
+            close_candidates.append((cost, -score, solution))
+
+        if not close_candidates:
+            result["cost_tie_breaker"] = {
+                "status": "not_applied",
+                "enabled": True,
+                "tolerance": threshold,
+                "reason": "no_close_candidates",
+            }
+            return result
+
+        close_candidates.sort(key=lambda item: (item[0], item[1]))
+        chosen_cost, neg_chosen_score, chosen = close_candidates[0]
+        original = self._solution_from_result_best(result, top_solutions)
+        original_cost = self._solution_capital_cost(original.get("items", []))
+        original_score = self._number(original.get("agg", result.get("best_agg")), default=best_score)
+        chosen_score = -neg_chosen_score
+        replaced = self._mask_tuple(chosen.get("mask")) != self._mask_tuple(original.get("mask"))
+        if replaced:
+            self._copy_solution_to_best(result, chosen)
+
+        budget_savings = None
+        if max_budget is not None:
+            budget_savings = max(0.0, float(max_budget) - float(chosen_cost))
+        result["cost_tie_breaker"] = {
+            "status": "replaced" if replaced else "unchanged",
+            "enabled": True,
+            "tolerance": threshold,
+            "rule": "prefer lower capital_cost only among candidates within tolerance of the GA quality leader",
+            "original": {
+                "mask": list(self._mask_tuple(original.get("mask"))),
+                "ga_score": original_score,
+                "capital_cost": original_cost,
+            },
+            "selected": {
+                "mask": list(self._mask_tuple(chosen.get("mask"))),
+                "ga_score": chosen_score,
+                "capital_cost": chosen_cost,
+            },
+            "budget": max_budget,
+            "budget_savings": budget_savings,
+            "close_candidate_count": len(close_candidates),
+        }
+        return result
+
+    def _solution_from_result_best(
+        self,
+        result: Mapping[str, Any],
+        top_solutions: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        best_mask = self._mask_tuple(result.get("best_mask"))
+        if best_mask:
+            for solution in top_solutions:
+                if self._mask_tuple(solution.get("mask")) == best_mask:
+                    return dict(solution)
+        if top_solutions:
+            return dict(top_solutions[0])
+        return {
+            "mask": best_mask,
+            "items": list(result.get("best_items", [])) if isinstance(result.get("best_items"), list) else [],
+            "agg": result.get("best_agg"),
+            "raw_scores": result.get("best_raw_scores", []),
+            "normalized_scores": result.get("best_normalized_scores", []),
+            "raw_scores_by_criterion": result.get("best_raw_scores_by_criterion", {}),
+            "directed_scores_by_criterion": result.get("best_directed_scores_by_criterion", {}),
+            "normalized_scores_by_criterion": result.get("best_normalized_scores_by_criterion", {}),
+            "criteria": result.get("criteria", []),
+            "constraints": result.get("constraints", []),
+        }
+
+    def _copy_solution_to_best(self, result: dict[str, Any], solution: Mapping[str, Any]) -> None:
+        result["best_mask"] = self._mask_tuple(solution.get("mask"))
+        result["best_items"] = [dict(item) for item in solution.get("items", []) if isinstance(item, Mapping)]
+        result["best_raw_scores"] = list(solution.get("raw_scores", []))
+        result["best_normalized_scores"] = list(solution.get("normalized_scores", []))
+        result["best_raw_scores_by_criterion"] = deepcopy(solution.get("raw_scores_by_criterion", {}))
+        result["best_directed_scores_by_criterion"] = deepcopy(solution.get("directed_scores_by_criterion", {}))
+        result["best_normalized_scores_by_criterion"] = deepcopy(solution.get("normalized_scores_by_criterion", {}))
+        result["best_agg"] = solution.get("agg")
+        result["criteria"] = deepcopy(solution.get("criteria", []))
+        result["constraints"] = deepcopy(solution.get("constraints", []))
+
+    def _solution_capital_cost(self, items: Any) -> float:
+        if not isinstance(items, Sequence) or isinstance(items, (str, bytes)):
+            return 0.0
+        total = 0.0
+        for item in items:
+            if isinstance(item, Mapping):
+                total += self._number(
+                    item.get("total_cost", item.get("capital_cost", item.get("cost"))),
+                    default=0.0,
+                )
+        return total
+
+    def _mask_tuple(self, value: Any) -> tuple[int, ...]:
+        if isinstance(value, (list, tuple)):
+            result: list[int] = []
+            for item in value:
+                try:
+                    result.append(int(item))
+                except (TypeError, ValueError):
+                    result.append(0)
+            return tuple(result)
+        return ()
 
     def build_candidates(
         self,

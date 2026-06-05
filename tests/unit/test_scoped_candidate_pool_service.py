@@ -67,7 +67,7 @@ def test_scoped_candidate_pool_builds_pareto_case_and_inverts_min_criteria():
 
     assert [item["id"] for item in case_data["alternatives"]] == ["cheap", "expensive"]
     assert case_data["scores"]["expensive"]["total_ram_gb"] > case_data["scores"]["cheap"]["total_ram_gb"]
-    assert case_data["scores"]["cheap"]["capital_cost"] > case_data["scores"]["expensive"]["capital_cost"]
+    assert "capital_cost" not in case_data["scores"]["cheap"]
     assert case_data["scores"]["cheap"]["total_power_watts"] > case_data["scores"]["expensive"]["total_power_watts"]
     assert case_data["metadata"]["score_scale"] == "1..5 utility, min criteria inverted"
 

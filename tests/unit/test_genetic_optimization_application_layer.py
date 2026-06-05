@@ -180,3 +180,126 @@ def test_runtime_candidates_normalize_equipment_metrics_for_profile_criteria():
     assert candidate.properties["cpu_cores"] == 8
     assert candidate.properties["storage_gb"] == 512
     assert candidate.properties["max_power"] == 120
+
+
+def test_cost_tie_breaker_prefers_cheaper_candidate_only_when_quality_is_close():
+    repository = InMemoryEntityRepository({"server": []})
+
+    def fake_runner(params):
+        expensive = {
+            "mask": (1, 0),
+            "items": [{"name": "A", "total_cost": 1000.0}],
+            "raw_scores": [1.0],
+            "normalized_scores": [1.0],
+            "raw_scores_by_criterion": {"quality": 1.0},
+            "directed_scores_by_criterion": {"quality": 1.0},
+            "normalized_scores_by_criterion": {"quality": 1.0},
+            "agg": 1.0,
+            "criteria": [{"name": "quality", "raw_value": 1.0, "normalized_value": 1.0, "weight": 1.0}],
+            "constraints": [],
+            "rank": 1,
+        }
+        cheap = {
+            "mask": (0, 1),
+            "items": [{"name": "B", "total_cost": 100.0}],
+            "raw_scores": [0.99],
+            "normalized_scores": [0.99],
+            "raw_scores_by_criterion": {"quality": 0.99},
+            "directed_scores_by_criterion": {"quality": 0.99},
+            "normalized_scores_by_criterion": {"quality": 0.99},
+            "agg": 0.99,
+            "criteria": [{"name": "quality", "raw_value": 0.99, "normalized_value": 0.99, "weight": 1.0}],
+            "constraints": [],
+            "rank": 2,
+        }
+        return {
+            "error": None,
+            "best_mask": expensive["mask"],
+            "best_items": expensive["items"],
+            "best_agg": expensive["agg"],
+            "best_raw_scores": expensive["raw_scores"],
+            "best_normalized_scores": expensive["normalized_scores"],
+            "best_raw_scores_by_criterion": expensive["raw_scores_by_criterion"],
+            "best_directed_scores_by_criterion": expensive["directed_scores_by_criterion"],
+            "best_normalized_scores_by_criterion": expensive["normalized_scores_by_criterion"],
+            "criteria": expensive["criteria"],
+            "constraints": [],
+            "top_solutions": [expensive, cheap],
+            "criterion_names": ["quality"],
+            "constraints_metadata": [],
+        }
+
+    service = GeneticOptimizationService(repository, ga_runner=fake_runner)
+
+    summary = service.run(
+        categories=("server",),
+        criteria=[{"name": "quality", "func": _quality, "direction": "max"}],
+        weights=[1.0],
+        max_budget=1200.0,
+        cost_tie_breaker_tolerance=0.02,
+    )
+
+    assert summary["selected_items"][0]["name"] == "B"
+    assert summary["ga_result"]["cost_tie_breaker"]["status"] == "replaced"
+    assert summary["ga_result"]["cost_tie_breaker"]["budget_savings"] == 1100.0
+
+
+def test_cost_tie_breaker_does_not_replace_when_quality_gap_is_large():
+    repository = InMemoryEntityRepository({"server": []})
+
+    def fake_runner(params):
+        expensive = {
+            "mask": (1, 0),
+            "items": [{"name": "A", "total_cost": 1000.0}],
+            "raw_scores": [1.0],
+            "normalized_scores": [1.0],
+            "raw_scores_by_criterion": {"quality": 1.0},
+            "directed_scores_by_criterion": {"quality": 1.0},
+            "normalized_scores_by_criterion": {"quality": 1.0},
+            "agg": 1.0,
+            "criteria": [{"name": "quality", "raw_value": 1.0, "normalized_value": 1.0, "weight": 1.0}],
+            "constraints": [],
+            "rank": 1,
+        }
+        cheap = {
+            "mask": (0, 1),
+            "items": [{"name": "B", "total_cost": 100.0}],
+            "raw_scores": [0.80],
+            "normalized_scores": [0.80],
+            "raw_scores_by_criterion": {"quality": 0.80},
+            "directed_scores_by_criterion": {"quality": 0.80},
+            "normalized_scores_by_criterion": {"quality": 0.80},
+            "agg": 0.80,
+            "criteria": [{"name": "quality", "raw_value": 0.80, "normalized_value": 0.80, "weight": 1.0}],
+            "constraints": [],
+            "rank": 2,
+        }
+        return {
+            "error": None,
+            "best_mask": expensive["mask"],
+            "best_items": expensive["items"],
+            "best_agg": expensive["agg"],
+            "best_raw_scores": expensive["raw_scores"],
+            "best_normalized_scores": expensive["normalized_scores"],
+            "best_raw_scores_by_criterion": expensive["raw_scores_by_criterion"],
+            "best_directed_scores_by_criterion": expensive["directed_scores_by_criterion"],
+            "best_normalized_scores_by_criterion": expensive["normalized_scores_by_criterion"],
+            "criteria": expensive["criteria"],
+            "constraints": [],
+            "top_solutions": [expensive, cheap],
+            "criterion_names": ["quality"],
+            "constraints_metadata": [],
+        }
+
+    service = GeneticOptimizationService(repository, ga_runner=fake_runner)
+
+    summary = service.run(
+        categories=("server",),
+        criteria=[{"name": "quality", "func": _quality, "direction": "max"}],
+        weights=[1.0],
+        max_budget=1200.0,
+        cost_tie_breaker_tolerance=0.02,
+    )
+
+    assert summary["selected_items"][0]["name"] == "A"
+    assert summary["ga_result"]["cost_tie_breaker"]["status"] == "unchanged"
