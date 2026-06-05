@@ -54,7 +54,8 @@ class EnergyScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self._build_header(), 0)
         layout.addWidget(self._build_summary(), 0)
         layout.addWidget(self._build_profile(), 0)
-        layout.addWidget(self._build_details(), 1)
+        layout.addWidget(self._build_details(), 0)
+        layout.addStretch(1)
         layout.addLayout(self._build_actions(), 0)
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
@@ -129,13 +130,13 @@ class EnergyScreen(QWidget):  # type: ignore[misc,valid-type]
         return panel
 
     def _build_details(self) -> QWidget:  # type: ignore[valid-type]
-        details = QFrame(self)
-        details.setObjectName("surface")
+        details = QWidget(self)
+        details.setObjectName("contentArea")
         layout = QVBoxLayout(details)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         layout.addWidget(self._build_parameters_section(), 0)
-        layout.addWidget(self._build_equipment_section(), 1)
+        layout.addWidget(self._build_equipment_section(), 0)
         return details
 
     def _build_parameters_section(self) -> CollapsibleSection:
@@ -174,6 +175,7 @@ class EnergyScreen(QWidget):  # type: ignore[misc,valid-type]
         self.equipment_table.setAlternatingRowColors(True)
         self.equipment_table.verticalHeader().setVisible(False)
         self.equipment_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.equipment_table.setMinimumHeight(220)
         self.empty_equipment = EmptyState(
             "Нет оборудования",
             content,
@@ -181,6 +183,7 @@ class EnergyScreen(QWidget):  # type: ignore[misc,valid-type]
             action_text="Демо",
             action_callback=self.load_demo,
         )
+        self.empty_equipment.setMinimumHeight(180)
         self.equipment_stack.addWidget(self.equipment_table)
         self.equipment_stack.addWidget(self.empty_equipment)
         layout.addLayout(self.equipment_stack)
@@ -210,6 +213,8 @@ class EnergyScreen(QWidget):  # type: ignore[misc,valid-type]
         box.setDecimals(2)
         box.setValue(value)
         box.setSuffix(suffix)
+        box.setMinimumHeight(34)
+        box.setKeyboardTracking(False)
         return box
 
     def refresh_data(self) -> None:

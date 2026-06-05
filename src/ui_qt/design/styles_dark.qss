@@ -149,3 +149,41 @@ QPushButton#rootMenuButton:checked {
 QWidget#contentArea {
     background: transparent;
 }
+
+QLabel {
+    background: transparent;
+}
+
+QSpinBox, QDoubleSpinBox {
+    padding-right: 30px;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 26px;
+    border-left: 1px solid #4d5869;
+    border-bottom: 1px solid #3e4654;
+    border-top-right-radius: 8px;
+    background: #252b35;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 26px;
+    border-left: 1px solid #4d5869;
+    border-bottom-right-radius: 8px;
+    background: #252b35;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background: #303744;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow,
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    width: 8px;
+    height: 8px;
+}

@@ -52,3 +52,8 @@ class CollapsibleSection(QFrame):
         expanded = self._toggle.isChecked()
         self._toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
         self._content.setVisible(expanded)
+        if expanded:
+            self.setMaximumHeight(16777215)
+        else:
+            self.setMaximumHeight(self.sizeHint().height())
+        self.updateGeometry()
