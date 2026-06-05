@@ -12,10 +12,10 @@ try:
         QGridLayout,
         QHBoxLayout,
         QHeaderView,
+        QPlainTextEdit,
         QPushButton,
         QStackedLayout,
         QTableView,
-        QTextEdit,
         QVBoxLayout,
         QWidget,
     )
@@ -24,7 +24,7 @@ except ModuleNotFoundError as exc:
         raise
     Qt = None  # type: ignore[assignment]
     QComboBox = QFrame = QGridLayout = QHBoxLayout = QHeaderView = QPushButton = None  # type: ignore[assignment]
-    QStackedLayout = QTableView = QTextEdit = QVBoxLayout = None  # type: ignore[assignment]
+    QPlainTextEdit = QStackedLayout = QTableView = QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
 
 
@@ -56,7 +56,8 @@ class ExportScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self._build_header(), 0)
         layout.addWidget(self._build_summary(), 0)
         layout.addWidget(self._build_controls(), 0)
-        layout.addWidget(self._build_details(), 1)
+        layout.addWidget(self._build_details(), 0)
+        layout.addStretch(1)
         layout.addLayout(self._build_actions(), 0)
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
@@ -129,8 +130,11 @@ class ExportScreen(QWidget):  # type: ignore[misc,valid-type]
         layout = QVBoxLayout(details)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-        layout.addWidget(self._build_dashboard_section(), 0)
-        layout.addWidget(self._build_files_section(), 1)
+        self.dashboard_section = self._build_dashboard_section()
+        layout.addWidget(self.dashboard_section, 0)
+        self.files_section = self._build_files_section()
+        layout.addWidget(self.files_section, 0)
+        layout.addStretch(1)
         return details
 
     def _build_dashboard_section(self) -> CollapsibleSection:
@@ -138,16 +142,18 @@ class ExportScreen(QWidget):  # type: ignore[misc,valid-type]
         content.setObjectName("card")
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.dashboard_text = QTextEdit(content)
+        self.dashboard_text = QPlainTextEdit(content)
         self.dashboard_text.setReadOnly(True)
-        self.dashboard_text.setMinimumHeight(160)
+        self.dashboard_text.setMinimumHeight(92)
+        self.dashboard_text.setMaximumHeight(120)
+        self.dashboard_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         layout.addWidget(self.dashboard_text)
         return CollapsibleSection(
             "Сводка",
             content,
             self,
             tooltip="Краткое состояние данных перед экспортом.",
-            expanded=True,
+            expanded=False,
         )
 
     def _build_files_section(self) -> CollapsibleSection:
@@ -166,7 +172,8 @@ class ExportScreen(QWidget):  # type: ignore[misc,valid-type]
             content,
             status="Соберите отчёт",
         )
-        self.files_empty.setMinimumHeight(150)
+        self.files_empty.setMinimumHeight(112)
+        self.files_empty.setMaximumHeight(140)
         self.files_stack.addWidget(self.files_table)
         self.files_stack.addWidget(self.files_empty)
         layout.addLayout(self.files_stack)
@@ -175,7 +182,7 @@ class ExportScreen(QWidget):  # type: ignore[misc,valid-type]
             content,
             self,
             tooltip="Последние созданные файлы отчёта.",
-            expanded=True,
+            expanded=False,
         )
 
     def _build_actions(self) -> QHBoxLayout:  # type: ignore[valid-type]
@@ -211,6 +218,8 @@ class ExportScreen(QWidget):  # type: ignore[misc,valid-type]
         self.dashboard_text.setPlainText(self.presenter.dashboard_text())
         self._sync_files(paths)
         self._sync_summary()
+        if paths:
+            self.files_section.set_expanded(True)
         self.status_label.setText("Собрано")
 
     def open_folder(self) -> None:

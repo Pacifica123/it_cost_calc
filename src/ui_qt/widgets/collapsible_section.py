@@ -48,6 +48,13 @@ class CollapsibleSection(QFrame):
         layout.addWidget(content)
         self._sync_state()
 
+    def is_expanded(self) -> bool:
+        return bool(self._toggle.isChecked())
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._toggle.setChecked(expanded)
+        self._sync_state()
+
     def _sync_state(self) -> None:
         expanded = self._toggle.isChecked()
         self._toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
