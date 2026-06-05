@@ -50,12 +50,12 @@ class ActionBar(QWidget):
         assert_short_text(text, field="primary action")
         button = QPushButton(text, self)
         button.setProperty("role", "primary")
-        button.clicked.connect(callback)
+        button.clicked.connect(lambda _checked=False: callback())
         self._layout.insertWidget(max(self._layout.count() - 2, 0), button, 0)
         return button
 
     def add_secondary_action(self, text: str, callback: Callable[[], None]) -> None:
         assert_short_text(text, field="secondary action")
         action = self.more_menu.addAction(text)
-        action.triggered.connect(callback)
+        action.triggered.connect(lambda _checked=False: callback())
         self.more_button.show()

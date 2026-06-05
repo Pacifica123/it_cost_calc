@@ -1,19 +1,24 @@
 from __future__ import annotations
 
-from ui_qt.widgets.action_bar import ActionBar
-from ui_qt.widgets.collapsible_section import CollapsibleSection
-from ui_qt.widgets.compact_label import CompactLabel
-from ui_qt.widgets.empty_state import EmptyState
-from ui_qt.widgets.info_hint import InfoHint
-from ui_qt.widgets.settings_panel import SettingsPanel
-from ui_qt.widgets.status_strip import StatusStrip
+_WIDGET_MODULES = {
+    "ActionBar": "ui_qt.widgets.action_bar",
+    "CollapsibleSection": "ui_qt.widgets.collapsible_section",
+    "CompactLabel": "ui_qt.widgets.compact_label",
+    "EmptyState": "ui_qt.widgets.empty_state",
+    "InfoHint": "ui_qt.widgets.info_hint",
+    "SettingsPanel": "ui_qt.widgets.settings_panel",
+    "StatusStrip": "ui_qt.widgets.status_strip",
+}
 
-__all__ = [
-    "ActionBar",
-    "CollapsibleSection",
-    "CompactLabel",
-    "EmptyState",
-    "InfoHint",
-    "SettingsPanel",
-    "StatusStrip",
-]
+__all__ = [*_WIDGET_MODULES]
+
+
+def __getattr__(name: str):
+    if name not in _WIDGET_MODULES:
+        raise AttributeError(name)
+    from importlib import import_module
+
+    module = import_module(_WIDGET_MODULES[name])
+    value = getattr(module, name)
+    globals()[name] = value
+    return value

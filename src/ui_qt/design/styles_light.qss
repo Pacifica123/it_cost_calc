@@ -119,3 +119,33 @@ QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
 QScrollBar::handle:hover {
     background: #aebdce;
 }
+
+QFrame#rootNav {
+    background: #ffffff;
+    border: 1px solid #d8e0ea;
+    border-radius: 10px;
+}
+
+QPushButton#rootMenuButton {
+    min-width: 150px;
+    text-align: left;
+    padding: 8px 12px;
+    border-color: transparent;
+    background: transparent;
+}
+
+QPushButton#rootMenuButton:hover {
+    background: #eef3f8;
+    border-color: #d8e0ea;
+}
+
+QPushButton#rootMenuButton:checked {
+    background: #e7f0ff;
+    border-color: #3b78e7;
+    color: #17212f;
+    font-weight: 600;
+}
+
+QWidget#contentArea {
+    background: transparent;
+}
