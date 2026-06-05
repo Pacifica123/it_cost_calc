@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.services.cost_aggregation_service import CostAggregationService
 from application.services.decision_report_service import DecisionReportService
 from application.services.entity_catalog_service import EntityCatalogService
@@ -18,6 +19,8 @@ from application.services.equipment_service import EquipmentService
 from application.services.npv_report_service import NPVReportService
 from application.services.scoped_candidate_pool_service import CandidatePoolSnapshot, ScopedCandidatePoolService
 from application.services.solution_component_runtime_service import SolutionComponentRuntimeService
+from domain.decision.ahp.math_utils import ahp_priority_and_consistency, build_pairwise_matrix_from_scores
+from domain.decision.criteria_importance.pipeline import run_importance_pipeline
 from application.use_cases.build_decision_report import BuildDecisionReportUseCase
 from application.use_cases.build_npv_report import BuildNpvReportUseCase
 from application.use_cases.calculate_electricity_costs import CalculateElectricityCostsUseCase
@@ -113,7 +116,10 @@ class QtAppPresenter:
         self.genetic_optimizer = RunGeneticOptimizationUseCase(
             self.genetic_optimization_service,
         )
-        self.scoped_candidate_pool_service = ScopedCandidatePoolService()
+        self.analysis_scope_profile_service = AnalysisScopeProfileService()
+        self.scoped_candidate_pool_service = ScopedCandidatePoolService(
+            profile_service=self.analysis_scope_profile_service,
+        )
         self.demo_loader = LoadDemoDatasetUseCase(self.storage, self.equipment_service)
         self._electricity_profile: dict[str, float] = {
             "hours_per_day": 8.0,
@@ -123,6 +129,8 @@ class QtAppPresenter:
         self._electricity_report: dict[str, Any] = {"total_cost": 0.0, "items": []}
         self._npv_report: dict[str, Any] = {}
         self._ga_results: dict[str, dict[str, Any]] = {}
+        self._ahp_results: dict[str, dict[str, Any]] = {}
+        self._pareto_results: dict[str, dict[str, Any]] = {}
 
     @property
     def entities(self) -> dict[str, list[dict[str, Any]]]:
@@ -183,6 +191,8 @@ class QtAppPresenter:
         self._reset_electricity_result()
         self._npv_report = {}
         self._ga_results.clear()
+        self._ahp_results.clear()
+        self._pareto_results.clear()
         self.scoped_candidate_pool_service.clear("technical")
         self.scoped_candidate_pool_service.clear("software")
 
@@ -320,6 +330,195 @@ class QtAppPresenter:
             source_label=snapshot.source_label,
             source_method=snapshot.source_method,
         )
+
+    def run_ahp_for_candidate_pool(self, scope: str) -> dict[str, Any]:
+        """Rank the current scoped candidate pool with standalone AHP."""
+
+        scope_key = str(scope)
+        case = self.scoped_candidate_pool_service.to_criteria_case(scope_key)
+        snapshot = self.scoped_candidate_pool_service.get(scope_key)
+        alternatives = list(case.get("alternatives", []))
+        criteria = list(case.get("criteria", []))
+        scores = case.get("scores", {}) if isinstance(case.get("scores"), Mapping) else {}
+        if not alternatives:
+            report = {
+                "status": "skipped",
+                "reason": "Общий пул альтернатив пуст.",
+                "candidate_count": 0,
+                "final": {"ranking": []},
+                "candidate_configurations": [],
+            }
+            self._ahp_results[scope_key] = deepcopy(report)
+            self._pareto_results.pop(scope_key, None)
+            return deepcopy(report)
+        if not criteria:
+            report = {
+                "status": "skipped",
+                "reason": "Нет критериев AHP для текущей области.",
+                "candidate_count": len(alternatives),
+                "final": {"ranking": []},
+                "candidate_configurations": deepcopy(snapshot.candidates),
+            }
+            self._ahp_results[scope_key] = deepcopy(report)
+            self._pareto_results.pop(scope_key, None)
+            return deepcopy(report)
+
+        profile = self.analysis_scope_profile_service.get_profile(scope_key)
+        weights_by_id = {
+            str(criterion_id): float(value)
+            for criterion_id, value in profile.default_weights.items()
+        }
+        raw_weights = [max(0.0, weights_by_id.get(str(item.get("id")), 1.0)) for item in criteria]
+        weights_total = sum(raw_weights) or float(len(raw_weights) or 1)
+        criteria_weights = [value / weights_total for value in raw_weights]
+
+        alt_weights_per_criterion: list[list[float]] = []
+        consistency_per_criterion: list[dict[str, Any]] = []
+        for criterion in criteria:
+            criterion_id = str(criterion.get("id"))
+            criterion_scores = [
+                self._finite_float(
+                    scores.get(str(alternative.get("id")), {}).get(criterion_id)
+                    if isinstance(scores.get(str(alternative.get("id"))), Mapping)
+                    else 0.0
+                )
+                for alternative in alternatives
+            ]
+            matrix = build_pairwise_matrix_from_scores(criterion_scores, saaty_cap=True)
+            weights, lam, ci_value, cr_value = ahp_priority_and_consistency(matrix)
+            alt_weights_per_criterion.append([float(value) for value in weights.tolist()])
+            consistency_per_criterion.append(
+                {
+                    "criterion": criterion_id,
+                    "lambda": float(lam),
+                    "CI": float(ci_value),
+                    "CR": float(cr_value),
+                }
+            )
+
+        final_scores = []
+        for alt_index, _alternative in enumerate(alternatives):
+            score = 0.0
+            for criterion_index, criterion_weight in enumerate(criteria_weights):
+                score += criterion_weight * alt_weights_per_criterion[criterion_index][alt_index]
+            final_scores.append(score)
+        score_total = sum(final_scores)
+        if score_total > 0:
+            final_scores = [value / score_total for value in final_scores]
+        elif final_scores:
+            final_scores = [1.0 / len(final_scores) for _value in final_scores]
+
+        candidate_by_id = {str(candidate.get("id")): candidate for candidate in snapshot.candidates}
+        ranking = []
+        ordered = sorted(
+            enumerate(alternatives),
+            key=lambda item: (-final_scores[item[0]], str(item[1].get("name") or item[1].get("id"))),
+        )
+        for rank, (alt_index, alternative) in enumerate(ordered, start=1):
+            candidate_id = str(alternative.get("id") or f"candidate_{alt_index + 1}")
+            candidate = candidate_by_id.get(candidate_id, {})
+            metadata = candidate.get("metadata", {}) if isinstance(candidate.get("metadata"), Mapping) else {}
+            metrics = candidate.get("metrics", {}) if isinstance(candidate.get("metrics"), Mapping) else {}
+            ranking.append(
+                {
+                    "rank": rank,
+                    "id": candidate_id,
+                    "name": str(alternative.get("name") or candidate.get("name") or candidate_id),
+                    "score": float(final_scores[alt_index]),
+                    "ga_rank": self._positive_int(metadata.get("rank"), fallback=alt_index + 1),
+                    "ga_score": metrics.get("ga_score", metrics.get("score")),
+                    "totals": deepcopy(candidate.get("totals", {})),
+                    "selected_items": deepcopy(candidate.get("components", [])),
+                }
+            )
+
+        report = {
+            "status": "ok",
+            "method": "scoped_pool_standalone_ahp",
+            "candidate_count": len(alternatives),
+            "source_label": snapshot.source_label,
+            "criteria": {
+                "names": [str(item.get("id")) for item in criteria],
+                "labels": [str(item.get("name") or item.get("id")) for item in criteria],
+                "directions": [str(item.get("direction") or "max") for item in criteria],
+                "weights": criteria_weights,
+                "weights_source": "analysis_scope_profile",
+            },
+            "alternatives": {
+                "ids": [str(item.get("id")) for item in alternatives],
+                "weights_per_criterion": alt_weights_per_criterion,
+                "consistency_per_criterion": consistency_per_criterion,
+            },
+            "final": {
+                "ranking": ranking,
+                "winner_id": ranking[0]["id"] if ranking else None,
+                "winner_name": ranking[0]["name"] if ranking else None,
+                "winner": ranking[0] if ranking else None,
+            },
+            "candidate_configurations": deepcopy(snapshot.candidates),
+            "metadata": {
+                "analysis_scope": scope_key,
+                "candidate_pool_source": snapshot.source_label,
+                "source_method": snapshot.source_method,
+                "note": "Standalone AHP uses the current scoped candidate pool only.",
+            },
+        }
+        self._ahp_results[scope_key] = deepcopy(report)
+        self._pareto_results.pop(scope_key, None)
+        return deepcopy(report)
+
+    def get_ahp_result(self, scope: str) -> dict[str, Any]:
+        return deepcopy(self._ahp_results.get(str(scope), {}))
+
+    def run_pareto_for_candidate_pool(self, scope: str) -> dict[str, Any]:
+        """Run Pareto/criteria-importance over the current scoped candidate pool."""
+
+        scope_key = str(scope)
+        snapshot = self.scoped_candidate_pool_service.get(scope_key)
+        if not snapshot.candidates:
+            report = {
+                "status": "skipped",
+                "reason": "Общий пул альтернатив пуст.",
+                "ranking": [],
+                "final_nondominated": [],
+                "candidate_configurations": [],
+            }
+            self._pareto_results[scope_key] = deepcopy(report)
+            return deepcopy(report)
+
+        case = self.scoped_candidate_pool_service.to_criteria_case(scope_key)
+        report = run_importance_pipeline(case)
+        report["status"] = "ok"
+        report.setdefault("metadata", {})
+        if isinstance(report["metadata"], dict):
+            report["metadata"].update(
+                {
+                    "analysis_scope": scope_key,
+                    "candidate_pool_source": snapshot.source_label,
+                    "source_method": snapshot.source_method,
+                }
+            )
+        self._pareto_results[scope_key] = deepcopy(report)
+        return deepcopy(report)
+
+    def get_pareto_result(self, scope: str) -> dict[str, Any]:
+        return deepcopy(self._pareto_results.get(str(scope), {}))
+
+    @staticmethod
+    def _finite_float(value: Any, default: float = 0.0) -> float:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return default
+        return numeric if numeric == numeric and numeric not in {float("inf"), float("-inf")} else default
+
+    @staticmethod
+    def _positive_int(value: Any, *, fallback: int) -> int:
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError):
+            return fallback
+        return numeric if numeric > 0 else fallback
 
 
     def generated_reports_dir(self) -> Path:

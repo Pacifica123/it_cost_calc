@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from ui_qt.models import CandidateTableModel, RowTableModel
@@ -46,11 +47,13 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         parent: QWidget | None = None,  # type: ignore[valid-type]
         *,
         scope: str,
+        on_pool_changed: Callable[[], None] | None = None,
     ) -> None:
         if QVBoxLayout is None:
             raise RuntimeError("PySide6 is required to create GaScreen")
         super().__init__(parent)
         self.presenter = GaPresenter(app_presenter, scope=scope)
+        self._on_pool_changed = on_pool_changed
         self._summary_labels: dict[str, CompactLabel] = {}
         self._build_ui()
         self.refresh_data()
@@ -281,6 +284,10 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
             self.pool_label.setText("Ошибка GA")
             self.pool_label.setToolTip(str(exc))
         self.refresh_data()
+        if self._on_pool_changed is not None:
+            self._on_pool_changed()
 
     def _mark_pool_ready(self) -> None:
         self.pool_label.setText("Пул передан")
+        if self._on_pool_changed is not None:
+            self._on_pool_changed()

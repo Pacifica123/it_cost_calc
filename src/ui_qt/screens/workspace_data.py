@@ -4,7 +4,7 @@ from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL
 from ui_qt.models import RowTableModel
 from ui_qt.navigation import WorkflowStep, WorkflowStepper
 from ui_qt.presenters import QtAppPresenter, WorkspacePresenter, format_money
-from ui_qt.screens.decision import GaScreen
+from ui_qt.screens.decision import AhpScreen, GaScreen, ParetoScreen
 from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint, SmartTable
 
 try:
@@ -91,10 +91,27 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             self.presenter.app_presenter,
             self,
             scope=self.presenter.scope,
+            on_pool_changed=self._refresh_step_availability,
         )
         self.ga_step_page = self._wrap_step_scroll(self.ga_step)
+        self.ahp_step = AhpScreen(
+            self.presenter.app_presenter,
+            self,
+            scope=self.presenter.scope,
+            on_result_changed=self._refresh_step_availability,
+        )
+        self.ahp_step_page = self._wrap_step_scroll(self.ahp_step)
+        self.pareto_step = ParetoScreen(
+            self.presenter.app_presenter,
+            self,
+            scope=self.presenter.scope,
+            on_result_changed=self._refresh_step_availability,
+        )
+        self.pareto_step_page = self._wrap_step_scroll(self.pareto_step)
         self.step_stack.addWidget(self.data_step_page)
         self.step_stack.addWidget(self.ga_step_page)
+        self.step_stack.addWidget(self.ahp_step_page)
+        self.step_stack.addWidget(self.pareto_step_page)
         layout.addWidget(self.step_stack, 1)
 
 
@@ -112,8 +129,8 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         return (
             WorkflowStep("data", "Данные", enabled=True),
             WorkflowStep("ga", "GA", enabled=data_ready, tooltip="Сначала подготовьте данные."),
-            WorkflowStep("ahp", "AHP", tooltip="Будет доступно после GA."),
-            WorkflowStep("pareto", "Pareto", tooltip="Будет доступно после AHP."),
+            WorkflowStep("ahp", "AHP", tooltip="Доступно после GA-пула."),
+            WorkflowStep("pareto", "Pareto", tooltip="Доступно после AHP."),
             WorkflowStep("hybrid", "Гибрид", tooltip="Итог появится после Pareto."),
         )
 
@@ -283,9 +300,44 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             self.step_stack.setCurrentWidget(self.ga_step_page)
             self.stepper.set_active("ga")
             self.ga_step.refresh_data()
+            self._refresh_step_availability()
+            return
+        if step_id == "ahp" and self._has_candidate_pool():
+            self.step_stack.setCurrentWidget(self.ahp_step_page)
+            self.stepper.set_active("ahp")
+            self.ahp_step.refresh_data()
+            self._refresh_step_availability()
+            return
+        if step_id == "pareto" and self._has_ahp_result():
+            self.step_stack.setCurrentWidget(self.pareto_step_page)
+            self.stepper.set_active("pareto")
+            self.pareto_step.refresh_data()
+            self._refresh_step_availability()
             return
         self.step_stack.setCurrentWidget(self.data_step_page)
         self.stepper.set_active("data")
+        self._refresh_step_availability()
+
+    def _has_candidate_pool(self) -> bool:
+        return bool(
+            self.presenter.app_presenter.get_candidate_pool_snapshot(self.presenter.scope).candidates
+        )
+
+    def _has_ahp_result(self) -> bool:
+        return self.presenter.app_presenter.get_ahp_result(self.presenter.scope).get("status") == "ok"
+
+    def _has_pareto_result(self) -> bool:
+        return self.presenter.app_presenter.get_pareto_result(self.presenter.scope).get("status") == "ok"
+
+    def _refresh_step_availability(self) -> None:
+        data_ready = self.presenter.has_data()
+        pool_ready = self._has_candidate_pool()
+        ahp_ready = self._has_ahp_result()
+        pareto_ready = self._has_pareto_result()
+        self.stepper.set_step_enabled("ga", data_ready)
+        self.stepper.set_step_enabled("ahp", pool_ready)
+        self.stepper.set_step_enabled("pareto", ahp_ready)
+        self.stepper.set_step_enabled("hybrid", pareto_ready)
 
     def refresh_data(self) -> None:
         summary = self.presenter.summary()
@@ -309,6 +361,9 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.opex_section.set_expanded(False)
         self.content_stack.setCurrentWidget(self.data_panel if data_ready else self.empty_state)
         self.ga_step.refresh_data()
+        self.ahp_step.refresh_data()
+        self.pareto_step.refresh_data()
+        self._refresh_step_availability()
 
 
 class SoftwareWorkspaceScreen(WorkspaceDataScreen):  # type: ignore[misc]
