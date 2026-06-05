@@ -40,6 +40,7 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
     winner = _mapping(report.get("winner_explanation"))
     recommended = _mapping(winner.get("recommended"))
     npv = _mapping(report.get("npv_interpretation"))
+    analysis_results = _mapping(report.get("analysis_results"))
     candidates = _sequence(report.get("candidate_configurations"))
     components_report = _solution_component_report(report)
     valid_components = _sequence(components_report.get("valid_components"))
@@ -112,15 +113,18 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
     else:
         lines.append("Альтернативы не переданы в отчёт.")
 
+    lines.extend(["", "## 6. Аналитические методы"])
+    lines.extend(_analysis_methods_summary(analysis_results))
+
     lines.extend(
         [
             "",
-            "## 6. NPV-интерпретация",
+            "## 7. NPV-интерпретация",
             f"- Статус: {npv.get('status', 'не рассчитан')}",
             f"- Значение NPV: {_money(npv.get('npv'))}",
             f"- Пояснение: {npv.get('interpretation') or npv.get('explanation', 'не указано')}",
             "",
-            "## 7. Риски и предупреждения",
+            "## 8. Риски и предупреждения",
         ]
     )
     if risks:
@@ -139,11 +143,11 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## 8. Сценарий защиты",
+            "## 9. Сценарий защиты",
             "1. Пользователь вводит компоненты решения и связанные затраты.",
             "2. Компоненты нормализуются по области анализа и типу.",
-            "3. Из компонентов формируется пул кандидатных конфигураций.",
-            "4. AHP, GA, GA + AHP и финансовая модель анализируют один связанный набор данных.",
+            "3. GA формирует общий пул кандидатных конфигураций или он загружается из demo-сценария.",
+            "4. AHP ранжирует этот пул, Pareto проверяет компромиссы, Hybrid показывает сводную рекомендацию.",
             "5. DecisionReport фиксирует победителя, ограничения, риски, компоненты редактора и воспроизводимые исходные данные.",
             "",
         ]
@@ -165,12 +169,15 @@ def build_decision_report_csv_rows(report: Mapping[str, Any]) -> list[dict[str, 
         totals = _mapping(candidate.get("totals"))
         tco = _mapping(totals.get("tco"))
         metrics = _mapping(candidate.get("metrics"))
+        metadata = _mapping(candidate.get("metadata"))
         rows.append(
             {
                 "id": candidate.get("id"),
                 "name": candidate.get("name"),
                 "scope": candidate.get("scope"),
                 "source": candidate.get("source"),
+                "candidate_pool_source": metadata.get("candidate_pool_source"),
+                "candidate_pool_method": metadata.get("candidate_pool_method"),
                 "component_count": len(_sequence(candidate.get("components"))),
                 "capital_cost": totals.get("capital_cost", totals.get("total_cost")),
                 "monthly_opex": tco.get("monthly_opex", totals.get("monthly_opex")),
@@ -250,6 +257,8 @@ def export_decision_report_csv(report: Mapping[str, Any], filename: str | Path) 
         "name",
         "scope",
         "source",
+        "candidate_pool_source",
+        "candidate_pool_method",
         "component_count",
         "capital_cost",
         "monthly_opex",
@@ -417,23 +426,63 @@ def _excluded_solution_component_table(components: Sequence[Any]) -> list[str]:
 
 def _candidate_table(candidates: Sequence[Any]) -> list[str]:
     lines = [
-        "| ID | Альтернатива | Источник | TCO |",
-        "|---|---|---|---:|",
+        "| ID | Альтернатива | Источник | Пул | TCO |",
+        "|---|---|---|---|---:|",
     ]
     for candidate in candidates:
         if not isinstance(candidate, Mapping):
             continue
         totals = _mapping(candidate.get("totals"))
         tco = _mapping(totals.get("tco"))
+        metadata = _mapping(candidate.get("metadata"))
         lines.append(
-            "| {id} | {name} | {source} | {tco} |".format(
+            "| {id} | {name} | {source} | {pool} | {tco} |".format(
                 id=_md(candidate.get("id")),
                 name=_md(candidate.get("name")),
                 source=_md(candidate.get("source")),
+                pool=_md(metadata.get("candidate_pool_source") or "—"),
                 tco=_money(tco.get("total_ownership_cost", totals.get("total_ownership_cost"))),
             )
         )
     return lines
+
+
+def _analysis_methods_summary(analysis_results: Mapping[str, Any]) -> list[str]:
+    if not analysis_results:
+        return ["Аналитические методы ещё не переданы в отчёт."]
+
+    rows = [
+        "| Метод | Роль в новой модели | Статус |",
+        "|---|---|---|",
+    ]
+    method_roles = (
+        ("genetic_optimization", "GA", "поиск допустимых кандидатов"),
+        ("ahp", "AHP", "самостоятельное экспертное ранжирование общего пула"),
+        ("criteria_importance", "Pareto", "проверка компромиссов и недоминируемых вариантов"),
+        ("hybrid_assessment", "Hybrid", "сводная рекомендация и контроль расхождения методов"),
+    )
+    for key, label, role in method_roles:
+        value = analysis_results.get(key)
+        rows.append(f"| {label} | {role} | {_md(_method_status(value))} |")
+    if analysis_results.get("genetic_ahp"):
+        rows.append(
+            "| legacy GA+AHP | совместимость старых экспортов; не основной UI-сценарий | сохранено в JSON |"
+        )
+    return rows
+
+
+def _method_status(value: Any) -> str:
+    if not isinstance(value, Mapping):
+        return "не рассчитано"
+    by_scope = value.get("by_scope")
+    if isinstance(by_scope, Mapping):
+        parts = []
+        for scope, payload in by_scope.items():
+            if isinstance(payload, Mapping):
+                status = payload.get("status") or payload.get("method") or "есть результат"
+                parts.append(f"{scope}: {status}")
+        return "; ".join(parts) or "не рассчитано"
+    return str(value.get("status") or value.get("method") or "есть результат")
 
 
 def _link_text(links: Sequence[Any]) -> str:

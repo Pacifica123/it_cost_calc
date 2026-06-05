@@ -4,7 +4,7 @@
 
 ## Материалы
 
-- `ga_ahp_defense_guide.md` — сценарий демонстрации генетического подбора и связки ГА + AHP, текст объяснения для выступающего и ответы на типовые вопросы.
+- `ga_ahp_defense_guide.md` — актуальный сценарий демонстрации GA, AHP, Pareto и Hybrid внутри рабочих областей ПО/ТО.
 - `demo_data_contract.md` — контракт ролей demo/educational/regression-данных и контрольный сценарий после этапа 8.
 - `solution_component_editor_defense_guide.md` — финальный сценарий защиты редактора `SolutionComponent` после C9.
 
@@ -45,7 +45,7 @@ PYTHONDONTWRITEBYTECODE=1 python -B scripts/run_solution_component_c9_demo.py
 1. загрузить demo-набор;
 2. показать CAPEX/OPEX и энергетические параметры;
 3. объяснить, что записи получают `scope` и `component_type`;
-4. запустить или показать GA/GA + AHP как формирование и ранжирование альтернатив;
+4. запустить или показать цепочку GA → общий пул → AHP/Pareto → Hybrid;
 5. открыть NPV как финансовое продолжение рассчитанных затрат;
 6. открыть `SolutionComponent`-сценарий и показать, что нестандартные компоненты идут через ту же модель;
 7. сформировать `DecisionReport` в экспорте;

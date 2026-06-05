@@ -59,14 +59,14 @@ AHP-направление связано с академическим сцен
 Практическая цепочка выглядит так:
 
 ```text
-runtime/demo/GA alternatives → CandidateConfigurationService → candidate_configurations → AHP ranking → DecisionReport
+runtime/demo/GA alternatives → CandidateConfigurationService → candidate_configurations → AHP ranking → Hybrid/DecisionReport
 ```
 
 Это означает:
 
-- AHP работает с теми же альтернативами, которые могут использовать GA, GA + AHP и анализ важности критериев;
+- AHP работает с тем же общим пулом альтернатив, который формирует GA и затем используют Pareto, Hybrid и DecisionReport;
 - различие ПО и ТО задаётся не вкладкой, а `AnalysisScopeProfile`;
 - критерии и ограничения должны быть согласованы с профилем анализа;
-- результат AHP становится частью `DecisionReport`, где рядом с ним могут быть GA, гибридная оценка, TCO и NPV.
+- результат AHP становится отдельной частью `DecisionReport`, где рядом с ним показываются GA, Pareto, Hybrid, TCO и NPV.
 
 Для дипломной защиты AHP удобно объяснять так: метод не генерирует инфраструктуру сам, а помогает выбрать лучшую альтернативу из уже сформированного и нормализованного пула.

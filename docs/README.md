@@ -17,7 +17,7 @@
 - `architecture/conceptual_cohesion_completion_summary.md` — итоговая сводка выполнения roadmap, закрытых общих правил, контрольных вопросов и дальнейших направлений;
 - `architecture/current_subject_schema.md` — переходная предметная схема текущих CAPEX/OPEX-категорий, будущих `scope`/`component_type` и связей вкладок с данными;
 - `architecture/analysis_scope_profiles.md` — прикладные профили анализа ПО/ТО: категории, критерии, ограничения, веса и правила объяснения;
-- `architecture/candidate_configurations.md` — единый формат кандидатных альтернатив для AHP, GA, GA + AHP, анализа важности критериев и DecisionReport;
+- `architecture/candidate_configurations.md` — единый формат кандидатных альтернатив для GA, AHP, Pareto, Hybrid, анализа важности критериев и DecisionReport;
 - `architecture/tco_npv_bridge.md` — TCO-модель и финансовый мост между CAPEX/OPEX/электроэнергией и NPV;
 - `architecture/decision_report.md` — единый итоговый отчёт выбора: JSON/Markdown/CSV, объяснение победителя, риски и защитный сценарий;
 - `architecture/legacy_infrastructure_tab.md` — роль старой вкладки ИТ-инфраструктуры как вспомогательной песочницы, namespace `legacy_infrastructure:` и границы участия в аналитике;
@@ -27,7 +27,7 @@
 - `architecture/solution_component_runtime_storage.md` — runtime-хранение `SolutionComponent`, demo-fixture, статусы черновиков и совместимость экспорта;
 - `architecture/solution_component_editor_mvp.md` — MVP пользовательского редактора компонентов решения, профильная форма и предпросмотр нормализации;
 - `architecture/solution_component_financial_integration.md` — финансовая интеграция компонентов редактора с TCO, энергией, NPV и предупреждениями C5;
-- `architecture/solution_component_analytics_integration.md` — аналитическая интеграция компонентов редактора с CandidateConfiguration, AHP, GA и GA + AHP;
+- `architecture/solution_component_analytics_integration.md` — аналитическая интеграция компонентов редактора с CandidateConfiguration, GA, AHP, Pareto и Hybrid;
 - `architecture/solution_component_decision_report_export.md` — интеграция компонентов редактора с DecisionReport, JSON/Markdown/CSV-экспортом и объяснением исключённых черновиков;
 - `architecture/solution_component_sandbox_conversion.md` — ручная конвертация старых sandbox-записей в SolutionComponent без автоматической миграции;
 - `architecture/solution_component_demo_control.md` — финальная C9-связка демонстрации, smoke-проверки и защитного объяснения редактора компонентов;
@@ -71,7 +71,7 @@
 - `research/equipment_metrics_and_catalog_parsing_plan.md` — план перехода от абстрактной производительности к конкретным характеристикам оборудования и best-effort парсингу;
 - `research/ideas/genetic_algorithm_plain_manifest.md` — простое md-объяснение роли ГА;
 - `research/ideas/future_independent_ga_ahp_assessment.md` — идея независимого сопоставления оценок ГА и AHP;
-- `research/ideas/future_hybrid_ga_ahp_score.md` — идея гибридной итоговой оценки ГА и AHP.
+- `research/ideas/future_hybrid_ga_ahp_score.md` — историческая идея гибридной итоговой оценки ГА и AHP.
 
 ### Материалы по работе
 - `traceability.md` — связь между разделами работы, кодом и примерами данных;

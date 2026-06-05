@@ -379,12 +379,24 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         if analysis_scope != self.scope:
             return
         count = int(metadata.get("count") or len(candidates or []))
-        source_label = f"top-{count} GA-кандидатов ({self.scope_label})"
+        self.load_candidate_pool(
+            candidates or [],
+            source_label=f"top-{count} GA-кандидатов ({self.scope_label})",
+            source_method="ga",
+        )
+
+    def load_candidate_pool(
+        self,
+        candidates,
+        *,
+        source_label: str,
+        source_method: str = "manual",
+    ) -> None:
         snapshot = self.candidate_pool_service.replace(
             self.scope,
             candidates or [],
             source_label=source_label,
-            source_method="ga",
+            source_method=source_method,
         )
         if hasattr(self, "configuration_selection_tab"):
             self.configuration_selection_tab.load_candidate_pool(

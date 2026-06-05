@@ -2,7 +2,7 @@
 
 The service is deliberately tolerant to partial inputs.  A user can export a
 report after only entering costs, after running GA, or after completing the full
-GA + AHP + NPV chain.  Missing sections are reported as warnings instead of
+GA, AHP, Hybrid and NPV chain.  Missing sections are reported as warnings instead of
 breaking the export flow.
 """
 
@@ -50,6 +50,7 @@ class DecisionReportService:
         criteria_importance_result: Mapping[str, Any] | None = None,
         genetic_result: Mapping[str, Any] | None = None,
         genetic_ahp_result: Mapping[str, Any] | None = None,
+        hybrid_assessment_result: Mapping[str, Any] | None = None,
         npv_report: Mapping[str, Any] | None = None,
         assumptions: Sequence[str] | None = None,
         risks: Sequence[Mapping[str, Any]] | None = None,
@@ -78,6 +79,7 @@ class DecisionReportService:
             criteria_importance_result=criteria_importance_result,
             genetic_result=genetic_result,
             genetic_ahp_result=genetic_ahp_result,
+            hybrid_assessment_result=hybrid_assessment_result,
         )
         npv_interpretation = self._npv_interpretation(npv_report)
         constraints = self._constraints(analysis_results)
@@ -238,7 +240,8 @@ class DecisionReportService:
             "metrics_used_by_method": {
                 "ahp": ahp_metrics,
                 "ga": ga_metrics,
-                "ga_ahp": sorted(set(ahp_metrics + ga_metrics + hybrid_metrics)),
+                "hybrid": sorted(set(ahp_metrics + ga_metrics + hybrid_metrics)),
+                "legacy_ga_ahp": sorted(set(ahp_metrics + ga_metrics + hybrid_metrics)),
             },
             "export_notes": [
                 "JSON содержит полный машинный snapshot отчёта и компонентный раздел.",
@@ -370,6 +373,11 @@ class DecisionReportService:
     def _metric_names_from_analysis(self, value: Any) -> list[str]:
         if not isinstance(value, Mapping):
             return []
+        if isinstance(value.get("by_scope"), Mapping):
+            names: list[str] = []
+            for payload in value["by_scope"].values():
+                names.extend(self._metric_names_from_analysis(payload))
+            return [name for name in self._unique_text(names) if name]
         names: list[str] = []
         criteria = value.get("criteria")
         if isinstance(criteria, Mapping):
@@ -474,6 +482,7 @@ class DecisionReportService:
         criteria_importance_result: Mapping[str, Any] | None,
         genetic_result: Mapping[str, Any] | None,
         genetic_ahp_result: Mapping[str, Any] | None,
+        hybrid_assessment_result: Mapping[str, Any] | None,
     ) -> dict[str, Any]:
         results: dict[str, Any] = {}
         if ahp_result:
@@ -483,6 +492,9 @@ class DecisionReportService:
         if genetic_result:
             results["genetic_optimization"] = deepcopy(dict(genetic_result))
         if genetic_ahp_result:
+            # Legacy compatibility: old exports may still contain a combined
+            # GA+AHP payload.  Keep it in the machine section, but do not treat
+            # it as the primary UI method after the refactor.
             results["genetic_ahp"] = deepcopy(dict(genetic_ahp_result))
             ahp_report = genetic_ahp_result.get("ahp_report")
             if isinstance(ahp_report, Mapping):
@@ -492,7 +504,9 @@ class DecisionReportService:
                 results.setdefault("genetic_optimization", deepcopy(dict(genetic_summary)))
             export_payload = genetic_ahp_result.get("export_payload")
             if isinstance(export_payload, Mapping) and export_payload.get("hybrid_assessment"):
-                results["hybrid_assessment"] = deepcopy(export_payload.get("hybrid_assessment"))
+                results.setdefault("hybrid_assessment", deepcopy(export_payload.get("hybrid_assessment")))
+        if hybrid_assessment_result:
+            results["hybrid_assessment"] = deepcopy(dict(hybrid_assessment_result))
         return results
 
     def _npv_interpretation(self, npv_report: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -630,49 +644,93 @@ class DecisionReportService:
             "explanation": self._winner_text(recommended, leaders=leaders, agreement=agreement),
         }
 
-    def _ahp_leader(self, value: Any) -> dict[str, Any] | None:
+    def _scoped_payloads(self, value: Any) -> list[tuple[str | None, Mapping[str, Any]]]:
         if not isinstance(value, Mapping):
-            return None
-        final = value.get("final") if isinstance(value.get("final"), Mapping) else {}
-        winner = final.get("winner") if isinstance(final.get("winner"), Mapping) else None
-        if winner:
-            return self._leader("AHP", winner)
-        ranking = final.get("ranking") if isinstance(final.get("ranking"), list) else []
-        return self._leader("AHP", ranking[0]) if ranking and isinstance(ranking[0], Mapping) else None
+            return []
+        by_scope = value.get("by_scope")
+        if isinstance(by_scope, Mapping):
+            return [
+                (str(scope), payload)
+                for scope, payload in by_scope.items()
+                if isinstance(payload, Mapping)
+            ]
+        return [(None, value)]
+
+    def _with_scope_label(self, leader: dict[str, Any], scope: str | None) -> dict[str, Any]:
+        if scope:
+            leader = deepcopy(leader)
+            leader["scope"] = scope
+            if leader.get("method") and "(" not in str(leader["method"]):
+                leader["method"] = f"{leader['method']} / {scope}"
+        return leader
+
+    def _ahp_leader(self, value: Any) -> dict[str, Any] | None:
+        for scope, payload in self._scoped_payloads(value):
+            final = payload.get("final") if isinstance(payload.get("final"), Mapping) else {}
+            winner = final.get("winner") if isinstance(final.get("winner"), Mapping) else None
+            if winner:
+                return self._with_scope_label(self._leader("AHP", winner), scope)
+            ranking = final.get("ranking") if isinstance(final.get("ranking"), list) else []
+            if ranking:
+                first = ranking[0]
+                if isinstance(first, Mapping):
+                    return self._with_scope_label(self._leader("AHP", first), scope)
+                if isinstance(first, (list, tuple)) and first:
+                    score = first[1] if len(first) > 1 else None
+                    return self._with_scope_label(
+                        {
+                            "method": "AHP",
+                            "id": str(first[0]),
+                            "name": str(first[0]),
+                            "rank": 1,
+                            "score": score,
+                            "totals": {},
+                        },
+                        scope,
+                    )
+        return None
 
     def _ga_leader(self, value: Any) -> dict[str, Any] | None:
-        if not isinstance(value, Mapping):
-            return None
-        solutions = value.get("candidate_solutions") if isinstance(value.get("candidate_solutions"), list) else []
-        if solutions and isinstance(solutions[0], Mapping):
-            return self._leader("GA", solutions[0])
-        if value.get("selected_items"):
-            return {
-                "method": "GA",
-                "id": "ga_best",
-                "name": "Лучшее решение GA",
-                "score": self._nested_get(value, "ga_result", "best_agg"),
-            }
+        for scope, payload in self._scoped_payloads(value):
+            solutions = payload.get("candidate_solutions") if isinstance(payload.get("candidate_solutions"), list) else []
+            if solutions and isinstance(solutions[0], Mapping):
+                return self._with_scope_label(self._leader("GA", solutions[0]), scope)
+            candidates = payload.get("candidate_configurations") if isinstance(payload.get("candidate_configurations"), list) else []
+            if candidates and isinstance(candidates[0], Mapping):
+                return self._with_scope_label(self._leader("GA", candidates[0]), scope)
+            if payload.get("selected_items"):
+                return self._with_scope_label(
+                    {
+                        "method": "GA",
+                        "id": "ga_best",
+                        "name": "Лучшее решение GA",
+                        "score": self._nested_get(payload, "ga_result", "best_agg"),
+                    },
+                    scope,
+                )
         return None
 
     def _hybrid_leader(self, value: Any) -> dict[str, Any] | None:
-        if not isinstance(value, Mapping):
-            return None
-        winner = value.get("winner") if isinstance(value.get("winner"), Mapping) else None
-        if winner:
-            return self._leader("GA + AHP", winner)
-        ranking = value.get("ranking") if isinstance(value.get("ranking"), list) else []
-        return self._leader("GA + AHP", ranking[0]) if ranking and isinstance(ranking[0], Mapping) else None
+        for scope, payload in self._scoped_payloads(value):
+            winner = payload.get("winner") if isinstance(payload.get("winner"), Mapping) else None
+            if winner:
+                return self._with_scope_label(self._leader("Hybrid", winner), scope)
+            ranking = payload.get("ranking") if isinstance(payload.get("ranking"), list) else []
+            if ranking and isinstance(ranking[0], Mapping):
+                return self._with_scope_label(self._leader("Hybrid", ranking[0]), scope)
+        return None
 
     def _criteria_importance_leader(self, value: Any) -> dict[str, Any] | None:
-        if not isinstance(value, Mapping):
-            return None
-        ranking = value.get("ranking") if isinstance(value.get("ranking"), list) else []
-        if ranking and isinstance(ranking[0], Mapping):
-            return self._leader("Критериальный анализ", ranking[0])
-        final = value.get("final_nondominated") if isinstance(value.get("final_nondominated"), list) else []
-        if final:
-            return {"method": "Критериальный анализ", "id": str(final[0]), "name": str(final[0])}
+        for scope, payload in self._scoped_payloads(value):
+            ranking = payload.get("ranking") if isinstance(payload.get("ranking"), list) else []
+            if ranking and isinstance(ranking[0], Mapping):
+                return self._with_scope_label(self._leader("Pareto", ranking[0]), scope)
+            final = payload.get("final_nondominated") if isinstance(payload.get("final_nondominated"), list) else []
+            if final:
+                return self._with_scope_label(
+                    {"method": "Pareto", "id": str(final[0]), "name": str(final[0])},
+                    scope,
+                )
         return None
 
     def _leader(self, method: str, item: Mapping[str, Any]) -> dict[str, Any]:
@@ -710,7 +768,7 @@ class DecisionReportService:
         if agreement == "matched" and leaders:
             reasons.append("Основные методы указывают на одного лидера, поэтому вывод считается согласованным.")
         elif leaders:
-            reasons.append("Лидеры методов различаются, поэтому рекомендуемый вариант выбран по приоритету гибридной/AHP-оценки.")
+            reasons.append("Лидеры методов различаются, поэтому рекомендуемый вариант выбран по приоритету Hybrid/AHP-оценки.")
         if cost_model.get("tco"):
             reasons.append("Стоимость владения включена в отчёт как отдельный финансовый блок.")
         if npv_interpretation.get("status") == "positive":

@@ -363,6 +363,16 @@ class CalculatorApp(tk.Tk):
                 ),
             )
 
+        for scope, workspace in self.workspace_tabs_by_scope.items():
+            scope_label = self.analysis_scope_profile_service.labels().get(scope, scope)
+            scope_payload = scoped_payloads.get(scope, {}) if isinstance(scoped_payloads, dict) else {}
+            candidates = scope_payload.get("candidate_configurations", []) if isinstance(scope_payload, dict) else []
+            workspace.load_candidate_pool(
+                candidates,
+                source_label=f"демо-пул {scope_label} из data/fixtures/demo_dataset.json",
+                source_method="demo",
+            )
+
         for scope, tab in self.criteria_importance_tabs_by_scope.items():
             scope_label = self.analysis_scope_profile_service.labels().get(scope, scope)
             case_data = scoped_criteria_cases.get(scope) or demo_decision_payload["criteria_case"]
@@ -423,9 +433,7 @@ class CalculatorApp(tk.Tk):
         csv_path = export_root / "decision_report_candidates.csv"
         components_csv_path = export_root / "decision_report_solution_components.csv"
 
-        genetic_result, genetic_ahp_result, criteria_importance_result = (
-            self._scoped_report_inputs()
-        )
+        scoped_inputs = self._scoped_report_inputs()
 
         report = self.build_decision_report_use_case.execute(
             project={
@@ -433,14 +441,17 @@ class CalculatorApp(tk.Tk):
                 "title": "Итоговый отчёт выбора ИТ-решения",
                 "goal": (
                     "Объяснить выбор ИТ-решения через компоненты, стоимость владения, "
-                    "альтернативы ПО/ТО, AHP, GA, GA + AHP и NPV."
+                    "альтернативы ПО/ТО, GA, AHP, Pareto, Hybrid и NPV."
                 ),
             },
             entities=self.entity_repository.entities,
             cost_totals=self.update_total_costs(),
-            criteria_importance_result=criteria_importance_result,
-            genetic_result=genetic_result,
-            genetic_ahp_result=genetic_ahp_result,
+            candidate_configurations=scoped_inputs["candidate_configurations"],
+            ahp_result=scoped_inputs["ahp_result"],
+            criteria_importance_result=scoped_inputs["criteria_importance_result"],
+            genetic_result=scoped_inputs["genetic_result"],
+            genetic_ahp_result=scoped_inputs["genetic_ahp_result"],
+            hybrid_assessment_result=scoped_inputs["hybrid_assessment_result"],
             npv_report=getattr(self.npv_tab, "last_report", None),
             metadata={
                 "source": "desktop_export_tab",
@@ -466,28 +477,67 @@ class CalculatorApp(tk.Tk):
             "components_csv": components_table_path,
         }
 
-    def _scoped_report_inputs(self):
-        genetic_results = {}
-        genetic_ahp_results = {}
-        criteria_results = {}
+    def _scoped_report_inputs(self) -> dict[str, object]:
+        genetic_results: dict[str, dict] = {}
+        legacy_genetic_ahp_results: dict[str, dict] = {}
+        ahp_results: dict[str, dict] = {}
+        criteria_results: dict[str, dict] = {}
+        hybrid_results: dict[str, dict] = {}
+        candidate_configurations: list[dict] = []
 
         for scope, workspace in self.workspace_tabs_by_scope.items():
             last_genetic_result = getattr(workspace.genetic_optimization_tab, "last_result", None)
             if isinstance(last_genetic_result, dict):
                 if "ahp_report" in last_genetic_result and "genetic_optimization" in last_genetic_result:
-                    genetic_ahp_results[scope] = last_genetic_result
+                    legacy_genetic_ahp_results[scope] = last_genetic_result
                 else:
                     genetic_results[scope] = last_genetic_result
 
-            criteria_report = getattr(workspace.criteria_importance_tab, "analysis_report", None)
+            ahp_report = workspace.decision_state.get("ahp_result") or getattr(
+                workspace.configuration_selection_tab,
+                "last_report",
+                None,
+            )
+            if isinstance(ahp_report, dict):
+                ahp_results[scope] = ahp_report
+
+            criteria_report = workspace.decision_state.get("pareto_result") or getattr(
+                workspace.criteria_importance_tab,
+                "analysis_report",
+                None,
+            )
             if isinstance(criteria_report, dict):
                 criteria_results[scope] = criteria_report
 
-        return (
-            {"by_scope": genetic_results} if genetic_results else None,
-            {"by_scope": genetic_ahp_results} if genetic_ahp_results else None,
-            {"by_scope": criteria_results} if criteria_results else None,
-        )
+            hybrid_payload = getattr(workspace.hybrid_decision_assessment_tab, "last_result", None)
+            if isinstance(hybrid_payload, dict):
+                assessment = hybrid_payload.get("hybrid_assessment")
+                if isinstance(assessment, dict):
+                    hybrid_results[scope] = assessment
+
+            snapshot = workspace.decision_state.get("candidate_pool_snapshot")
+            if snapshot is not None:
+                for index, candidate in enumerate(getattr(snapshot, "candidates", []) or [], start=1):
+                    if not isinstance(candidate, dict):
+                        continue
+                    exported = dict(candidate)
+                    metadata = dict(exported.get("metadata") or {})
+                    metadata.setdefault("candidate_pool_scope", scope)
+                    metadata.setdefault("candidate_pool_source", getattr(snapshot, "source_label", "общий пул альтернатив"))
+                    metadata.setdefault("candidate_pool_method", getattr(snapshot, "source_method", "manual"))
+                    metadata.setdefault("candidate_pool_position", index)
+                    exported["metadata"] = metadata
+                    exported.setdefault("scope", scope)
+                    candidate_configurations.append(exported)
+
+        return {
+            "candidate_configurations": candidate_configurations or None,
+            "ahp_result": {"by_scope": ahp_results} if ahp_results else None,
+            "genetic_result": {"by_scope": genetic_results} if genetic_results else None,
+            "genetic_ahp_result": {"by_scope": legacy_genetic_ahp_results} if legacy_genetic_ahp_results else None,
+            "hybrid_assessment_result": {"by_scope": hybrid_results} if hybrid_results else None,
+            "criteria_importance_result": {"by_scope": criteria_results} if criteria_results else None,
+        }
 
     def _scoped_analysis_state(self) -> dict:
         state = {}
@@ -503,8 +553,20 @@ class CalculatorApp(tk.Tk):
                 "criteria_status": self._analysis_status(
                     getattr(criteria_tab, "analysis_report", None)
                 ),
+                "pool_status": self._candidate_pool_status(workspace),
+                "hybrid_status": self._analysis_status(
+                    getattr(workspace.hybrid_decision_assessment_tab, "last_result", None)
+                ),
             }
         return state
+
+    def _candidate_pool_status(self, workspace) -> str:
+        snapshot = workspace.decision_state.get("candidate_pool_snapshot")
+        if snapshot is None:
+            return "пул не передан"
+        count = len(getattr(snapshot, "candidates", []) or [])
+        source = getattr(snapshot, "source_label", "общий пул")
+        return f"{count} альтернатив; источник: {source}"
 
     def _analysis_status(self, payload) -> str:
         if not payload:
@@ -513,8 +575,10 @@ class CalculatorApp(tk.Tk):
             status = payload.get("status")
             if status:
                 return str(status)
+            if "hybrid_assessment" in payload:
+                return "Hybrid рассчитан"
             if "ahp_report" in payload and "genetic_optimization" in payload:
-                return "GA + AHP рассчитано"
+                return "legacy GA+AHP рассчитано"
             return "рассчитано"
         return "есть данные"
 
@@ -541,9 +605,11 @@ class CalculatorApp(tk.Tk):
         lines.append("Состояние аналитики по областям:")
         for scope, item in self._scoped_analysis_state().items():
             lines.append(
-                f"- {item['label']}: GA={item['ga_status']}; "
+                f"- {item['label']}: пул={item['pool_status']}; "
+                f"GA={item['ga_status']}; "
                 f"AHP-конфигураций={item['ahp_configurations']}; "
-                f"обоснование={item['criteria_status']}."
+                f"Pareto={item['criteria_status']}; "
+                f"Hybrid={item['hybrid_status']}."
             )
 
         npv_report = getattr(self.npv_tab, "last_report", None)
@@ -607,7 +673,7 @@ class CalculatorApp(tk.Tk):
         payload = json.dumps(totals, ensure_ascii=False, indent=2, default=str)
         return (
             "Этот фрагмент фиксирует только финансовую сводку. Он не подтверждает, "
-            "что выбранная конфигурация лучшая по GA/AHP/Pareto, и не заменяет NPV.\n\n"
+            "что выбранная конфигурация лучшая по GA/AHP/Pareto/Hybrid, и не заменяет NPV.\n\n"
             "## Текущие итоги\n\n"
             f"- CAPEX: {self._format_money(totals.get('total_capital', 0.0))}\n"
             f"- OPEX разовый: {self._format_money(totals.get('total_operational_one_time', 0.0))}\n"
@@ -625,18 +691,31 @@ class CalculatorApp(tk.Tk):
         ga_result = getattr(workspace.genetic_optimization_tab, "last_result", None)
         criteria_report = getattr(workspace.criteria_importance_tab, "analysis_report", None)
         ahp_count = len(getattr(workspace.configuration_selection_tab, "configurations", {}) or {})
+        snapshot = workspace.decision_state.get("candidate_pool_snapshot")
+        hybrid_result = getattr(workspace.hybrid_decision_assessment_tab, "last_result", None)
+        ahp_result = workspace.decision_state.get("ahp_result") or getattr(
+            workspace.configuration_selection_tab,
+            "last_report",
+            None,
+        )
         payload = {
             "scope": scope,
-            "ga_or_ga_ahp": ga_result,
-            "criteria_importance": criteria_report,
+            "candidate_pool_source": getattr(snapshot, "source_label", None) if snapshot else None,
+            "candidate_pool_count": len(getattr(snapshot, "candidates", []) or []) if snapshot else 0,
+            "ga": ga_result,
+            "ahp": ahp_result,
+            "pareto": criteria_report,
+            "hybrid": hybrid_result,
             "ahp_configurations_count": ahp_count,
         }
         return (
             f"Экспортируется только аналитика области {label}. "
             "Без соседней области, OPEX/TCO и NPV это не является полным обоснованием выбора.\n\n"
-            f"- GA/GA+AHP: {self._analysis_status(ga_result)}\n"
+            f"- Общий пул: {self._candidate_pool_status(workspace)}\n"
+            f"- GA: {self._analysis_status(ga_result)}\n"
             f"- AHP-конфигураций загружено: {ahp_count}\n"
-            f"- Pareto/критериальное обоснование: {self._analysis_status(criteria_report)}\n\n"
+            f"- Pareto/критериальное обоснование: {self._analysis_status(criteria_report)}\n"
+            f"- Hybrid: {self._analysis_status(hybrid_result)}\n\n"
             "## Машиночитаемый снимок\n\n"
             "```json\n"
             f"{json.dumps(payload, ensure_ascii=False, indent=2, default=str)}\n"
@@ -652,7 +731,7 @@ class CalculatorApp(tk.Tk):
             )
         return (
             "Экспортируется только NPV. Он показывает финансовую целесообразность сценария, "
-            "но не объясняет, почему именно эта конфигурация лучшая по GA/AHP/Pareto.\n\n"
+            "но не объясняет, почему именно эта конфигурация лучшая по GA/AHP/Pareto/Hybrid.\n\n"
             "```json\n"
             f"{json.dumps(npv_report, ensure_ascii=False, indent=2, default=str)}\n"
             "```"
