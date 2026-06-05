@@ -1,0 +1,121 @@
+QWidget {
+    background: #f6f8fb;
+    color: #17212f;
+    font-family: "Segoe UI", Arial;
+    font-size: 10pt;
+}
+
+QMainWindow, QDialog {
+    background: #f6f8fb;
+}
+
+QFrame#surface,
+QWidget#surface,
+QFrame#card,
+QWidget#card {
+    background: #ffffff;
+    border: 1px solid #d8e0ea;
+    border-radius: 10px;
+}
+
+QLabel#pageTitle {
+    font-size: 17pt;
+    font-weight: 650;
+    color: #17212f;
+}
+
+QLabel#pageStatus,
+QLabel#mutedText,
+QLabel#statusText {
+    color: #607086;
+    font-size: 9pt;
+}
+
+QPushButton {
+    min-height: 32px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid #d8e0ea;
+    background: #ffffff;
+    color: #17212f;
+}
+
+QPushButton:hover {
+    background: #eef3f8;
+}
+
+QPushButton[role="primary"] {
+    background: #3b78e7;
+    border-color: #3b78e7;
+    color: #ffffff;
+}
+
+QPushButton[role="primary"]:hover {
+    background: #2f66c8;
+    border-color: #2f66c8;
+}
+
+QPushButton[role="danger"] {
+    color: #c2413b;
+    border-color: #f0c0bc;
+}
+
+QToolButton {
+    min-height: 28px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+}
+
+QToolButton:hover {
+    background: #eef3f8;
+    border-color: #d8e0ea;
+}
+
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit, QPlainTextEdit {
+    background: #ffffff;
+    border: 1px solid #cbd6e2;
+    border-radius: 8px;
+    min-height: 30px;
+    padding: 4px 8px;
+    selection-background-color: #3b78e7;
+}
+
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
+    border-color: #3b78e7;
+}
+
+QTableView, QTableWidget {
+    background: #ffffff;
+    alternate-background-color: #f2f5f9;
+    border: 1px solid #d8e0ea;
+    border-radius: 8px;
+    gridline-color: #e4ebf3;
+}
+
+QHeaderView::section {
+    background: #eef3f8;
+    border: none;
+    border-right: 1px solid #d8e0ea;
+    border-bottom: 1px solid #d8e0ea;
+    padding: 6px;
+    font-weight: 600;
+}
+
+QScrollBar:vertical, QScrollBar:horizontal {
+    background: transparent;
+    border: none;
+    margin: 2px;
+}
+
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+    background: #c7d2df;
+    border-radius: 5px;
+    min-height: 30px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:hover {
+    background: #aebdce;
+}

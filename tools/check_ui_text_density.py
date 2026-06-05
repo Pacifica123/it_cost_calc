@@ -43,6 +43,10 @@ VISIBLE_CALL_NAMES = {
     "SecondaryButton",
     "DangerButton",
     "EmptyState",
+    "ActionBar",
+    "StatusStrip",
+    "CollapsibleSection",
+    "SettingsPanel",
 }
 
 VISIBLE_METHOD_NAMES = {
@@ -50,6 +54,10 @@ VISIBLE_METHOD_NAMES = {
     "setTitle",
     "setWindowTitle",
     "setPlaceholderText",
+    "set_message",
+    "set_status",
+    "add_primary_action",
+    "add_secondary_action",
     "addTab",
     "insertTab",
     "setTabText",
@@ -65,6 +73,11 @@ VISIBLE_KEYWORDS = {
     "placeholder",
     "placeholder_text",
     "window_title",
+    "message",
+    "status",
+    "subtitle",
+    "description",
+    "action_text",
 }
 
 HELP_OR_TOOLTIP_NAMES = {
