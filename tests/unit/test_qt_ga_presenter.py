@@ -127,13 +127,13 @@ def test_ga_screen_source_keeps_primary_action_outside_parameter_grid():
         / "ga_screen.py"
     ).read_text(encoding="utf-8")
 
-    assert "layout = QVBoxLayout(frame)" in source
+    assert "layout.addLayout(self._build_run_actions(), 0)" in source
     assert "actions.addWidget(self.run_button, 0)" in source
     assert "layout.addWidget(self.run_button, 3, 3)" not in source
     assert "NoButtons" in source
 
 
-def test_ga_screen_source_uses_single_visible_field_row():
+def test_ga_screen_source_uses_separate_parameter_section():
     source = (
         Path(__file__).resolve().parents[2]
         / "src"
@@ -143,7 +143,8 @@ def test_ga_screen_source_uses_single_visible_field_row():
         / "ga_screen.py"
     ).read_text(encoding="utf-8")
 
-    assert "QSizePolicy.Policy.Minimum" in source
-    assert "frame.setMinimumHeight(206)" in source
+    assert "layout.addWidget(self._build_parameters_section(), 0)" in source
+    assert "frame.setMinimumHeight(206)" not in source
+    assert "self.parameters_section = CollapsibleSection(" in source
     assert "first_row = QHBoxLayout()" not in source
     assert "second_row = QHBoxLayout()" not in source

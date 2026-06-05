@@ -62,6 +62,8 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
 
         layout.addWidget(self._build_summary_cards(), 0)
         layout.addWidget(self._build_controls(), 0)
+        layout.addWidget(self._build_parameters_section(), 0)
+        layout.addLayout(self._build_run_actions(), 0)
 
         self.candidate_model = CandidateTableModel([])
         self.candidate_table = SmartTable(
@@ -144,11 +146,10 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
     def _build_controls(self) -> QWidget:  # type: ignore[valid-type]
         frame = QFrame(self)
         frame.setObjectName("surface")
-        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        frame.setMinimumHeight(206)
+        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(8)
 
         defaults = self.presenter.default_input()
         self.budget_input = self._money_input(defaults.budget)
@@ -167,32 +168,35 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         fields_layout.addWidget(self._field_box("Популяция", self.population_input, fields), 1)
         fields_layout.addWidget(self._field_box("Поколений", self.generations_input, fields), 1)
         layout.addWidget(fields, 0)
+        return frame
 
-        advanced = QWidget(frame)
-        advanced_layout = QHBoxLayout(advanced)
-        advanced_layout.setContentsMargins(0, 0, 0, 0)
-        advanced_layout.setSpacing(10)
-        advanced_layout.addWidget(self._field_box("Мутация", self.mutation_input, advanced), 1)
-        advanced_layout.addWidget(self._field_box("Seed", self.seed_input, advanced), 1)
+    def _build_parameters_section(self) -> CollapsibleSection:
+        defaults_panel = QFrame(self)
+        defaults_panel.setObjectName("card")
+        row = QHBoxLayout(defaults_panel)
+        row.setContentsMargins(10, 10, 10, 10)
+        row.setSpacing(10)
+        row.addWidget(self._field_box("Мутация", self.mutation_input, defaults_panel), 1)
+        row.addWidget(self._field_box("Seed", self.seed_input, defaults_panel), 1)
         self.parameters_section = CollapsibleSection(
             "Параметры",
-            advanced,
-            frame,
+            defaults_panel,
+            self,
             tooltip="Редкие параметры запуска GA.",
             expanded=False,
         )
-        layout.addWidget(self.parameters_section, 0)
+        return self.parameters_section
 
-        self.run_button = QPushButton("Запустить GA", frame)
-        self.run_button.setProperty("role", "primary")
-        self.run_button.setMinimumHeight(38)
-        self.run_button.clicked.connect(self._run_ga)
+    def _build_run_actions(self) -> QHBoxLayout:  # type: ignore[valid-type]
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
         actions.addStretch(1)
+        self.run_button = QPushButton("Запустить GA", self)
+        self.run_button.setProperty("role", "primary")
+        self.run_button.setMinimumHeight(38)
+        self.run_button.clicked.connect(self._run_ga)
         actions.addWidget(self.run_button, 0)
-        layout.addLayout(actions, 0)
-        return frame
+        return actions
 
     def _field_box(self, title: str, field: QWidget, parent: QWidget) -> QWidget:  # type: ignore[valid-type]
         box = QWidget(parent)
