@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Iterable
 
 from ui_qt.widgets.text_rules import assert_short_text
@@ -43,12 +44,14 @@ class WorkflowStepper(QWidget):  # type: ignore[misc,valid-type]
         *,
         steps: Iterable[WorkflowStep] = DEFAULT_DECISION_STEPS,
         active_step_id: str = "data",
+        on_step_changed: Callable[[str], None] | None = None,
     ) -> None:
         if QPushButton is None:
             raise RuntimeError("PySide6 is required to create WorkflowStepper")
         super().__init__(parent)
         self.setObjectName("surface")
         self._buttons: dict[str, QPushButton] = {}
+        self._callback = on_step_changed
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
 
@@ -63,6 +66,7 @@ class WorkflowStepper(QWidget):  # type: ignore[misc,valid-type]
             button.setEnabled(step.enabled)
             if step.tooltip:
                 button.setToolTip(step.tooltip)
+            button.clicked.connect(lambda _checked=False, value=step.step_id: self._emit_step(value))
             self._group.addButton(button)
             self._buttons[step.step_id] = button
             layout.addWidget(button, 0)
@@ -74,3 +78,13 @@ class WorkflowStepper(QWidget):  # type: ignore[misc,valid-type]
         if button is None:
             raise ValueError(f"Unknown workflow step: {step_id!r}")
         button.setChecked(True)
+
+    def set_step_enabled(self, step_id: str, enabled: bool) -> None:
+        button = self._buttons.get(step_id)
+        if button is not None:
+            button.setEnabled(enabled)
+
+    def _emit_step(self, step_id: str) -> None:
+        self.set_active(step_id)
+        if self._callback is not None:
+            self._callback(step_id)

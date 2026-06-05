@@ -12,14 +12,17 @@ from typing import Any, Mapping
 from application.services.cost_aggregation_service import CostAggregationService
 from application.services.decision_report_service import DecisionReportService
 from application.services.entity_catalog_service import EntityCatalogService
+from application.services.genetic_optimization_service import GeneticOptimizationService
 from application.services.electricity_cost_service import ElectricityCostService
 from application.services.equipment_service import EquipmentService
 from application.services.npv_report_service import NPVReportService
+from application.services.scoped_candidate_pool_service import CandidatePoolSnapshot, ScopedCandidatePoolService
 from application.services.solution_component_runtime_service import SolutionComponentRuntimeService
 from application.use_cases.build_decision_report import BuildDecisionReportUseCase
 from application.use_cases.build_npv_report import BuildNpvReportUseCase
 from application.use_cases.calculate_electricity_costs import CalculateElectricityCostsUseCase
 from application.use_cases.load_demo_dataset import LoadDemoDatasetUseCase
+from application.use_cases.run_genetic_optimization import RunGeneticOptimizationUseCase
 from application.use_cases.export_cost_report import ExportCostReportUseCase
 from application.use_cases.prepare_cost_summary import PrepareCostSummaryUseCase
 from infrastructure.exporters.decision_report_exporter import (
@@ -106,6 +109,11 @@ class QtAppPresenter:
         )
         self.npv_report_builder = BuildNpvReportUseCase(NPVReportService())
         self.decision_report_builder = BuildDecisionReportUseCase(DecisionReportService())
+        self.genetic_optimization_service = GeneticOptimizationService(self.repository)
+        self.genetic_optimizer = RunGeneticOptimizationUseCase(
+            self.genetic_optimization_service,
+        )
+        self.scoped_candidate_pool_service = ScopedCandidatePoolService()
         self.demo_loader = LoadDemoDatasetUseCase(self.storage, self.equipment_service)
         self._electricity_profile: dict[str, float] = {
             "hours_per_day": 8.0,
@@ -114,6 +122,7 @@ class QtAppPresenter:
         }
         self._electricity_report: dict[str, Any] = {"total_cost": 0.0, "items": []}
         self._npv_report: dict[str, Any] = {}
+        self._ga_results: dict[str, dict[str, Any]] = {}
 
     @property
     def entities(self) -> dict[str, list[dict[str, Any]]]:
@@ -173,6 +182,9 @@ class QtAppPresenter:
     def _reset_derived_results(self) -> None:
         self._reset_electricity_result()
         self._npv_report = {}
+        self._ga_results.clear()
+        self.scoped_candidate_pool_service.clear("technical")
+        self.scoped_candidate_pool_service.clear("software")
 
     def _reset_electricity_result(self) -> None:
         self._electricity_report = {"total_cost": 0.0, "items": []}
@@ -263,6 +275,51 @@ class QtAppPresenter:
 
     def get_npv_report(self) -> dict[str, Any]:
         return deepcopy(self._npv_report)
+
+
+    def run_genetic_optimization(
+        self,
+        *,
+        scope: str,
+        max_budget: float | None = None,
+        max_power: float | None = None,
+        target_units: float | None = None,
+        ga_params: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run GA for one analysis scope and update the shared candidate pool."""
+
+        result = self.genetic_optimizer.execute(
+            source=self.repository,
+            analysis_scope=scope,
+            max_budget=max_budget,
+            max_power=max_power,
+            target_units=target_units,
+            ga_params=dict(ga_params or {}),
+        )
+        scope_key = str(scope)
+        self._ga_results[scope_key] = deepcopy(result)
+        self.scoped_candidate_pool_service.replace_from_ga_result(
+            scope_key,
+            result,
+            source_label=f"GA top-N {scope_key}",
+        )
+        return deepcopy(result)
+
+    def get_ga_result(self, scope: str) -> dict[str, Any]:
+        """Return latest GA result for a ПО/ТО scope."""
+
+        return deepcopy(self._ga_results.get(str(scope), {}))
+
+    def get_candidate_pool_snapshot(self, scope: str) -> CandidatePoolSnapshot:
+        """Return latest shared candidate-pool snapshot for a ПО/ТО scope."""
+
+        snapshot = self.scoped_candidate_pool_service.get(scope)
+        return CandidatePoolSnapshot(
+            scope=snapshot.scope,
+            candidates=deepcopy(snapshot.candidates),
+            source_label=snapshot.source_label,
+            source_method=snapshot.source_method,
+        )
 
 
     def generated_reports_dir(self) -> Path:

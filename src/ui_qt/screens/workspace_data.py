@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
-
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL
 from ui_qt.models import RowTableModel
-from ui_qt.navigation import WorkflowStepper
+from ui_qt.navigation import WorkflowStep, WorkflowStepper
 from ui_qt.presenters import QtAppPresenter, WorkspacePresenter, format_money
+from ui_qt.screens.decision import GaScreen
 from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint, SmartTable
 
 try:
@@ -51,7 +50,7 @@ _CATEGORY_HEADERS = {
 
 
 class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
-    """Qt data step for software and technical workspaces."""
+    """Qt data and GA steps for software and technical workspaces."""
 
     def __init__(
         self,
@@ -74,31 +73,33 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.setSpacing(10)
 
         layout.addWidget(self._build_header(), 0)
-        layout.addWidget(WorkflowStepper(self), 0)
-        layout.addWidget(self._build_summary_cards(), 0)
-
-        self.content_stack = QStackedLayout()
-        self.empty_state = EmptyState(
-            "Нет данных",
+        self.stepper = WorkflowStepper(
             self,
-            status="Загрузите демо",
-            details=(
-                "Нажмите «Демо» в верхней панели или создайте записи через редактор компонентов."
-            ),
+            steps=self._workflow_steps(False),
+            active_step_id="data",
+            on_step_changed=self._open_step,
         )
-        self.data_panel = self._build_data_panel()
-        self.content_stack.addWidget(self.empty_state)
-        self.content_stack.addWidget(self.data_panel)
-        layout.addLayout(self.content_stack, 1)
+        layout.addWidget(self.stepper, 0)
 
-        actions = QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        self.backlog_button = QPushButton("К GA", self)
-        self.backlog_button.setEnabled(False)
-        self.backlog_button.setToolTip("Экран GA будет перенесён следующим патчем маршрута.")
-        actions.addStretch(1)
-        actions.addWidget(self.backlog_button, 0)
-        layout.addLayout(actions, 0)
+        self.step_stack = QStackedLayout()
+        self.data_step = self._build_data_step()
+        self.ga_step = GaScreen(
+            self.presenter.app_presenter,
+            self,
+            scope=self.presenter.scope,
+        )
+        self.step_stack.addWidget(self.data_step)
+        self.step_stack.addWidget(self.ga_step)
+        layout.addLayout(self.step_stack, 1)
+
+    def _workflow_steps(self, data_ready: bool) -> tuple[WorkflowStep, ...]:
+        return (
+            WorkflowStep("data", "Данные", enabled=True),
+            WorkflowStep("ga", "GA", enabled=data_ready, tooltip="Сначала подготовьте данные."),
+            WorkflowStep("ahp", "AHP", tooltip="Будет доступно после GA."),
+            WorkflowStep("pareto", "Pareto", tooltip="Будет доступно после AHP."),
+            WorkflowStep("hybrid", "Гибрид", tooltip="Итог появится после Pareto."),
+        )
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
         header = QFrame(self)
@@ -109,7 +110,7 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         row.addWidget(CompactLabel("Данные", header), 0)
         row.addWidget(
             InfoHint(
-                "Здесь собирается исходный набор области. GA, AHP, Pareto и гибрид будут отдельными шагами.",
+                "Здесь собирается исходный набор области. GA запускается следующим шагом.",
                 header,
             ),
             0,
@@ -118,6 +119,34 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.status_label = CompactLabel(self.presenter.label, header)
         row.addWidget(self.status_label, 0)
         return header
+
+    def _build_data_step(self) -> QWidget:  # type: ignore[valid-type]
+        step = QWidget(self)
+        layout = QVBoxLayout(step)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(self._build_summary_cards(), 0)
+
+        self.content_stack = QStackedLayout()
+        self.empty_state = EmptyState(
+            "Нет данных",
+            step,
+            status="Загрузите демо",
+            details="Нажмите «Демо» или создайте записи через компоненты.",
+        )
+        self.data_panel = self._build_data_panel(step)
+        self.content_stack.addWidget(self.empty_state)
+        self.content_stack.addWidget(self.data_panel)
+        layout.addLayout(self.content_stack, 1)
+
+        actions = QHBoxLayout()
+        actions.setContentsMargins(0, 0, 0, 0)
+        self.ga_button = QPushButton("К GA", step)
+        self.ga_button.clicked.connect(lambda: self._open_step("ga"))
+        actions.addStretch(1)
+        actions.addWidget(self.ga_button, 0)
+        layout.addLayout(actions, 0)
+        return step
 
     def _build_summary_cards(self) -> QWidget:  # type: ignore[valid-type]
         box = QWidget(self)
@@ -147,8 +176,8 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(value_label)
         return card, value_label
 
-    def _build_data_panel(self) -> QWidget:  # type: ignore[valid-type]
-        panel = QWidget(self)
+    def _build_data_panel(self, parent: QWidget) -> QWidget:  # type: ignore[valid-type]
+        panel = QWidget(parent)
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(10)
@@ -189,27 +218,25 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             table_height=148,
         )
 
-        self._detail_sections: list[CollapsibleSection] = []
-
         self.category_section = CollapsibleSection(
             "Категории",
             self.category_table,
             panel,
-            tooltip="Краткая сводка по группам данных текущей области.",
+            tooltip="Краткая сводка по группам данных.",
             expanded=True,
         )
         self.capex_section = CollapsibleSection(
             "CAPEX",
             self.capex_table,
             panel,
-            tooltip="Разовые активы текущей области анализа.",
+            tooltip="Разовые активы текущей области.",
             expanded=False,
         )
         self.opex_section = CollapsibleSection(
             "OPEX",
             self.opex_table,
             panel,
-            tooltip="Регулярные и проектные затраты текущей области.",
+            tooltip="Регулярные и проектные затраты.",
             expanded=False,
         )
         self._detail_sections = [
@@ -229,12 +256,20 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         return panel
 
     def _sync_workspace_accordion(self, current: CollapsibleSection, expanded: bool) -> None:
-        """Keep the data workspace readable by opening one detail table at a time."""
         if not expanded:
             return
         for section in self._detail_sections:
             if section is not current:
                 section.set_expanded(False)
+
+    def _open_step(self, step_id: str) -> None:
+        if step_id == "ga" and self.presenter.has_data():
+            self.step_stack.setCurrentWidget(self.ga_step)
+            self.stepper.set_active("ga")
+            self.ga_step.refresh_data()
+            return
+        self.step_stack.setCurrentWidget(self.data_step)
+        self.stepper.set_active("data")
 
     def refresh_data(self) -> None:
         summary = self.presenter.summary()
@@ -249,10 +284,15 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.category_table.refresh_state()
         self.capex_table.refresh_state()
         self.opex_table.refresh_state()
-        self.category_section.set_expanded(summary.row_count > 0)
+        data_ready = summary.row_count > 0
+        self.stepper.set_step_enabled("ga", data_ready)
+        self.ga_button.setEnabled(data_ready)
+        self.ga_button.setToolTip("" if data_ready else "Сначала нужны данные.")
+        self.category_section.set_expanded(data_ready)
         self.capex_section.set_expanded(False)
         self.opex_section.set_expanded(False)
-        self.content_stack.setCurrentWidget(self.data_panel if summary.row_count else self.empty_state)
+        self.content_stack.setCurrentWidget(self.data_panel if data_ready else self.empty_state)
+        self.ga_step.refresh_data()
 
 
 class SoftwareWorkspaceScreen(WorkspaceDataScreen):  # type: ignore[misc]
