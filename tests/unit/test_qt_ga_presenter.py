@@ -115,3 +115,19 @@ def test_ga_presenter_uses_software_scope_only(tmp_path: Path):
     assert result["status"] == "ok"
     assert result["parameters"]["categories"] == ["licenses"]
     assert presenter.summary().label == "ПО"
+
+
+def test_ga_screen_source_keeps_primary_action_outside_parameter_grid():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "ui_qt"
+        / "screens"
+        / "decision"
+        / "ga_screen.py"
+    ).read_text(encoding="utf-8")
+
+    assert "layout = QVBoxLayout(frame)" in source
+    assert "actions.addWidget(self.run_button, 0)" in source
+    assert "layout.addWidget(self.run_button, 3, 3)" not in source
+    assert "NoButtons" in source

@@ -9,6 +9,7 @@ from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint
 try:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import (
+        QAbstractSpinBox,
         QDoubleSpinBox,
         QFrame,
         QGridLayout,
@@ -25,7 +26,7 @@ except ModuleNotFoundError as exc:
     if exc.name != "PySide6":
         raise
     Qt = None  # type: ignore[assignment]
-    QDoubleSpinBox = QFrame = QGridLayout = QHBoxLayout = QLabel = QPushButton = QSizePolicy = QSpinBox = None  # type: ignore[assignment]
+    QAbstractSpinBox = QDoubleSpinBox = QFrame = QGridLayout = QHBoxLayout = QLabel = QPushButton = QSizePolicy = QSpinBox = None  # type: ignore[assignment]
     QStackedLayout = QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
 
@@ -145,10 +146,9 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
     def _build_controls(self) -> QWidget:  # type: ignore[valid-type]
         frame = QFrame(self)
         frame.setObjectName("surface")
-        layout = QGridLayout(frame)
+        layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 10, 12, 10)
-        layout.setHorizontalSpacing(10)
-        layout.setVerticalSpacing(8)
+        layout.setSpacing(10)
 
         defaults = self.presenter.default_input()
         self.budget_input = self._money_input(defaults.budget)
@@ -158,19 +158,29 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         self.mutation_input = self._ratio_input(defaults.mutation_rate)
         self.seed_input = self._spin_input(defaults.seed, 0, 1_000_000)
 
-        layout.addWidget(QLabel("Бюджет", frame), 0, 0)
-        layout.addWidget(self.budget_input, 0, 1)
-        layout.addWidget(QLabel("Мин. мест", frame), 0, 2)
-        layout.addWidget(self.units_input, 0, 3)
-        layout.addWidget(QLabel("Популяция", frame), 1, 0)
-        layout.addWidget(self.population_input, 1, 1)
-        layout.addWidget(QLabel("Поколений", frame), 1, 2)
-        layout.addWidget(self.generations_input, 1, 3)
+        fields = QWidget(frame)
+        fields_layout = QGridLayout(fields)
+        fields_layout.setContentsMargins(0, 0, 0, 0)
+        fields_layout.setHorizontalSpacing(10)
+        fields_layout.setVerticalSpacing(8)
+        fields_layout.setColumnStretch(1, 1)
+        fields_layout.setColumnStretch(3, 1)
+        fields_layout.addWidget(QLabel("Бюджет", fields), 0, 0)
+        fields_layout.addWidget(self.budget_input, 0, 1)
+        fields_layout.addWidget(QLabel("Мин. мест", fields), 0, 2)
+        fields_layout.addWidget(self.units_input, 0, 3)
+        fields_layout.addWidget(QLabel("Популяция", fields), 1, 0)
+        fields_layout.addWidget(self.population_input, 1, 1)
+        fields_layout.addWidget(QLabel("Поколений", fields), 1, 2)
+        fields_layout.addWidget(self.generations_input, 1, 3)
+        layout.addWidget(fields, 0)
 
         advanced = QWidget(frame)
         advanced_layout = QGridLayout(advanced)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.setHorizontalSpacing(10)
+        advanced_layout.setColumnStretch(1, 1)
+        advanced_layout.setColumnStretch(3, 1)
         advanced_layout.addWidget(QLabel("Мутация", advanced), 0, 0)
         advanced_layout.addWidget(self.mutation_input, 0, 1)
         advanced_layout.addWidget(QLabel("Seed", advanced), 0, 2)
@@ -182,22 +192,28 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
             tooltip="Редкие параметры запуска GA.",
             expanded=False,
         )
-        layout.addWidget(self.parameters_section, 2, 0, 1, 4)
+        layout.addWidget(self.parameters_section, 0)
 
         self.run_button = QPushButton("Запустить GA", frame)
         self.run_button.setProperty("role", "primary")
         self.run_button.clicked.connect(self._run_ga)
-        layout.addWidget(self.run_button, 3, 3)
+        actions = QHBoxLayout()
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.addStretch(1)
+        actions.addWidget(self.run_button, 0)
+        layout.addLayout(actions, 0)
         return frame
 
     def _spin_input(self, value: int, minimum: int, maximum: int) -> QSpinBox:  # type: ignore[valid-type]
         field = QSpinBox(self)
+        self._make_compact_number_field(field)
         field.setRange(minimum, maximum)
         field.setValue(int(value))
         return field
 
     def _money_input(self, value: float) -> QDoubleSpinBox:  # type: ignore[valid-type]
         field = QDoubleSpinBox(self)
+        self._make_compact_number_field(field)
         field.setRange(0.0, 1_000_000_000.0)
         field.setDecimals(2)
         field.setSingleStep(10_000.0)
@@ -206,11 +222,17 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
 
     def _ratio_input(self, value: float) -> QDoubleSpinBox:  # type: ignore[valid-type]
         field = QDoubleSpinBox(self)
+        self._make_compact_number_field(field)
         field.setRange(0.0, 1.0)
         field.setDecimals(4)
         field.setSingleStep(0.01)
         field.setValue(float(value))
         return field
+
+    def _make_compact_number_field(self, field: QSpinBox | QDoubleSpinBox) -> None:  # type: ignore[valid-type]
+        field.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        field.setMinimumHeight(36)
+        field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def refresh_data(self) -> None:
         summary = self.presenter.summary()
