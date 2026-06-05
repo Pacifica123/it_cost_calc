@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "title": "Wi-Fi роутер TP-Link Archer Air R5 [1 LAN, 1000 Мбит/с, 100 Мбит/с, 4 (802.11n), 5 (802.11ac), 6 (802.11ax), Wi-Fi 2976 Мбит/с, IPv6]",
+    "url": "https://www.dns-shop.ru/product/demo-archer-air-r5/",
+    "price": "7999",
+    "price_int": 7999,
+    "specs": {}
+  },
+  {
+    "title": "Wi-Fi роутер Example Manual [4 LAN, 1000 Мбит/с, Wi-Fi 1200 Мбит/с]",
+    "url": "https://www.dns-shop.ru/product/demo-manual-router/",
+    "price": "4999",
+    "price_int": 4999,
+    "specs": {
+      "lan_speed_mbps": 2500,
+      "ipv6_support": true
+    }
+  }
+]

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .catalog_schema import CatalogItem, CatalogSourceInfo
+from .dns_network_metrics import merge_parsed_metrics_with_specs, parse_dns_network_title
 
 DNS_CATEGORY_MAP = {
     "routers": "router",
@@ -47,6 +48,9 @@ def _normalize_dns_item(raw: dict[str, Any], *, bucket: str, snapshot_name: str)
     if not isinstance(price_rub, int):
         price_rub = None
     attributes = dict(raw.get("specs") or {})
+    if normalized_category == "router":
+        parse_result = parse_dns_network_title(title)
+        attributes = merge_parsed_metrics_with_specs(attributes, parse_result)
     return CatalogItem(
         item_id=make_item_id(title, url),
         title=title,

@@ -44,6 +44,7 @@
 - `architecture/layers.md` — описание слоёв приложения;
 - `architecture/repository_layout.md` — логика структуры репозитория;
 - `architecture/catalog_boundary.md` — граница между приложением, каталогом и инструментом парсинга.
+- `architecture/dns_network_parser_best_effort.md` — best-effort извлечение сетевых характеристик роутеров из названий DNS-Shop с warnings/confidence и приоритетом ручных specs;
 
 ### Продукт
 - `product/vision.md` — продуктовая идея и траектория развития.
@@ -112,14 +113,15 @@
 29. `architecture/system_schema.md`
 30. `architecture/module_map.md`
 31. `architecture/equipment_metrics_profile_implementation.md`
-32. `architecture/data_map.md`
-32. `research/decision_criteria_unification_plan.md`
-33. `research/equipment_metrics_and_catalog_parsing_plan.md`
-34. `research/genetic_algorithm.md`
-35. `research/ideas/genetic_algorithm_plain_manifest.md`
-36. `research/ideas/future_independent_ga_ahp_assessment.md`
-37. `research/ideas/future_hybrid_ga_ahp_score.md`
-38. `demo/ga_ahp_defense_guide.md`
-39. `demo/demo_data_contract.md`
-40. `demo/solution_component_editor_defense_guide.md`
-41. `traceability.md`
+32. `architecture/dns_network_parser_best_effort.md`
+33. `architecture/data_map.md`
+34. `research/decision_criteria_unification_plan.md`
+35. `research/equipment_metrics_and_catalog_parsing_plan.md`
+36. `research/genetic_algorithm.md`
+37. `research/ideas/genetic_algorithm_plain_manifest.md`
+38. `research/ideas/future_independent_ga_ahp_assessment.md`
+39. `research/ideas/future_hybrid_ga_ahp_score.md`
+40. `demo/ga_ahp_defense_guide.md`
+41. `demo/demo_data_contract.md`
+42. `demo/solution_component_editor_defense_guide.md`
+43. `traceability.md`
