@@ -154,27 +154,42 @@ class HybridDecisionAssessmentTab(GeneticOptimizationTab):
     ) -> None:
         self._candidate_pool = [dict(candidate) for candidate in candidates or []]
         self._candidate_pool_source_label = source_label
+        self.last_result = None
+        self._ahp_report = None
+        self._pareto_report = None
         self.pool_status_var.set(f"Пул получен: {len(self._candidate_pool)} альтернатив; источник: {source_label}.")
+        self.ahp_status_var.set("AHP-результат сброшен: пул изменился.")
+        self.pareto_status_var.set("Pareto-результат сброшен: пул изменился.")
         self.status_var.set("Гибридная оценка ожидает самостоятельные результаты AHP/Pareto.")
         self.hybrid_summary_var.set("Пул обновлён; после AHP/Pareto нажмите обновление гибридной витрины.")
         self._clear_tree(self.hybrid_ranking_table)
 
     def clear_method_results(self) -> None:
+        self.last_result = None
         self._ahp_report = None
         self._pareto_report = None
         self.ahp_status_var.set("AHP-результат сброшен: пул изменился.")
         self.pareto_status_var.set("Pareto-результат сброшен: пул изменился.")
+        self.status_var.set("Гибридная оценка ожидает самостоятельные результаты AHP/Pareto.")
+        self.hybrid_summary_var.set("Пул/методы изменились; предыдущая гибридная витрина очищена.")
+        self._clear_tree(self.hybrid_ranking_table)
 
     def update_ahp_result(self, report: Mapping[str, Any] | None) -> None:
         self._ahp_report = report
+        self.last_result = None
+        self._clear_tree(self.hybrid_ranking_table)
         if report is None:
             self.ahp_status_var.set("AHP-результат ещё не получен.")
             return
         count = self._ahp_ranking_count(report)
-        self.ahp_status_var.set(f"AHP-результат получен: {count} ранжированных альтернатив.")
+        match_hint = self._pool_match_hint(report)
+        self.ahp_status_var.set(f"AHP-результат получен: {count} ранжированных альтернатив.{match_hint}")
+        self.status_var.set("AHP обновлён; нажмите обновление гибридной витрины.")
 
     def update_pareto_result(self, report: Mapping[str, Any] | None) -> None:
         self._pareto_report = report
+        self.last_result = None
+        self._clear_tree(self.hybrid_ranking_table)
         if report is None:
             self.pareto_status_var.set("Pareto-результат ещё не получен.")
             return
@@ -183,6 +198,7 @@ class HybridDecisionAssessmentTab(GeneticOptimizationTab):
         self.pareto_status_var.set(
             f"Pareto-результат получен: {count} альтернатив, недоминируемых: {nondominated}."
         )
+        self.status_var.set("Pareto обновлён; нажмите обновление гибридной витрины.")
 
     def run_hybrid_assessment(self) -> None:
         try:
@@ -234,6 +250,29 @@ class HybridDecisionAssessmentTab(GeneticOptimizationTab):
         final = report.get("final") if isinstance(report.get("final"), Mapping) else {}
         ranking = final.get("ranking") if isinstance(final, Mapping) else []
         return len(ranking) if isinstance(ranking, list) else 0
+
+    def _pool_match_hint(self, report: Mapping[str, Any]) -> str:
+        pool_ids = {str(candidate.get("id")) for candidate in self._candidate_pool if candidate.get("id")}
+        if not pool_ids:
+            return " Пул пуст."
+        final = report.get("final") if isinstance(report.get("final"), Mapping) else {}
+        ranking = final.get("ranking") if isinstance(final, Mapping) else []
+        ahp_ids: set[str] = set()
+        if isinstance(ranking, list):
+            for item in ranking:
+                if isinstance(item, Mapping):
+                    candidate_id = item.get("id") or item.get("alternative_id")
+                elif isinstance(item, Sequence) and not isinstance(item, (str, bytes)) and item:
+                    candidate_id = item[0]
+                else:
+                    candidate_id = None
+                if candidate_id:
+                    ahp_ids.add(str(candidate_id))
+        extra = ahp_ids - pool_ids
+        missing = pool_ids - ahp_ids
+        if not extra and not missing:
+            return " ID совпадают с текущим пулом."
+        return " Есть расхождение ID с текущим пулом; Hybrid лишние AHP-строки проигнорирует."
 
 
 __all__ = ["HybridDecisionAssessmentTab"]

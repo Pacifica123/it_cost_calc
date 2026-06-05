@@ -52,6 +52,11 @@ class HybridDecisionAssessmentService:
 
         ahp_scores, ahp_rank_by_id = self._ahp_scores(ahp_report)
         pareto_status_by_id = self._pareto_status(pareto_report)
+        pool_ids = [row.id for row in rows]
+        pool_id_set = set(pool_ids)
+        ahp_id_set = set(ahp_scores)
+        ignored_ahp_ids = sorted(ahp_id_set - pool_id_set)
+        missing_ahp_ids = [candidate_id for candidate_id in pool_ids if candidate_id not in ahp_id_set]
         missing_methods = []
         if not ahp_scores:
             missing_methods.append("ahp")
@@ -67,6 +72,10 @@ class HybridDecisionAssessmentService:
                     "Гибридная панель не запускает AHP автоматически, чтобы не возвращаться к схеме GA+AHP внутри GA."
                 ],
                 "source_label": source_label,
+                "pool_candidate_ids": pool_ids,
+                "ahp_candidate_ids": sorted(ahp_id_set),
+                "ignored_ahp_ids": ignored_ahp_ids,
+                "missing_ahp_ids": missing_ahp_ids,
             }
 
         comparable = [row for row in rows if row.id in ahp_scores]
@@ -78,9 +87,14 @@ class HybridDecisionAssessmentService:
                 "missing_methods": ["matching_ahp_rows"],
                 "ranking": [self._incomplete_row(row, pareto_status_by_id) for row in rows],
                 "warnings": [
-                    "ID альтернатив из общего пула не совпали с ID последнего AHP-отчёта."
+                    "ID альтернатив из общего пула не совпали с ID последнего AHP-отчёта. "
+                    "Гибрид не подмешивает демо/дефолтные альтернативы и ждёт AHP по текущему пулу."
                 ],
                 "source_label": source_label,
+                "pool_candidate_ids": pool_ids,
+                "ahp_candidate_ids": sorted(ahp_id_set),
+                "ignored_ahp_ids": ignored_ahp_ids,
+                "missing_ahp_ids": missing_ahp_ids,
             }
 
         lambda_value = self._bounded_lambda(lambda_value)
@@ -133,6 +147,8 @@ class HybridDecisionAssessmentService:
             pareto_report=pareto_report,
             ga_norm_info=ga_norm_info,
             ahp_norm_info=ahp_norm_info,
+            ignored_ahp_ids=ignored_ahp_ids,
+            missing_ahp_ids=missing_ahp_ids,
         )
         winner = ranking[0] if ranking else None
         return {
@@ -155,6 +171,10 @@ class HybridDecisionAssessmentService:
             },
             "warnings": warnings,
             "summary": self._summary(winner, warnings, lambda_value),
+            "pool_candidate_ids": pool_ids,
+            "ahp_candidate_ids": sorted(ahp_id_set),
+            "ignored_ahp_ids": ignored_ahp_ids,
+            "missing_ahp_ids": missing_ahp_ids,
         }
 
     def _candidate_rows(
@@ -266,6 +286,13 @@ class HybridDecisionAssessmentService:
         minimum = min(finite)
         maximum = max(finite)
         missing_count = len(values) - len(finite)
+        if len(values) == 1 and missing_count == 0:
+            return [1.0], {
+                "status": "single_candidate",
+                "min": minimum,
+                "max": maximum,
+                "missing_count": 0,
+            }
         if abs(maximum - minimum) <= 1e-12:
             return [0.5 for _ in values], {
                 "status": "constant_score",
@@ -293,10 +320,22 @@ class HybridDecisionAssessmentService:
         pareto_report: Mapping[str, Any] | None,
         ga_norm_info: Mapping[str, Any],
         ahp_norm_info: Mapping[str, Any],
+        ignored_ahp_ids: Sequence[str],
+        missing_ahp_ids: Sequence[str],
     ) -> list[str]:
         warnings: list[str] = []
-        if len(comparable) < len(rows):
+        if len(rows) == 1:
+            warnings.append(
+                "В общем пуле только одна альтернатива: Hybrid показывает её как единственный допустимый вариант, "
+                "а не как результат полноценного сравнения."
+            )
+        if missing_ahp_ids:
             warnings.append("Часть альтернатив из общего пула отсутствует в последнем AHP-результате.")
+        if ignored_ahp_ids:
+            warnings.append(
+                "В последнем AHP-результате есть альтернативы вне текущего общего пула; "
+                "Hybrid игнорирует их, чтобы не подмешивать демо/дефолтные варианты."
+            )
         if not isinstance(pareto_report, Mapping):
             warnings.append("Pareto-статус не рассчитан; он показан как 'нет данных' и не влияет на score.")
         winner = ranking[0] if ranking else {}

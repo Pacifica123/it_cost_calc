@@ -117,8 +117,8 @@ def validate_case(case_data: Dict[str, Any]) -> None:
     alt_ids = {alternative.id for alternative in alternatives}
     if not criteria_ids:
         raise ValueError("Нет критериев для анализа")
-    if len(alternatives) < 2:
-        raise ValueError("Для анализа нужны минимум две альтернативы")
+    if not alternatives:
+        raise ValueError("Для анализа нужна хотя бы одна альтернатива")
 
     scores = case_data.get("scores", {})
     for alt_id in alt_ids:

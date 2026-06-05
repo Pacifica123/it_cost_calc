@@ -80,3 +80,55 @@ def test_hybrid_assessment_warns_when_winner_is_pareto_dominated():
     assert result["winner_id"] == "GA-1"
     assert result["winner"]["pareto_status"] == "доминируемая"
     assert any("Pareto" in warning and "доминируемый" in warning for warning in result["warnings"])
+
+
+def test_single_candidate_hybrid_uses_only_current_pool_and_scores_as_boundary_case():
+    service = HybridDecisionAssessmentService()
+    candidates = [_candidate("GA-1", rank=1, ga_score=0.88)]
+    ahp_report = {"final": {"ranking": [("GA-1", 1.0)]}}
+
+    result = service.assess(candidates, ahp_report=ahp_report)
+
+    assert result["status"] == "ok"
+    assert result["candidate_count"] == 1
+    assert result["used_candidate_count"] == 1
+    assert [row["id"] for row in result["ranking"]] == ["GA-1"]
+    assert result["winner_id"] == "GA-1"
+    assert result["ranking"][0]["hybrid_score"] == pytest.approx(1.0)
+    assert result["normalization"]["ga_details"]["status"] == "single_candidate"
+    assert result["normalization"]["ahp_details"]["status"] == "single_candidate"
+    assert any("только одна альтернатива" in warning for warning in result["warnings"])
+
+
+def test_hybrid_ignores_ahp_rows_that_are_not_in_current_pool():
+    service = HybridDecisionAssessmentService()
+    candidates = [_candidate("GA-1", rank=1, ga_score=0.88)]
+    ahp_report = {
+        "final": {
+            "ranking": [
+                ("system1", 0.95),
+                ("system2", 0.85),
+                ("GA-1", 0.75),
+            ]
+        }
+    }
+
+    result = service.assess(candidates, ahp_report=ahp_report)
+
+    assert result["status"] == "ok"
+    assert [row["id"] for row in result["ranking"]] == ["GA-1"]
+    assert result["ignored_ahp_ids"] == ["system1", "system2"]
+    assert any("демо/дефолтные" in warning for warning in result["warnings"])
+
+
+def test_hybrid_does_not_reuse_default_ahp_when_pool_ids_do_not_match():
+    service = HybridDecisionAssessmentService()
+    candidates = [_candidate("GA-1", rank=1, ga_score=0.88)]
+    ahp_report = {"final": {"ranking": [("system1", 0.95), ("system2", 0.85)]}}
+
+    result = service.assess(candidates, ahp_report=ahp_report)
+
+    assert result["status"] == "incomplete"
+    assert result["missing_methods"] == ["matching_ahp_rows"]
+    assert [row["id"] for row in result["ranking"]] == ["GA-1"]
+    assert result["ignored_ahp_ids"] == ["system1", "system2"]
