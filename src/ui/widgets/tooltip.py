@@ -7,8 +7,12 @@ works reliably for lightweight contextual help without adding dependencies.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
+from typing import TypeAlias
 
 from ui.theme import PANEL_BORDER, TEXT
+
+TooltipTextSource: TypeAlias = str | tk.Variable | Callable[[], str]
 
 
 class ToolTip:
@@ -17,25 +21,36 @@ class ToolTip:
     def __init__(
         self,
         widget: tk.Misc,
-        text: str,
+        text: TooltipTextSource,
         *,
         delay_ms: int = 450,
         wraplength: int = 360,
     ) -> None:
         self.widget = widget
-        self.text = text.strip()
+        self.text_source = text
         self.delay_ms = delay_ms
         self.wraplength = wraplength
         self._after_id: str | None = None
         self._window: tk.Toplevel | None = None
 
-        if not self.text:
+        if not self._resolve_text():
             return
 
         self.widget.bind("<Enter>", self._schedule_show, add="+")
         self.widget.bind("<Leave>", self._hide, add="+")
         self.widget.bind("<ButtonPress>", self._hide, add="+")
         self.widget.bind("<Destroy>", self._destroy, add="+")
+
+    def _resolve_text(self) -> str:
+        source = self.text_source
+        try:
+            if isinstance(source, tk.Variable):
+                return str(source.get()).strip()
+            if callable(source):
+                return str(source()).strip()
+            return str(source).strip()
+        except tk.TclError:
+            return ""
 
     def _schedule_show(self, _event: tk.Event | None = None) -> None:
         self._cancel_scheduled_show()
@@ -60,9 +75,14 @@ class ToolTip:
             self._window = None
             return
 
+        text = self._resolve_text()
+        if not text:
+            self._hide()
+            return
+
         label = tk.Label(
             self._window,
-            text=self.text,
+            text=text,
             justify="left",
             wraplength=self.wraplength,
             background="#fffbe6",
@@ -103,7 +123,7 @@ class ToolTip:
 
 def attach_tooltip(
     widget: tk.Misc,
-    text: str,
+    text: TooltipTextSource,
     *,
     delay_ms: int = 450,
     wraplength: int = 360,

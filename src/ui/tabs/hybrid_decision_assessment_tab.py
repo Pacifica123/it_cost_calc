@@ -89,12 +89,14 @@ class HybridDecisionAssessmentTab(GeneticOptimizationTab):
         result_box.columnconfigure(0, weight=1)
         result_box.rowconfigure(1, weight=1)
 
-        ttk.Label(
+        hybrid_result_hint = ttk.Label(
             result_box,
-            textvariable=self.explanation_var,
-            wraplength=760,
+            text="Как читать гибрид ⓘ",
             justify="left",
-        ).grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
+            cursor="question_arrow",
+        )
+        hybrid_result_hint.grid(row=0, column=0, sticky="w", padx=8, pady=(8, 4))
+        attach_tooltip(hybrid_result_hint, self.explanation_var, wraplength=760)
 
         table_wrap = ttk.Frame(result_box)
         table_wrap.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)

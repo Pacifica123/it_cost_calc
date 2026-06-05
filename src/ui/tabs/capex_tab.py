@@ -9,7 +9,7 @@ from application.services.equipment_service import EquipmentService
 from shared.validation import parse_float, parse_int, require_text
 from ui.dialogs import RecordFormDialog
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
-from ui.widgets import EntityTableSection
+from ui.widgets import EntityTableSection, attach_tooltip
 from ui.theme import PANEL_BODY
 
 
@@ -51,13 +51,15 @@ class CapexTab(BaseScrollableTab):
         if intro_text:
             import tkinter as tk
 
+            visible_intro = "Описание CAPEX ⓘ" if len(intro_text.split()) > 10 else intro_text
             label = tk.Label(
                 self.inner_frame,
-                text=intro_text,
+                text=visible_intro,
                 anchor="w",
                 justify="left",
                 wraplength=880,
                 background=PANEL_BODY,
+                cursor="question_arrow" if visible_intro != intro_text else "",
             )
             label.grid(
                 row=0,
@@ -67,10 +69,15 @@ class CapexTab(BaseScrollableTab):
                 pady=(10, 0),
                 sticky="ew",
             )
-            label.bind(
-                "<Configure>",
-                lambda event, widget=label: widget.configure(wraplength=max(260, event.width - 20)),
-            )
+            if visible_intro != intro_text:
+                attach_tooltip(label, intro_text, wraplength=520)
+            else:
+                label.bind(
+                    "<Configure>",
+                    lambda event, widget=label: widget.configure(
+                        wraplength=max(260, event.width - 20)
+                    ),
+                )
             row_offset = 1
         else:
             row_offset = 0

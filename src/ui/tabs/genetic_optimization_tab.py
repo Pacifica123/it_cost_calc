@@ -181,12 +181,14 @@ class GeneticOptimizationTab(BaseScrollableTab):
                     variable=self.analysis_scope_var,
                     command=self._sync_scope_hint,
                 ).grid(row=0, column=index, padx=6, pady=4, sticky="w")
-        ttk.Label(
+        scope_hint_label = ttk.Label(
             settings,
-            textvariable=self.scope_hint_var,
-            wraplength=300,
+            text="Описание режима ⓘ",
             justify="left",
-        ).grid(row=10, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+            cursor="question_arrow",
+        )
+        scope_hint_label.grid(row=10, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        attach_tooltip(scope_hint_label, self.scope_hint_var, wraplength=520)
 
         weights = ttk.LabelFrame(self.inner_frame, text="Мягкие веса GA и экономия")
         weights.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
@@ -229,12 +231,14 @@ class GeneticOptimizationTab(BaseScrollableTab):
         result_box.columnconfigure(0, weight=1)
         result_box.rowconfigure(1, weight=1)
 
-        ttk.Label(
+        ga_result_hint = ttk.Label(
             result_box,
-            textvariable=self.explanation_var,
-            wraplength=620,
+            text="Как читать результат GA ⓘ",
             justify="left",
-        ).grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
+            cursor="question_arrow",
+        )
+        ga_result_hint.grid(row=0, column=0, sticky="w", padx=8, pady=(8, 4))
+        attach_tooltip(ga_result_hint, self.explanation_var, wraplength=620)
 
         tables = ttk.Notebook(result_box)
         tables.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
