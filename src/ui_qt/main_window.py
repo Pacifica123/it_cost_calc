@@ -9,7 +9,7 @@ from ui_qt.design import ThemeManager
 from ui_qt.navigation import DEFAULT_ROOT_ROUTE_ID, ROOT_ROUTES, require_root_route
 from ui_qt.navigation.root_menu import RootMenu
 from ui_qt.presenters import QtAppPresenter
-from ui_qt.screens import PlaceholderScreen
+from ui_qt.screens import ComponentEditorScreen, PlaceholderScreen
 from ui_qt.widgets import ActionBar, SettingsPanel, StatusStrip
 
 
@@ -70,7 +70,12 @@ class QtMainWindow(QMainWindow):
 
     def _register_root_screens(self) -> None:
         for route in ROOT_ROUTES:
-            self._screen_factories[route.route_id] = lambda value=route: PlaceholderScreen(value)
+            if route.route_id == "components":
+                self._screen_factories[route.route_id] = (
+                    lambda: ComponentEditorScreen(self.presenter)
+                )
+            else:
+                self._screen_factories[route.route_id] = lambda value=route: PlaceholderScreen(value)
 
     def open_root_route(self, route_id: str) -> None:
         route = require_root_route(route_id)
