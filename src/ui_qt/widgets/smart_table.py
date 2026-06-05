@@ -114,7 +114,6 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         if table_height is not None:
             self.table.setMinimumHeight(table_height)
             self.table.setMaximumHeight(table_height)
-            self.setMaximumHeight(table_height + (42 if show_actions else 8))
         elif compact:
             self.table.setMinimumHeight(96)
             self.table.setMaximumHeight(160)
@@ -126,9 +125,10 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
             status=empty_status,
             action_text=empty_action,
             action_callback=self._emit_add if empty_action else None,
+            compact=compact,
         )
         if compact:
-            self.empty_state.setMaximumHeight(116)
+            self.empty_state.setMaximumHeight(96)
         self.stack.addWidget(self.table)
         self.stack.addWidget(self.empty_state)
 

@@ -148,3 +148,18 @@ def test_ga_screen_source_uses_separate_parameter_section():
     assert "self.parameters_section = CollapsibleSection(" in source
     assert "first_row = QHBoxLayout()" not in source
     assert "second_row = QHBoxLayout()" not in source
+
+
+def test_workspace_ga_source_uses_scroll_and_hides_result_sections_before_run():
+    repo = Path(__file__).resolve().parents[2]
+    workspace_source = (repo / "src" / "ui_qt" / "screens" / "workspace_data.py").read_text(encoding="utf-8")
+    ga_source = (repo / "src" / "ui_qt" / "screens" / "decision" / "ga_screen.py").read_text(encoding="utf-8")
+    collapsible_source = (repo / "src" / "ui_qt" / "widgets" / "collapsible_section.py").read_text(encoding="utf-8")
+
+    assert "QScrollArea" in workspace_source
+    assert "_wrap_step_scroll" in workspace_source
+    assert "layout.addWidget(self.step_stack, 1)" in workspace_source
+    assert "result_hint" in ga_source
+    assert "self.candidate_section.setVisible(False)" in ga_source
+    assert "self.best_section.setVisible(False)" in ga_source
+    assert "setMaximumHeight(self.sizeHint().height())" not in collapsible_source

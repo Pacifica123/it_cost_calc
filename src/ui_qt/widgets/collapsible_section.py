@@ -67,11 +67,16 @@ class CollapsibleSection(QFrame):
         expanded = self._toggle.isChecked()
         self._toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
         self._content.setVisible(expanded)
-        if expanded:
-            self.setMaximumHeight(16777215)
-        else:
-            self.setMaximumHeight(self.sizeHint().height())
+        # Do not clamp the section height manually.  Qt can recalculate the
+        # collapsed height from the visible header and the expanded height from
+        # the visible content.  Manual setMaximumHeight(sizeHint()) was fragile
+        # inside workspace screens: sizeHint can be calculated while the content
+        # is changing visibility, which led to clipped GA fields and tables.
+        self.setMaximumHeight(16777215)
         self.updateGeometry()
+        parent = self.parentWidget()
+        if parent is not None:
+            parent.updateGeometry()
         state_changed = expanded != self._last_expanded
         self._last_expanded = bool(expanded)
         if notify and state_changed:

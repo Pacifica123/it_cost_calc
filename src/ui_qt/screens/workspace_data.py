@@ -14,7 +14,9 @@ try:
         QHBoxLayout,
         QPushButton,
         QSizePolicy,
+        QScrollArea,
         QStackedLayout,
+        QStackedWidget,
         QVBoxLayout,
         QWidget,
     )
@@ -22,7 +24,8 @@ except ModuleNotFoundError as exc:
     if exc.name != "PySide6":
         raise
     Qt = None  # type: ignore[assignment]
-    QFrame = QHBoxLayout = QPushButton = QSizePolicy = QStackedLayout = QVBoxLayout = None  # type: ignore[assignment]
+    QFrame = QHBoxLayout = QPushButton = QSizePolicy = QScrollArea = None  # type: ignore[assignment]
+    QStackedLayout = QStackedWidget = QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
 
 _CAPEX_COLUMNS = ("category", "name", "quantity", "price", "total")
@@ -81,16 +84,29 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         )
         layout.addWidget(self.stepper, 0)
 
-        self.step_stack = QStackedLayout()
+        self.step_stack = QStackedWidget(self)
         self.data_step = self._build_data_step()
+        self.data_step_page = self._wrap_step_scroll(self.data_step)
         self.ga_step = GaScreen(
             self.presenter.app_presenter,
             self,
             scope=self.presenter.scope,
         )
-        self.step_stack.addWidget(self.data_step)
-        self.step_stack.addWidget(self.ga_step)
-        layout.addLayout(self.step_stack, 1)
+        self.ga_step_page = self._wrap_step_scroll(self.ga_step)
+        self.step_stack.addWidget(self.data_step_page)
+        self.step_stack.addWidget(self.ga_step_page)
+        layout.addWidget(self.step_stack, 1)
+
+
+    def _wrap_step_scroll(self, widget: QWidget) -> QScrollArea:  # type: ignore[valid-type]
+        scroll = QScrollArea(self)
+        scroll.setObjectName("contentArea")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        widget.setParent(scroll)
+        scroll.setWidget(widget)
+        return scroll
 
     def _workflow_steps(self, data_ready: bool) -> tuple[WorkflowStep, ...]:
         return (
@@ -264,11 +280,11 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
 
     def _open_step(self, step_id: str) -> None:
         if step_id == "ga" and self.presenter.has_data():
-            self.step_stack.setCurrentWidget(self.ga_step)
+            self.step_stack.setCurrentWidget(self.ga_step_page)
             self.stepper.set_active("ga")
             self.ga_step.refresh_data()
             return
-        self.step_stack.setCurrentWidget(self.data_step)
+        self.step_stack.setCurrentWidget(self.data_step_page)
         self.stepper.set_active("data")
 
     def refresh_data(self) -> None:

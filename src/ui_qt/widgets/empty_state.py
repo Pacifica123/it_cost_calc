@@ -22,6 +22,7 @@ class EmptyState(QWidget):
         details: str | None = None,
         action_text: str | None = None,
         action_callback: Callable[[], None] | None = None,
+        compact: bool = False,
     ) -> None:
         assert_short_text(title, field="EmptyState.title")
         assert_short_text(status, field="EmptyState.status")
@@ -30,14 +31,18 @@ class EmptyState(QWidget):
         super().__init__(parent)
         self.setObjectName("card")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(6)
+        if compact:
+            layout.setContentsMargins(10, 8, 10, 8)
+            layout.setSpacing(3)
+        else:
+            layout.setContentsMargins(16, 16, 16, 16)
+            layout.setSpacing(6)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         title_label = CompactLabel(
             title,
             self,
-            object_name="pageTitle",
+            object_name="pageStatus" if compact else "pageTitle",
             alignment=Qt.AlignmentFlag.AlignCenter,
         )
         status_label = CompactLabel(

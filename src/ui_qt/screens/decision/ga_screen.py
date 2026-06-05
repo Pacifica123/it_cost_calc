@@ -4,7 +4,7 @@ from typing import Any
 
 from ui_qt.models import CandidateTableModel, RowTableModel
 from ui_qt.presenters import GaInput, GaPresenter, QtAppPresenter, format_money
-from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint, SmartTable
+from ui_qt.widgets import CollapsibleSection, CompactLabel, SmartTable
 
 try:
     from PySide6.QtCore import Qt
@@ -65,6 +65,9 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self._build_parameters_section(), 0)
         layout.addLayout(self._build_run_actions(), 0)
 
+        self.result_hint = CompactLabel("Кандидатов пока нет", self, object_name="pageStatus")
+        layout.addWidget(self.result_hint, 0)
+
         self.candidate_model = CandidateTableModel([])
         self.candidate_table = SmartTable(
             self.candidate_model,
@@ -82,6 +85,7 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
             tooltip="Top-N решений текущей области.",
             expanded=False,
         )
+        self.candidate_section.setVisible(False)
         layout.addWidget(self.candidate_section, 0)
 
         self.best_model = RowTableModel([], columns=_BEST_COLUMNS, headers=_BEST_HEADERS)
@@ -101,9 +105,8 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
             tooltip="Состав лучшего GA-кандидата.",
             expanded=False,
         )
+        self.best_section.setVisible(False)
         layout.addWidget(self.best_section, 0)
-
-        layout.addStretch(1)
 
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
@@ -147,6 +150,7 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         frame = QFrame(self)
         frame.setObjectName("surface")
         frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        frame.setMinimumHeight(88)
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 10, 12, 12)
         layout.setSpacing(8)
@@ -249,6 +253,9 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         self.candidate_table.refresh_state()
         self.best_table.refresh_state()
         has_result = summary.pool_count > 0
+        self.result_hint.setVisible(not has_result)
+        self.candidate_section.setVisible(has_result)
+        self.best_section.setVisible(has_result)
         self.candidate_section.set_expanded(has_result)
         self.best_section.set_expanded(False)
         self.transfer_button.setEnabled(has_result)
