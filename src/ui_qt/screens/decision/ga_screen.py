@@ -12,9 +12,7 @@ try:
         QAbstractSpinBox,
         QDoubleSpinBox,
         QFrame,
-        QGridLayout,
         QHBoxLayout,
-        QLabel,
         QPushButton,
         QSizePolicy,
         QSpinBox,
@@ -26,7 +24,7 @@ except ModuleNotFoundError as exc:
     if exc.name != "PySide6":
         raise
     Qt = None  # type: ignore[assignment]
-    QAbstractSpinBox = QDoubleSpinBox = QFrame = QGridLayout = QHBoxLayout = QLabel = QPushButton = QSizePolicy = QSpinBox = None  # type: ignore[assignment]
+    QAbstractSpinBox = QDoubleSpinBox = QFrame = QHBoxLayout = QPushButton = QSizePolicy = QSpinBox = None  # type: ignore[assignment]
     QStackedLayout = QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
 
@@ -146,8 +144,10 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
     def _build_controls(self) -> QWidget:  # type: ignore[valid-type]
         frame = QFrame(self)
         frame.setObjectName("surface")
+        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        frame.setMinimumHeight(238)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
         defaults = self.presenter.default_input()
@@ -159,32 +159,31 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         self.seed_input = self._spin_input(defaults.seed, 0, 1_000_000)
 
         fields = QWidget(frame)
-        fields_layout = QGridLayout(fields)
+        fields_layout = QVBoxLayout(fields)
         fields_layout.setContentsMargins(0, 0, 0, 0)
-        fields_layout.setHorizontalSpacing(10)
-        fields_layout.setVerticalSpacing(8)
-        fields_layout.setColumnStretch(1, 1)
-        fields_layout.setColumnStretch(3, 1)
-        fields_layout.addWidget(QLabel("Бюджет", fields), 0, 0)
-        fields_layout.addWidget(self.budget_input, 0, 1)
-        fields_layout.addWidget(QLabel("Мин. мест", fields), 0, 2)
-        fields_layout.addWidget(self.units_input, 0, 3)
-        fields_layout.addWidget(QLabel("Популяция", fields), 1, 0)
-        fields_layout.addWidget(self.population_input, 1, 1)
-        fields_layout.addWidget(QLabel("Поколений", fields), 1, 2)
-        fields_layout.addWidget(self.generations_input, 1, 3)
+        fields_layout.setSpacing(8)
+
+        first_row = QHBoxLayout()
+        first_row.setContentsMargins(0, 0, 0, 0)
+        first_row.setSpacing(10)
+        first_row.addWidget(self._field_box("Бюджет", self.budget_input, fields), 1)
+        first_row.addWidget(self._field_box("Мин. мест", self.units_input, fields), 1)
+        fields_layout.addLayout(first_row)
+
+        second_row = QHBoxLayout()
+        second_row.setContentsMargins(0, 0, 0, 0)
+        second_row.setSpacing(10)
+        second_row.addWidget(self._field_box("Популяция", self.population_input, fields), 1)
+        second_row.addWidget(self._field_box("Поколений", self.generations_input, fields), 1)
+        fields_layout.addLayout(second_row)
         layout.addWidget(fields, 0)
 
         advanced = QWidget(frame)
-        advanced_layout = QGridLayout(advanced)
+        advanced_layout = QHBoxLayout(advanced)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
-        advanced_layout.setHorizontalSpacing(10)
-        advanced_layout.setColumnStretch(1, 1)
-        advanced_layout.setColumnStretch(3, 1)
-        advanced_layout.addWidget(QLabel("Мутация", advanced), 0, 0)
-        advanced_layout.addWidget(self.mutation_input, 0, 1)
-        advanced_layout.addWidget(QLabel("Seed", advanced), 0, 2)
-        advanced_layout.addWidget(self.seed_input, 0, 3)
+        advanced_layout.setSpacing(10)
+        advanced_layout.addWidget(self._field_box("Мутация", self.mutation_input, advanced), 1)
+        advanced_layout.addWidget(self._field_box("Seed", self.seed_input, advanced), 1)
         self.parameters_section = CollapsibleSection(
             "Параметры",
             advanced,
@@ -196,6 +195,7 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
 
         self.run_button = QPushButton("Запустить GA", frame)
         self.run_button.setProperty("role", "primary")
+        self.run_button.setMinimumHeight(38)
         self.run_button.clicked.connect(self._run_ga)
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
@@ -203,6 +203,16 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         actions.addWidget(self.run_button, 0)
         layout.addLayout(actions, 0)
         return frame
+
+    def _field_box(self, title: str, field: QWidget, parent: QWidget) -> QWidget:  # type: ignore[valid-type]
+        box = QWidget(parent)
+        box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+        layout.addWidget(CompactLabel(title, box, object_name="pageStatus"), 0)
+        layout.addWidget(field, 0)
+        return box
 
     def _spin_input(self, value: int, minimum: int, maximum: int) -> QSpinBox:  # type: ignore[valid-type]
         field = QSpinBox(self)
