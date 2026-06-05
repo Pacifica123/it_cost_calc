@@ -53,6 +53,8 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         on_add: ActionCallback | None = None,
         on_edit: RowCallback | None = None,
         on_delete: RowCallback | None = None,
+        on_select: RowCallback | None = None,
+        show_actions_when_empty: bool = False,
     ) -> None:
         if QTableView is None:
             raise RuntimeError("PySide6 is required to create SmartTable")
@@ -65,20 +67,23 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         self._on_add = on_add
         self._on_edit = on_edit
         self._on_delete = on_delete
+        self._on_select = on_select
+        self._show_actions_when_empty = show_actions_when_empty
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        actions = QHBoxLayout()
+        self.actions_bar = QWidget(self)
+        actions = QHBoxLayout(self.actions_bar)
         actions.setContentsMargins(0, 0, 0, 0)
         actions.addStretch(1)
 
-        self.add_button = QPushButton(add_text, self)
+        self.add_button = QPushButton(add_text, self.actions_bar)
         self.add_button.setProperty("role", "primary")
         self.add_button.clicked.connect(self._emit_add)
 
-        self.more_button = QPushButton(more_text, self)
+        self.more_button = QPushButton(more_text, self.actions_bar)
         self.more_menu = QMenu(self.more_button)
         self.more_button.setMenu(self.more_menu)
         self.edit_action = self.more_menu.addAction("Изменить")
@@ -95,7 +100,7 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
         self.table.setAlternatingRowColors(True)
-        self.table.setSortingEnabled(True)
+        self.table.setSortingEnabled(False)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
         self.table.doubleClicked.connect(lambda _index: self._emit_edit())
@@ -106,8 +111,9 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         self.stack.addWidget(self.table)
         self.stack.addWidget(self.empty_state)
 
-        layout.addLayout(actions, 0)
+        layout.addWidget(self.actions_bar, 0)
         layout.addLayout(self.stack, 1)
+        self._connect_selection_model()
         self.refresh_state()
 
     @property
@@ -117,6 +123,7 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
     def set_model(self, model: RowTableModel) -> None:
         self._model = model
         self.table.setModel(model)
+        self._connect_selection_model()
         self.refresh_state()
 
     def replace_rows(self, rows: Sequence[Mapping[str, Any]]) -> None:
@@ -142,7 +149,13 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
     def refresh_state(self) -> None:
         is_empty = self._model.is_empty()
         self.stack.setCurrentWidget(self.empty_state if is_empty else self.table)
+        self.actions_bar.setVisible(self._show_actions_when_empty or not is_empty)
         self.more_button.setEnabled(not is_empty)
+
+    def _connect_selection_model(self) -> None:
+        selection = self.table.selectionModel()
+        if selection is not None:
+            selection.selectionChanged.connect(lambda _selected, _deselected: self._emit_select())
 
     def _show_context_menu(self, point: QPoint) -> None:  # type: ignore[valid-type]
         if self._model.is_empty():
@@ -152,6 +165,12 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
     def _emit_add(self) -> None:
         if self._on_add is not None:
             self._on_add()
+
+    def _emit_select(self) -> None:
+        row_index = self.selected_row_index()
+        row = self.selected_row()
+        if row_index is not None and row is not None and self._on_select is not None:
+            self._on_select(row_index, row)
 
     def _emit_edit(self) -> None:
         row_index = self.selected_row_index()

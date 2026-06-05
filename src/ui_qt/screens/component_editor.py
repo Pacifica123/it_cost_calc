@@ -20,6 +20,7 @@ try:
         QMessageBox,
         QPlainTextEdit,
         QPushButton,
+        QSizePolicy,
         QToolButton,
         QVBoxLayout,
         QWidget,
@@ -29,7 +30,7 @@ except ModuleNotFoundError as exc:
         raise
     Qt = None  # type: ignore[assignment]
     QCheckBox = QComboBox = QFrame = QGridLayout = QHBoxLayout = QLineEdit = None  # type: ignore[assignment]
-    QMenu = QMessageBox = QPlainTextEdit = QPushButton = QToolButton = None  # type: ignore[assignment]
+    QMenu = QMessageBox = QPlainTextEdit = QPushButton = QSizePolicy = QToolButton = None  # type: ignore[assignment]
     QVBoxLayout = QWidget = object  # type: ignore[assignment,misc]
 
 _COMMON_FIELDS = (
@@ -69,12 +70,14 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         super().__init__(parent)
         self.presenter = ComponentEditorPresenter(app_presenter)
         self.selected_index: int | None = None
+        self.mode = "list"
         self._entries: dict[str, QLineEdit] = {}
         self._metric_entries: dict[str, QLineEdit] = {}
         self._suppress_scope_event = False
         self._build_ui()
+        self._set_form_values(self.presenter.new_form_values())
         self.refresh_table()
-        self.clear_form()
+        self.show_list()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -89,15 +92,16 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
             empty_title="Нет компонентов",
             empty_status="Создайте первый",
             add_text="Создать",
-            on_add=self.clear_form,
+            on_add=self.start_create,
             on_edit=self.load_row,
+            on_select=self.load_row,
             on_delete=self.delete_row,
         )
         self.form = self._build_form()
 
         layout.addWidget(header, 0)
         layout.addWidget(self.table, 1)
-        layout.addWidget(self.form, 0)
+        layout.addWidget(self.form, 1)
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
         header = QFrame(self)
@@ -105,7 +109,8 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         row = QHBoxLayout(header)
         row.setContentsMargins(12, 8, 12, 8)
         row.setSpacing(8)
-        row.addWidget(CompactLabel("Выбрать → Изменить → Сохранить", header), 0)
+        self.route_label = CompactLabel("Выбрать → Изменить", header)
+        row.addWidget(self.route_label, 0)
         row.addWidget(
             InfoHint(
                 "Выберите строку, измените поля и сохраните. Необязательные параметры раскрываются отдельно.",
@@ -122,6 +127,8 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         form = QFrame(self)
         self.form = form
         form.setObjectName("surface")
+        form.setMinimumHeight(360)
+        form.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(form)
         layout.setContentsMargins(12, 10, 12, 12)
         layout.setSpacing(8)
@@ -129,7 +136,7 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         main_grid = QGridLayout()
         main_grid.setContentsMargins(0, 0, 0, 0)
         main_grid.setHorizontalSpacing(10)
-        main_grid.setVerticalSpacing(6)
+        main_grid.setVerticalSpacing(8)
 
         self._add_line(main_grid, "id", "ID", 0, 0, placeholder="auto")
         self._add_line(main_grid, "name", "Название", 1, 0)
@@ -154,6 +161,7 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self._build_metrics_section(), 0)
         layout.addWidget(self._build_extra_section(), 0)
         layout.addWidget(self._build_preview_section(), 0)
+        layout.addStretch(1)
         layout.addLayout(self._build_buttons(), 0)
         return form
 
@@ -163,7 +171,7 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         layout = QGridLayout(frame)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setHorizontalSpacing(10)
-        layout.setVerticalSpacing(6)
+        layout.setVerticalSpacing(8)
         layout.addWidget(CompactLabel("Стоимость", frame), 0, 0, 1, 4)
         for index, (name, label) in enumerate(_COST_FIELDS, start=1):
             row = (index + 1) // 2
@@ -234,6 +242,9 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
 
     def _build_buttons(self) -> QHBoxLayout:  # type: ignore[valid-type]
         buttons = QHBoxLayout()
+        self.cancel_button = QPushButton("К списку", self)
+        self.cancel_button.clicked.connect(self.show_list)
+        buttons.addWidget(self.cancel_button)
         buttons.addStretch(1)
 
         self.check_button = QPushButton("Проверить", self)
@@ -250,7 +261,7 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         more_menu = QMenu(more_button)
         more_button.setMenu(more_menu)
-        more_menu.addAction("Очистить").triggered.connect(self.clear_form)
+        more_menu.addAction("Очистить").triggered.connect(self.start_create)
         more_menu.addAction("Обновить").triggered.connect(self.refresh_table)
         buttons.addWidget(more_button)
         return buttons
@@ -270,7 +281,8 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         owner = parent or self.form
         layout.addWidget(CompactLabel(label, owner), row, column)
         entry = QLineEdit(owner)
-        entry.setMinimumWidth(150)
+        entry.setMinimumWidth(170)
+        entry.setMinimumHeight(32)
         if placeholder:
             entry.setPlaceholderText(placeholder)
         layout.addWidget(entry, row, column + 1)
@@ -307,7 +319,8 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
             self.metrics_layout.addWidget(CompactLabel(field.label, self), row, column)
             entry = QLineEdit(self)
             entry.setText(str(metrics.get(field.name, "")))
-            entry.setMinimumWidth(130)
+            entry.setMinimumWidth(150)
+            entry.setMinimumHeight(32)
             self._metric_entries[field.name] = entry
             self.metrics_layout.addWidget(entry, row, column + 1)
         for column in (1, 3):
@@ -316,17 +329,34 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
     def refresh_table(self) -> None:
         self.model.replace_rows(self.presenter.list_table_rows())
         self.table.refresh_state()
+        if self.mode == "list":
+            self._set_status(self.presenter.status_summary())
+
+    def show_list(self) -> None:
+        self.mode = "list"
+        self.selected_index = None
+        self.table.setVisible(True)
+        self.form.setVisible(False)
+        self.route_label.setText("Выбрать → Изменить")
         self._set_status(self.presenter.status_summary())
 
-    def clear_form(self) -> None:
+    def start_create(self) -> None:
+        self.mode = "create"
         self.selected_index = None
         self._set_form_values(self.presenter.new_form_values())
         self.preview_text.setPlainText("Нажмите «Проверить».")
+        self.table.setVisible(False)
+        self.form.setVisible(True)
+        self.route_label.setText("Новая запись")
         self._set_status("Новая запись")
 
     def load_row(self, row_index: int, _row: dict[str, Any] | None = None) -> None:
+        self.mode = "edit"
         self.selected_index = row_index
         self._set_form_values(self.presenter.form_values_for_index(row_index))
+        self.table.setVisible(False)
+        self.form.setVisible(True)
+        self.route_label.setText("Редактирование")
         self.preview_form(show_errors=False)
         self._set_status("Строка загружена")
 
@@ -336,7 +366,7 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
             return
         self.presenter.delete(row_index)
         self.refresh_table()
-        self.clear_form()
+        self.show_list()
         self._set_status("Удалено")
 
     def preview_form(self, *, show_errors: bool = True) -> None:
@@ -359,6 +389,10 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         self.refresh_table()
         self._set_form_values(self.presenter.form_values_for_index(result.index))
         self.preview_form(show_errors=False)
+        self.mode = "edit"
+        self.route_label.setText("Редактирование")
+        self.table.setVisible(False)
+        self.form.setVisible(True)
         self._set_status("Сохранено")
 
     def _set_form_values(self, values: Mapping[str, Any]) -> None:
