@@ -6,6 +6,8 @@ _SCREEN_MODULES = {
     "ExportScreen": "ui_qt.screens.export",
     "NpvScreen": "ui_qt.screens.npv",
     "PlaceholderScreen": "ui_qt.screens.placeholder_screen",
+    "SoftwareWorkspaceScreen": "ui_qt.screens.software_workspace",
+    "TechnicalWorkspaceScreen": "ui_qt.screens.technical_workspace",
 }
 
 __all__ = [*_SCREEN_MODULES]

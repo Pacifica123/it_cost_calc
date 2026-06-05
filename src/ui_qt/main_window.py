@@ -9,7 +9,15 @@ from ui_qt.design import ThemeManager
 from ui_qt.navigation import DEFAULT_ROOT_ROUTE_ID, ROOT_ROUTES, require_root_route
 from ui_qt.navigation.root_menu import RootMenu
 from ui_qt.presenters import QtAppPresenter
-from ui_qt.screens import ComponentEditorScreen, EnergyScreen, ExportScreen, NpvScreen, PlaceholderScreen
+from ui_qt.screens import (
+    ComponentEditorScreen,
+    EnergyScreen,
+    ExportScreen,
+    NpvScreen,
+    PlaceholderScreen,
+    SoftwareWorkspaceScreen,
+    TechnicalWorkspaceScreen,
+)
 from ui_qt.widgets import ActionBar, SettingsPanel, StatusStrip
 
 
@@ -70,7 +78,15 @@ class QtMainWindow(QMainWindow):
 
     def _register_root_screens(self) -> None:
         for route in ROOT_ROUTES:
-            if route.route_id == "components":
+            if route.route_id == "software":
+                self._screen_factories[route.route_id] = (
+                    lambda: SoftwareWorkspaceScreen(self.presenter)
+                )
+            elif route.route_id == "hardware":
+                self._screen_factories[route.route_id] = (
+                    lambda: TechnicalWorkspaceScreen(self.presenter)
+                )
+            elif route.route_id == "components":
                 self._screen_factories[route.route_id] = (
                     lambda: ComponentEditorScreen(self.presenter)
                 )
@@ -105,6 +121,9 @@ class QtMainWindow(QMainWindow):
             widget = factory()
             self._screen_indexes[screen_id] = self.screen_stack.addWidget(widget)
         self.screen_stack.setCurrentIndex(self._screen_indexes[screen_id])
+        current = self.screen_stack.currentWidget()
+        if hasattr(current, "refresh_data"):
+            current.refresh_data()
 
     def _create_settings_screen(self) -> QWidget:
         panel = SettingsPanel(

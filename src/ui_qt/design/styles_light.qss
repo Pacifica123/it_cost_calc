@@ -187,3 +187,20 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
     width: 8px;
     height: 8px;
 }
+
+QPushButton#workflowStep {
+    min-width: 72px;
+    background: #ffffff;
+    border-color: #d8e0ea;
+}
+
+QPushButton#workflowStep:checked {
+    background: #e7f0ff;
+    border-color: #3b78e7;
+    font-weight: 600;
+}
+
+QPushButton#workflowStep:disabled {
+    color: #8794a6;
+    background: #f2f5f9;
+}

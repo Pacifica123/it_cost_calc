@@ -5,6 +5,12 @@ from ui_qt.presenters.component_editor_presenter import ComponentEditorPresenter
 from ui_qt.presenters.energy_presenter import EnergyPresenter, EnergyProfileInput, EnergySummary
 from ui_qt.presenters.export_presenter import ExportMode, ExportPresenter, ExportSummary
 from ui_qt.presenters.npv_presenter import NpvInput, NpvPresenter, NpvSummary
+from ui_qt.presenters.workspace_presenter import (
+    WorkspaceCategory,
+    WorkspacePresenter,
+    WorkspaceSummary,
+    format_money,
+)
 
 __all__ = [
     "ComponentEditorPresenter",
@@ -19,4 +25,8 @@ __all__ = [
     "NpvSummary",
     "QtAppPresenter",
     "QtRuntimePaths",
+    "WorkspaceCategory",
+    "WorkspacePresenter",
+    "WorkspaceSummary",
+    "format_money",
 ]

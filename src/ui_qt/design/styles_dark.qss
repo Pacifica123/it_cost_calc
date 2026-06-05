@@ -187,3 +187,11 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
     width: 8px;
     height: 8px;
 }
+
+QPushButton#workflowStep {
+    min-width: 72px;
+}
+
+QPushButton#workflowStep:checked {
+    font-weight: 600;
+}
