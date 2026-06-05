@@ -189,6 +189,8 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             table_height=148,
         )
 
+        self._detail_sections: list[CollapsibleSection] = []
+
         self.category_section = CollapsibleSection(
             "Категории",
             self.category_table,
@@ -210,11 +212,29 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             tooltip="Регулярные и проектные затраты текущей области.",
             expanded=False,
         )
+        self._detail_sections = [
+            self.category_section,
+            self.capex_section,
+            self.opex_section,
+        ]
+        for section in self._detail_sections:
+            section.add_toggle_callback(
+                lambda expanded, current=section: self._sync_workspace_accordion(current, expanded)
+            )
+
         panel_layout.addWidget(self.category_section, 0)
         panel_layout.addWidget(self.capex_section, 0)
         panel_layout.addWidget(self.opex_section, 0)
         panel_layout.addStretch(1)
         return panel
+
+    def _sync_workspace_accordion(self, current: CollapsibleSection, expanded: bool) -> None:
+        """Keep the data workspace readable by opening one detail table at a time."""
+        if not expanded:
+            return
+        for section in self._detail_sections:
+            if section is not current:
+                section.set_expanded(False)
 
     def refresh_data(self) -> None:
         summary = self.presenter.summary()
@@ -230,8 +250,8 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.capex_table.refresh_state()
         self.opex_table.refresh_state()
         self.category_section.set_expanded(summary.row_count > 0)
-        self.capex_section.set_expanded(summary.capex_count > 0)
-        self.opex_section.set_expanded(summary.opex_count > 0 and summary.capex_count == 0)
+        self.capex_section.set_expanded(False)
+        self.opex_section.set_expanded(False)
         self.content_stack.setCurrentWidget(self.data_panel if summary.row_count else self.empty_state)
 
 

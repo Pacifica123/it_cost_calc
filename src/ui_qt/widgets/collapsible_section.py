@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QToolButton, QVBoxLayout, QWidget
 
@@ -23,6 +25,8 @@ class CollapsibleSection(QFrame):
         super().__init__(parent)
         self.setObjectName("surface")
         self._content = content
+        self._toggle_callbacks: list[Callable[[bool], None]] = []
+        self._last_expanded = bool(expanded)
 
         self._toggle = QToolButton(self)
         self._toggle.setText(title)
@@ -30,7 +34,7 @@ class CollapsibleSection(QFrame):
         self._toggle.setChecked(expanded)
         self._toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
-        self._toggle.clicked.connect(self._sync_state)
+        self._toggle.clicked.connect(lambda: self._sync_state(notify=True))
 
         header = QWidget(self)
         header_layout = QHBoxLayout(header)
@@ -55,7 +59,11 @@ class CollapsibleSection(QFrame):
         self._toggle.setChecked(expanded)
         self._sync_state()
 
-    def _sync_state(self) -> None:
+    def add_toggle_callback(self, callback: Callable[[bool], None]) -> None:
+        """Register a lightweight callback for user-driven expansion changes."""
+        self._toggle_callbacks.append(callback)
+
+    def _sync_state(self, *, notify: bool = False) -> None:
         expanded = self._toggle.isChecked()
         self._toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
         self._content.setVisible(expanded)
@@ -64,3 +72,8 @@ class CollapsibleSection(QFrame):
         else:
             self.setMaximumHeight(self.sizeHint().height())
         self.updateGeometry()
+        state_changed = expanded != self._last_expanded
+        self._last_expanded = bool(expanded)
+        if notify and state_changed:
+            for callback in self._toggle_callbacks:
+                callback(bool(expanded))
