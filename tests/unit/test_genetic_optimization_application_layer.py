@@ -1,3 +1,4 @@
+from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.services.genetic_optimization_service import GeneticOptimizationService
 from application.use_cases.run_genetic_optimization import RunGeneticOptimizationUseCase
 from infrastructure.repositories.in_memory_entity_repository import InMemoryEntityRepository
@@ -303,3 +304,68 @@ def test_cost_tie_breaker_does_not_replace_when_quality_gap_is_large():
 
     assert summary["selected_items"][0]["name"] == "A"
     assert summary["ga_result"]["cost_tie_breaker"]["status"] == "unchanged"
+
+
+def test_software_ga_accepts_solution_component_with_structured_energy_block():
+    repository = InMemoryEntityRepository(
+        {
+            "licenses": [
+                {
+                    "name": "Base license",
+                    "quantity": 1,
+                    "price": 100.0,
+                    "license_units": 1,
+                    "functionality_score": 0.5,
+                    "support_score": 0.3,
+                }
+            ],
+            "solution_components": [
+                {
+                    "schema_version": 1,
+                    "id": "component-software-crm",
+                    "name": "CRM subscription",
+                    "scope": "software",
+                    "component_type": "software_subscription",
+                    "origin": "demo",
+                    "strict_analysis_participation": True,
+                    "monthly_cost": 1000.0,
+                    "quantity": 1,
+                    "energy": {"applicable": False},
+                    "metrics": {
+                        "source_category": "subscription_licenses",
+                        "license_units": 5,
+                        "functionality_score": 0.8,
+                        "support_score": 0.7,
+                    },
+                }
+            ],
+        }
+    )
+    profile_service = AnalysisScopeProfileService()
+    service = GeneticOptimizationService(repository, profile_service=profile_service)
+
+    summary = service.run(
+        analysis_scope="software",
+        categories=("licenses",),
+        criteria=profile_service.build_ga_criteria("software"),
+        weights=profile_service.default_weights("software"),
+        required_categories=("licenses",),
+        ga_params={
+            "pop_size": 6,
+            "generations": 3,
+            "mutation_rate": 0.02,
+            "elite": 1,
+            "seed": 2,
+            "stagnation_limit": 20,
+            "max_random_attempts": 60,
+        },
+    )
+
+    assert summary["status"] == "ok"
+    assert summary["parameters"]["candidate_count"] == 2
+    assert len(summary["candidate_configurations"]) == 2
+    assert any(
+        component["name"] == "CRM subscription"
+        for configuration in summary["candidate_configurations"]
+        for component in configuration["components"]
+    )

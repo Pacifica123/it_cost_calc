@@ -103,3 +103,25 @@ def test_ahp_aggregate_preserves_network_metrics():
     assert aggregate["lan_speed_mbps"] == 1000
     assert aggregate["wifi_total_mbps"] == 2400
     assert aggregate["ipv6_support_count"] == 2
+
+
+def test_runtime_normalizer_ignores_structured_energy_block_as_power_number():
+    row = normalize_runtime_row(
+        {
+            "name": "Software service",
+            "quantity": 1,
+            "price": 100,
+            "scope": "technical",
+            "component_type": "network_device",
+            "energy": {"applicable": False},
+            "lan_ports": 4,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 1200,
+            "ipv6_support": True,
+        },
+        category="network",
+    )
+
+    assert "max_power_watts" not in row
+    assert row["lan_ports"] == 4
+    assert any("max_power_watts" in warning for warning in row["metric_warnings"])

@@ -489,7 +489,7 @@ class SolutionComponentAnalyticsIntegrationService:
         return self._unique(warnings)
 
     def _bool_or_none(self, value: Any) -> bool | None:
-        if value in {None, ""}:
+        if self._is_blank(value):
             return None
         if isinstance(value, bool):
             return value
@@ -516,18 +516,26 @@ class SolutionComponentAnalyticsIntegrationService:
         for key in keys:
             if key not in mapping:
                 continue
-            value = self._number(mapping.get(key), default=default)
-            if value != default or mapping.get(key) not in {None, ""}:
-                return value
+            raw_value = mapping.get(key)
+            if self._is_blank(raw_value) or self._is_structured_value(raw_value):
+                continue
+            value = self._number(raw_value, default=default)
+            return value
         return float(default)
 
     def _number(self, value: Any, *, default: float) -> float:
         try:
-            if value is None or value == "":
+            if self._is_blank(value):
                 return float(default)
             return float(value)
         except (TypeError, ValueError):
             return float(default)
+
+    def _is_blank(self, value: Any) -> bool:
+        return value is None or value == ""
+
+    def _is_structured_value(self, value: Any) -> bool:
+        return isinstance(value, (Mapping, list, tuple, set))
 
     def _unique(self, values: Sequence[str]) -> list[str]:
         result: list[str] = []

@@ -119,7 +119,7 @@ def _infer_client_component_type(row: Mapping[str, Any]) -> str | None:
     if explicit:
         return str(explicit)
 
-    if "client_seats" not in row or row.get("client_seats") in {None, ""}:
+    if "client_seats" not in row or _is_blank(row.get("client_seats")):
         return None
 
     try:
@@ -138,7 +138,7 @@ def _normalize_client_seats(row: dict[str, Any], *, category: str) -> None:
             row.setdefault("client_seats", 0)
         return
 
-    if "client_seats" in row and row.get("client_seats") not in {None, ""}:
+    if "client_seats" in row and not _is_blank(row.get("client_seats")):
         return
 
     if component_type == ComponentType.WORKSTATION.value:
@@ -200,11 +200,20 @@ def _copy_first_number(row: dict[str, Any], target: str, aliases: tuple[str, ...
 
 
 def _has_metric(row: Mapping[str, Any], key: str) -> bool:
-    return key in row and row.get(key) not in {None, ""}
+    value = row.get(key)
+    return key in row and not _is_blank(value) and not _is_structured_value(value)
+
+
+def _is_blank(value: Any) -> bool:
+    return value is None or value == ""
+
+
+def _is_structured_value(value: Any) -> bool:
+    return isinstance(value, (Mapping, list, tuple, set))
 
 
 def _normalize_bool(value: Any) -> bool | None:
-    if value in {None, ""}:
+    if _is_blank(value):
         return None
     if isinstance(value, bool):
         return value
