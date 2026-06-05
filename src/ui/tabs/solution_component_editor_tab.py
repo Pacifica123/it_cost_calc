@@ -24,6 +24,7 @@ from domain import ComponentType, SolutionComponent
 from shared.constants import SOLUTION_COMPONENT_ENTITY
 from shared.validation import require_text
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
+from ui.widgets import attach_tooltip
 
 logger = logging.getLogger(__name__)
 
@@ -160,32 +161,34 @@ class SolutionComponentEditorTab(BaseScrollableTab):
         self.update_scrollregion()
 
     def _build_intro(self) -> None:
+        intro_text = (
+            "Редактор компонентов — advanced-режим для структурированного описания частей "
+            "ИТ-решения. Здесь компонент отличается от свободной заметки: у него есть профиль, "
+            "тип, стоимость, метрики и статус готовности к аналитике."
+        )
         intro = tk.Label(
             self.inner_frame,
-            text=(
-                "Редактор компонентов — advanced-режим для структурированного описания частей "
-                "ИТ-решения. Здесь компонент отличается от свободной заметки: у него есть профиль, "
-                "тип, стоимость, метрики и статус готовности к аналитике."
-            ),
+            text="Редактор компонентов",
             anchor="w",
             justify="left",
-            wraplength=1080,
         )
         intro.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
+        attach_tooltip(intro, intro_text, wraplength=520)
 
+        hint_text = (
+            f"Данные сохраняются в runtime-секции {SOLUTION_COMPONENT_ENTITY!r}. "
+            "Неполные строки можно оставить черновиками: они будут видны в отчёте, но не попадут "
+            "в строгую аналитику до нормализации. Старая ИТ-песочница остаётся архивом рядом."
+        )
         hint = tk.Label(
             self.inner_frame,
-            text=(
-                f"Данные сохраняются в runtime-секции {SOLUTION_COMPONENT_ENTITY!r}. "
-                "Неполные строки можно оставить черновиками: они будут видны в отчёте, но не попадут "
-                "в строгую аналитику до нормализации. Старая ИТ-песочница остаётся архивом рядом."
-            ),
+            text="Статус runtime-данных",
             anchor="w",
             justify="left",
             fg="#555555",
-            wraplength=1080,
         )
         hint.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        attach_tooltip(hint, hint_text, wraplength=520)
 
     def _build_form(self) -> None:
         self.form_frame = tk.LabelFrame(self.inner_frame, text="Новый / редактируемый компонент", padx=10, pady=8)
@@ -357,14 +360,18 @@ class SolutionComponentEditorTab(BaseScrollableTab):
             tk.Label(self.profile_frame, text=label).grid(row=row, column=column, sticky="w", padx=(0, 4), pady=3)
             tk.Entry(self.profile_frame, textvariable=var, width=24).grid(row=row, column=column + 1, sticky="ew", pady=3)
         if scope == "mixed":
-            tk.Label(
+            mixed_hint_text = (
+                "Смешанный компонент лучше сохранить как черновик и позже разложить на ТО/ПО/внедрение."
+            )
+            mixed_hint = tk.Label(
                 self.profile_frame,
-                text="Смешанный компонент лучше сохранить как черновик и позже разложить на ТО/ПО/внедрение.",
+                text="Смешанный компонент — черновик",
                 anchor="w",
                 justify="left",
                 fg="#7a5500",
-                wraplength=980,
-            ).grid(row=4, column=0, columnspan=4, sticky="ew", pady=(6, 0))
+            )
+            mixed_hint.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(6, 0))
+            attach_tooltip(mixed_hint, mixed_hint_text, wraplength=520)
 
     def preview_current_form(self, *, show_errors: bool = True) -> None:
         try:

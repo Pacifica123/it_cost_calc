@@ -9,6 +9,7 @@ from application.services.analysis_scope_profile_service import AnalysisScopePro
 from application.services.scoped_candidate_pool_service import ScopedCandidatePoolService
 from shared.constants import ANALYSIS_SCOPE_TECHNICAL
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
+from ui.widgets import attach_tooltip
 
 from .data_mixin import CriteriaImportanceDataMixin
 from .tables_mixin import CriteriaImportanceTablesMixin
@@ -92,17 +93,19 @@ class CriteriaImportanceTab(
                     command=self._on_analysis_scope_changed,
                 ).pack(side="left")
 
+        top_label_hint_text = (
+            "Модуль автоматизирует кейс выбора ИТ-решения по методике анализа важности критериев. "
+            "Демо-сценарий загружается общей кнопкой \"Загрузить демо-данные\" над вкладками, "
+            "после чего здесь можно редактировать критерии, системы, оценки и связи."
+        )
         top_label = tk.Label(
             root,
-            text=(
-                "Модуль автоматизирует кейс выбора ИТ-решения по методике анализа важности критериев. "
-                "Демо-сценарий загружается общей кнопкой \"Загрузить демо-данные\" над вкладками, "
-                "после чего здесь можно редактировать критерии, системы, оценки и связи."
-            ),
+            text="Анализ важности критериев",
             anchor="w",
             justify="left",
         )
         top_label.pack(fill="x", padx=6)
+        attach_tooltip(top_label, top_label_hint_text, wraplength=520)
         tk.Label(
             root,
             textvariable=self.candidate_pool_source_var,
@@ -118,11 +121,15 @@ class CriteriaImportanceTab(
         main_pane.add(left_panel, stretch="always")
         main_pane.add(right_panel, stretch="always")
 
+        scores_box_hint_text = (
+            "1. Значения критериев для систем (двойной клик по оценке для редактирования)"
+        )
         scores_box = tk.LabelFrame(
             left_panel,
-            text="1. Значения критериев для систем (двойной клик по оценке для редактирования)",
+            text="1. Значения критериев",
         )
         scores_box.pack(fill="both", expand=True, pady=(0, 6))
+        attach_tooltip(scores_box, scores_box_hint_text, wraplength=520)
 
         scores_toolbar = tk.Frame(scores_box)
         scores_toolbar.pack(fill="x", padx=6, pady=(6, 2))
@@ -146,13 +153,17 @@ class CriteriaImportanceTab(
             scores_toolbar, text="Удалить систему", command=self._delete_alternative_popup
         ).pack(side="left")
 
+        scores_hint_text = (
+            "Строка = критерий, колонка = система. ID и названия можно менять через кнопки сверху."
+        )
         scores_hint = tk.Label(
             scores_box,
-            text="Строка = критерий, колонка = система. ID и названия можно менять через кнопки сверху.",
+            text="Подсказка по таблице",
             anchor="w",
             justify="left",
         )
         scores_hint.pack(fill="x", padx=6, pady=(0, 2))
+        attach_tooltip(scores_hint, scores_hint_text, wraplength=520)
 
         scores_tree_wrap = tk.Frame(scores_box)
         scores_tree_wrap.pack(fill="both", expand=True, padx=6, pady=(0, 6))

@@ -23,6 +23,7 @@ from shared.constants import LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX
 from shared.validation import parse_float, parse_int, require_text
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
 from ui.tabs.solution_component_editor_tab import format_normalization_preview
+from ui.widgets import attach_tooltip
 
 logger = logging.getLogger(__name__)
 
@@ -131,33 +132,35 @@ class ITInfrastructureTab(BaseScrollableTab):
         self.update_scrollregion()
 
     def _build_intro(self) -> None:
+        intro_text = (
+            "Старая вкладка ИТ-инфраструктуры оставлена как вспомогательная песочница. "
+            "Она подходит для черновых пользовательских статей и заметок, но не является "
+            "основным источником строгой аналитики. Для расчётов используйте вкладки ТО, ПО, "
+            "Операционные затраты, Электроэнергия, GA/AHP, NPV и Экспорт."
+        )
         intro = tk.Label(
             self.inner_frame,
-            text=(
-                "Старая вкладка ИТ-инфраструктуры оставлена как вспомогательная песочница. "
-                "Она подходит для черновых пользовательских статей и заметок, но не является "
-                "основным источником строгой аналитики. Для расчётов используйте вкладки ТО, ПО, "
-                "Операционные затраты, Электроэнергия, GA/AHP, NPV и Экспорт."
-            ),
+            text="ИТ-песочница",
             anchor="w",
             justify="left",
-            wraplength=1080,
         )
         intro.pack(fill="x", padx=10, pady=(10, 6))
+        attach_tooltip(intro, intro_text, wraplength=520)
 
+        hint_text = (
+            "Новые записи этой вкладки сохраняются в runtime-хранилище с префиксом "
+            f"{LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX} и не попадают в общий пул "
+            "CandidateConfiguration без отдельной нормализации."
+        )
         hint = tk.Label(
             self.inner_frame,
-            text=(
-                "Новые записи этой вкладки сохраняются в runtime-хранилище с префиксом "
-                f"{LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX} и не попадают в общий пул "
-                "CandidateConfiguration без отдельной нормализации."
-            ),
+            text="Статус данных: черновик",
             anchor="w",
             justify="left",
             fg="#555555",
-            wraplength=1080,
         )
         hint.pack(fill="x", padx=10, pady=(0, 10))
+        attach_tooltip(hint, hint_text, wraplength=520)
 
     def _restore_existing_sandbox_tables(self) -> None:
         for entity_key, rows in sorted(self.crud.entities.items()):
@@ -353,19 +356,20 @@ class ITInfrastructureTab(BaseScrollableTab):
         container.columnconfigure(1, weight=1)
         container.columnconfigure(3, weight=1)
 
+        conversion_hint_text = (
+            "Конвертация выполняется только вручную. Исходная sandbox-запись останется на месте; "
+            "новая строка попадёт в редактор компонентов как черновик, пока вы явно не включите "
+            "строгую аналитику и не заполните обязательные поля."
+        )
         intro = tk.Label(
             container,
-            text=(
-                "Конвертация выполняется только вручную. Исходная sandbox-запись останется на месте; "
-                "новая строка попадёт в редактор компонентов как черновик, пока вы явно не включите "
-                "строгую аналитику и не заполните обязательные поля."
-            ),
+            text="Конвертация вручную",
             justify="left",
             anchor="w",
-            wraplength=820,
             fg="#555555",
         )
         intro.grid(row=0, column=0, columnspan=4, sticky="ew", pady=(0, 8))
+        attach_tooltip(intro, conversion_hint_text, wraplength=520)
 
         id_var = tk.StringVar(value=str(draft.get("id", "")))
         name_var = tk.StringVar(value=str(draft.get("name", "")))

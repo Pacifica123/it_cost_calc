@@ -9,6 +9,7 @@ from tkinter import messagebox, ttk
 
 from application.services.hybrid_decision_assessment_service import HybridDecisionAssessmentService
 from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
+from ui.widgets import attach_tooltip
 
 
 _UNSET = object()
@@ -58,15 +59,13 @@ class HybridDecisionAssessmentTab(GeneticOptimizationTab):
         ttk.Entry(controls, textvariable=self.lambda_var, width=8).grid(
             row=1, column=1, sticky="w", padx=6, pady=4
         )
-        ttk.Label(
-            controls,
-            text=(
-                "λ=0.5 — нейтральный компромисс. Значение ближе к 1 усиливает GA, "
-                "ближе к 0 усиливает AHP. Pareto остаётся статусом/предупреждением, а не скрытым весом."
-            ),
-            wraplength=300,
-            justify="left",
-        ).grid(row=2, column=0, columnspan=2, sticky="ew", padx=6, pady=(0, 8))
+        lambda_hint_text = (
+            "λ=0.5 — нейтральный компромисс. Значение ближе к 1 усиливает GA, "
+            "ближе к 0 усиливает AHP. Pareto остаётся статусом/предупреждением, а не скрытым весом."
+        )
+        lambda_hint = ttk.Label(controls, text="Как работает λ", justify="left")
+        lambda_hint.grid(row=2, column=0, columnspan=2, sticky="ew", padx=6, pady=(0, 8))
+        attach_tooltip(lambda_hint, lambda_hint_text)
 
         status_box = ttk.LabelFrame(self.inner_frame, text="Состояние методов")
         status_box.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")

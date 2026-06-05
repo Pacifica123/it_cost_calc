@@ -19,7 +19,7 @@ from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
 from ui.tabs.hybrid_decision_assessment_tab import HybridDecisionAssessmentTab
 from ui.tabs.opex_tab import OpexTab
 from ui.theme import SUBTLE_BUTTON, SUBTLE_BUTTON_HOVER, TEXT, WORKSPACE, force_panel_backgrounds
-from ui.widgets import CollapsiblePanel
+from ui.widgets import CollapsiblePanel, attach_tooltip
 
 
 TECHNICAL_OPEX_CONFIG = {
@@ -580,19 +580,20 @@ class SolutionAreaWorkspaceTab(tk.Frame):
         return panel
 
     def _build_cost_relation_table(self, parent: tk.Misc) -> None:
+        cost_relation_hint_text = (
+            "Матрица фиксирует не место строки в интерфейсе, а экономический смысл. "
+            "Разовая бессрочная лицензия ближе к CAPEX, подписка — к OPEX; "
+            "миграция и тестирование остаются разовыми операционными работами."
+        )
         text = tk.Label(
             parent,
-            text=(
-                "Матрица фиксирует не место строки в интерфейсе, а экономический смысл. "
-                "Разовая бессрочная лицензия ближе к CAPEX, подписка — к OPEX; "
-                "миграция и тестирование остаются разовыми операционными работами."
-            ),
-            wraplength=760,
+            text="Правила классификации затрат",
             justify="left",
             background=parent.cget("background") if "background" in parent.keys() else WORKSPACE,
             foreground=TEXT,
         )
         text.pack(fill="x", padx=6, pady=(0, 6))
+        attach_tooltip(text, cost_relation_hint_text, wraplength=520)
 
         tree = ttk.Treeview(
             parent,

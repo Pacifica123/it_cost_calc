@@ -13,6 +13,7 @@ from shared.constants import (
     ANALYSIS_SCOPE_TECHNICAL,
 )
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
+from ui.widgets import attach_tooltip
 
 from .config_mixin import AHPConfigurationMixin
 from .io_mixin import AHPIOMixin
@@ -118,15 +119,13 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
                     command=self._on_analysis_scope_changed,
                 ).pack(side="left")
 
-        ttk.Label(
-            root,
-            text=(
-                "Источник альтернатив AHP: таблица конфигураций текущей области. "
-                "GA может передать top-N кандидатов в общий пул, но AHP остаётся самостоятельным ранжированием, а не частью GA-панели."
-            ),
-            wraplength=850,
-            justify="left",
-        ).pack(fill="x", padx=6, pady=(0, 3))
+        ahp_source_hint_text = (
+            "Источник альтернатив AHP: таблица конфигураций текущей области. "
+            "GA может передать top-N кандидатов в общий пул, но AHP остаётся самостоятельным ранжированием, а не частью GA-панели."
+        )
+        ahp_source_hint = ttk.Label(root, text="Источник альтернатив AHP", justify="left")
+        ahp_source_hint.pack(fill="x", padx=6, pady=(0, 3))
+        attach_tooltip(ahp_source_hint, ahp_source_hint_text, wraplength=520)
         ttk.Label(
             root,
             textvariable=self.candidate_pool_source_var,
@@ -234,16 +233,18 @@ class ConfigurationSelectionTab(AHPConfigurationMixin, AHPIOMixin, AHPPresenterM
         self.matrix_box.grid(row=5, column=0, columnspan=6, sticky="ew", pady=(8, 0))
         self.matrix_box.grid_columnconfigure(0, weight=1)
 
+        matrix_hint_text = (
+            "В экспертном режиме задайте попарные сравнения для включенных критериев. "
+            f"Можно вводить числа или дроби вида 1/3. Подсказка по шкале: {', '.join(ALLOWED_PAIRWISE_HINTS)}."
+        )
         matrix_hint = tk.Label(
             self.matrix_box,
-            text=(
-                "В экспертном режиме задайте попарные сравнения для включенных критериев. "
-                f"Можно вводить числа или дроби вида 1/3. Подсказка по шкале: {', '.join(ALLOWED_PAIRWISE_HINTS)}."
-            ),
+            text="Экспертная матрица: подсказка",
             justify="left",
             anchor="w",
         )
         matrix_hint.pack(fill="x", padx=6, pady=(6, 4))
+        attach_tooltip(matrix_hint, matrix_hint_text, wraplength=520)
 
         matrix_tools = tk.Frame(self.matrix_box)
         matrix_tools.pack(fill="x", padx=6, pady=(0, 4))

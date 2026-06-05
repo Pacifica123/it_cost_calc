@@ -22,6 +22,7 @@ from shared.constants import (
 )
 from shared.validation import parse_float, parse_int
 from ui.tabs.base_scrollable_tab import BaseScrollableTab
+from ui.widgets import attach_tooltip
 
 
 CATEGORY_LABELS = {
@@ -197,15 +198,13 @@ class GeneticOptimizationTab(BaseScrollableTab):
             text="Предпочитать дешевле при близком качестве",
             variable=self.cost_tie_breaker_var,
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=4)
-        ttk.Label(
-            weights,
-            text=(
-                "Покрытие категорий, минимум мест/лицензий и бюджет теперь являются фильтрами. "
-                "Стоимость не имеет отдельного веса: более дешёвый вариант выбирается только при близкой основной GA-оценке."
-            ),
-            wraplength=300,
-            justify="left",
-        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(8, 0))
+        ga_weights_hint_text = (
+            "Покрытие категорий, минимум мест/лицензий и бюджет теперь являются фильтрами. "
+            "Стоимость не имеет отдельного веса: более дешёвый вариант выбирается только при близкой основной GA-оценке."
+        )
+        ga_weights_hint = ttk.Label(weights, text="Фильтры и экономия", justify="left")
+        ga_weights_hint.grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(8, 0))
+        attach_tooltip(ga_weights_hint, ga_weights_hint_text)
 
         actions = ttk.Frame(self.inner_frame)
         actions.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="ew")
