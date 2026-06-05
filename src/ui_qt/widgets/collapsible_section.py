@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QToolButton, QVBoxLayout, QWidget
 
 from ui_qt.widgets.info_hint import InfoHint
 from ui_qt.widgets.text_rules import assert_short_text
@@ -33,12 +33,13 @@ class CollapsibleSection(QFrame):
         self._toggle.clicked.connect(self._sync_state)
 
         header = QWidget(self)
-        header_layout = QVBoxLayout(header)
+        header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(0)
-        header_layout.addWidget(self._toggle)
+        header_layout.setSpacing(6)
+        header_layout.addWidget(self._toggle, 0)
         if tooltip:
-            header_layout.addWidget(InfoHint(tooltip, header), 0, Qt.AlignmentFlag.AlignLeft)
+            header_layout.addWidget(InfoHint(tooltip, header), 0)
+        header_layout.addStretch(1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 10)

@@ -169,10 +169,10 @@ class ComponentEditorPresenter:
         return [self._component_table_row(component) for component in self.runtime_service.list_components()]
 
     def status_summary(self) -> str:
-        components = self.runtime_service.list_components()
-        strict_count = sum(1 for item in components if item.candidate_eligible)
-        draft_count = len(components) - strict_count
-        return f"Всего: {len(components)} · strict: {strict_count} · draft: {draft_count}"
+        total = len(self.runtime_service.list_components())
+        if total == 1:
+            return "1 запись"
+        return f"{total} записей"
 
     def new_form_values(self) -> dict[str, Any]:
         return {

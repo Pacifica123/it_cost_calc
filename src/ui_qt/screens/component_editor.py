@@ -20,8 +20,8 @@ try:
         QMessageBox,
         QPlainTextEdit,
         QPushButton,
+        QScrollArea,
         QSizePolicy,
-        QToolButton,
         QVBoxLayout,
         QWidget,
     )
@@ -30,7 +30,7 @@ except ModuleNotFoundError as exc:
         raise
     Qt = None  # type: ignore[assignment]
     QCheckBox = QComboBox = QFrame = QGridLayout = QHBoxLayout = QLineEdit = None  # type: ignore[assignment]
-    QMenu = QMessageBox = QPlainTextEdit = QPushButton = QSizePolicy = QToolButton = None  # type: ignore[assignment]
+    QMenu = QMessageBox = QPlainTextEdit = QPushButton = QScrollArea = QSizePolicy = None  # type: ignore[assignment]
     QVBoxLayout = QWidget = object  # type: ignore[assignment,misc]
 
 _COMMON_FIELDS = (
@@ -133,6 +133,11 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.setContentsMargins(12, 10, 12, 12)
         layout.setSpacing(8)
 
+        content = QWidget(form)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(8)
+
         main_grid = QGridLayout()
         main_grid.setContentsMargins(0, 0, 0, 0)
         main_grid.setHorizontalSpacing(10)
@@ -141,45 +146,56 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         self._add_line(main_grid, "id", "ID", 0, 0, placeholder="auto")
         self._add_line(main_grid, "name", "Название", 1, 0)
 
-        main_grid.addWidget(CompactLabel("Профиль", form), 0, 2)
-        self.scope_combo = QComboBox(form)
+        main_grid.addWidget(CompactLabel("Профиль", content), 0, 2)
+        self.scope_combo = QComboBox(content)
         for option in self.presenter.scope_options():
             self.scope_combo.addItem(option.label, option.value)
         self.scope_combo.setToolTip("Профиль определяет набор типов и метрик компонента.")
         self.scope_combo.currentIndexChanged.connect(self._on_scope_change)
         main_grid.addWidget(self.scope_combo, 0, 3)
 
-        main_grid.addWidget(CompactLabel("Тип", form), 1, 2)
-        self.type_combo = QComboBox(form)
+        main_grid.addWidget(CompactLabel("Тип", content), 1, 2)
+        self.type_combo = QComboBox(content)
         main_grid.addWidget(self.type_combo, 1, 3)
 
         for column in (1, 3):
             main_grid.setColumnStretch(column, 1)
 
-        layout.addLayout(main_grid)
-        layout.addWidget(self._build_cost_section(), 0)
-        layout.addWidget(self._build_metrics_section(), 0)
-        layout.addWidget(self._build_extra_section(), 0)
-        layout.addWidget(self._build_preview_section(), 0)
-        layout.addStretch(1)
+        content_layout.addLayout(main_grid)
+        content_layout.addWidget(self._build_cost_section(), 0)
+        content_layout.addWidget(self._build_metrics_section(), 0)
+        content_layout.addWidget(self._build_extra_section(), 0)
+        content_layout.addWidget(self._build_preview_section(), 0)
+        content_layout.addStretch(1)
+
+        scroll = QScrollArea(form)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         layout.addLayout(self._build_buttons(), 0)
         return form
 
-    def _build_cost_section(self) -> QWidget:  # type: ignore[valid-type]
-        frame = QFrame(self)
-        frame.setObjectName("card")
-        layout = QGridLayout(frame)
+    def _build_cost_section(self) -> CollapsibleSection:
+        content = QFrame(self)
+        content.setObjectName("card")
+        layout = QGridLayout(content)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setHorizontalSpacing(10)
         layout.setVerticalSpacing(8)
-        layout.addWidget(CompactLabel("Стоимость", frame), 0, 0, 1, 4)
-        for index, (name, label) in enumerate(_COST_FIELDS, start=1):
-            row = (index + 1) // 2
-            column = 0 if index % 2 else 2
-            self._add_line(layout, name, label, row, column, parent=frame)
+        for index, (name, label) in enumerate(_COST_FIELDS):
+            row = index // 2
+            column = 0 if index % 2 == 0 else 2
+            self._add_line(layout, name, label, row, column, parent=content)
         for column in (1, 3):
             layout.setColumnStretch(column, 1)
-        return frame
+        return CollapsibleSection(
+            "Стоимость",
+            content,
+            self,
+            tooltip="Количество, покупка и регулярные расходы скрыты по умолчанию.",
+            expanded=False,
+        )
 
     def _build_metrics_section(self) -> CollapsibleSection:
         content = QFrame(self)
@@ -256,14 +272,6 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         self.save_button.clicked.connect(self.save_form)
         buttons.addWidget(self.save_button)
 
-        more_button = QToolButton(self)
-        more_button.setText("Ещё")
-        more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        more_menu = QMenu(more_button)
-        more_button.setMenu(more_menu)
-        more_menu.addAction("Очистить").triggered.connect(self.start_create)
-        more_menu.addAction("Обновить").triggered.connect(self.refresh_table)
-        buttons.addWidget(more_button)
         return buttons
 
     def _add_line(
@@ -316,8 +324,9 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         for index, field in enumerate(self.presenter.metric_fields(self._current_scope())):
             row = index // 2
             column = 0 if index % 2 == 0 else 2
-            self.metrics_layout.addWidget(CompactLabel(field.label, self), row, column)
-            entry = QLineEdit(self)
+            owner = self.metrics_layout.parentWidget() or self
+            self.metrics_layout.addWidget(CompactLabel(field.label, owner), row, column)
+            entry = QLineEdit(owner)
             entry.setText(str(metrics.get(field.name, "")))
             entry.setMinimumWidth(150)
             entry.setMinimumHeight(32)
@@ -348,7 +357,7 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         self.table.setVisible(False)
         self.form.setVisible(True)
         self.route_label.setText("Новая запись")
-        self._set_status("Новая запись")
+        self._set_status("Черновик")
 
     def load_row(self, row_index: int, _row: dict[str, Any] | None = None) -> None:
         self.mode = "edit"
@@ -358,7 +367,7 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
         self.form.setVisible(True)
         self.route_label.setText("Редактирование")
         self.preview_form(show_errors=False)
-        self._set_status("Строка загружена")
+        self._set_status("Изменение")
 
     def delete_row(self, row_index: int, _row: dict[str, Any] | None = None) -> None:
         answer = QMessageBox.question(self, "Удалить?", "Удалить компонент?")
@@ -437,3 +446,4 @@ class ComponentEditorScreen(QWidget):  # type: ignore[misc,valid-type]
 
     def _set_status(self, text: str) -> None:
         self.status_label.setText(text)
+        self.status_label.setVisible(bool(text.strip()))
