@@ -32,3 +32,15 @@ def test_candidate_and_decision_models_keep_default_columns():
 
     assert candidate.columns[:3] == ("rank", "name", "score")
     assert decision.columns[-1] == "hybrid_score"
+
+
+class DummyEnum:
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+
+def test_row_table_model_accepts_qt_enum_like_roles_and_orientation():
+    model = EntityTableModel([{"name": "srv", "quantity": 1, "price": 10}])
+
+    assert model.headerData(0, DummyEnum(1), DummyEnum(0)) == "Название"
+    assert model.data(DummyIndex(0, 0), DummyEnum(0)) == "srv"

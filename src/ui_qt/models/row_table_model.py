@@ -77,7 +77,8 @@ class RowTableModel(BaseQtTableModel):
         return len(self._columns)
 
     def data(self, index: Any, role: int = QT_TABLE.display_role) -> Any:
-        if role not in {QT_TABLE.display_role, QT_TABLE.edit_role}:
+        role_value = self._qt_value(role)
+        if role_value not in {QT_TABLE.display_role, QT_TABLE.edit_role}:
             return None
         if not self._is_valid_index(index):
             return None
@@ -87,12 +88,13 @@ class RowTableModel(BaseQtTableModel):
     def headerData(
         self, section: int, orientation: int, role: int = QT_TABLE.display_role
     ) -> Any:  # noqa: N802 - Qt API
-        if role != QT_TABLE.display_role:
+        if self._qt_value(role) != QT_TABLE.display_role:
             return None
-        if orientation == QT_TABLE.horizontal and 0 <= section < len(self._columns):
+        orientation_value = self._qt_value(orientation)
+        if orientation_value == QT_TABLE.horizontal and 0 <= section < len(self._columns):
             column = self._columns[section]
             return self._headers.get(column, column)
-        if orientation == QT_TABLE.vertical:
+        if orientation_value == QT_TABLE.vertical:
             return str(section + 1)
         return None
 
@@ -130,6 +132,14 @@ class RowTableModel(BaseQtTableModel):
         if isinstance(value, float):
             return f"{value:g}"
         return str(value)
+
+    @staticmethod
+    def _qt_value(value: Any) -> int:
+        raw_value = getattr(value, "value", value)
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return -1
 
     @staticmethod
     def _is_valid_index(index: Any) -> bool:

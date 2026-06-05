@@ -165,22 +165,28 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             self.category_model,
             panel,
             empty_title="Нет категорий",
-            empty_status="Загрузите данные",
-            add_text="Демо",
+            empty_status="Загрузите демо",
+            show_actions=False,
+            compact=True,
+            table_height=132,
         )
         self.capex_table = SmartTable(
             self.capex_model,
             panel,
             empty_title="Нет CAPEX",
-            empty_status="Нет разовых активов",
-            add_text="Демо",
+            empty_status="Нет активов",
+            show_actions=False,
+            compact=True,
+            table_height=148,
         )
         self.opex_table = SmartTable(
             self.opex_model,
             panel,
             empty_title="Нет OPEX",
-            empty_status="Нет регулярных затрат",
-            add_text="Демо",
+            empty_status="Нет расходов",
+            show_actions=False,
+            compact=True,
+            table_height=148,
         )
 
         self.category_section = CollapsibleSection(
@@ -223,6 +229,9 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.category_table.refresh_state()
         self.capex_table.refresh_state()
         self.opex_table.refresh_state()
+        self.category_section.set_expanded(summary.row_count > 0)
+        self.capex_section.set_expanded(summary.capex_count > 0)
+        self.opex_section.set_expanded(summary.opex_count > 0 and summary.capex_count == 0)
         self.content_stack.setCurrentWidget(self.data_panel if summary.row_count else self.empty_state)
 
 

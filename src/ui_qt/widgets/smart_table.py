@@ -55,6 +55,9 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         on_delete: RowCallback | None = None,
         on_select: RowCallback | None = None,
         show_actions_when_empty: bool = False,
+        show_actions: bool = True,
+        compact: bool = False,
+        table_height: int | None = None,
     ) -> None:
         if QTableView is None:
             raise RuntimeError("PySide6 is required to create SmartTable")
@@ -69,10 +72,12 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         self._on_delete = on_delete
         self._on_select = on_select
         self._show_actions_when_empty = show_actions_when_empty
+        self._show_actions = show_actions
+        self._compact = compact
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(6 if compact else 8)
 
         self.actions_bar = QWidget(self)
         actions = QHBoxLayout(self.actions_bar)
@@ -106,13 +111,29 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         self.table.doubleClicked.connect(lambda _index: self._emit_edit())
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)
+        if table_height is not None:
+            self.table.setMinimumHeight(table_height)
+            self.table.setMaximumHeight(table_height)
+            self.setMaximumHeight(table_height + (42 if show_actions else 8))
+        elif compact:
+            self.table.setMinimumHeight(96)
+            self.table.setMaximumHeight(160)
 
-        self.empty_state = EmptyState(empty_title, self, status=empty_status, action_text=add_text, action_callback=self._emit_add)
+        empty_action = add_text if show_actions and on_add is not None else None
+        self.empty_state = EmptyState(
+            empty_title,
+            self,
+            status=empty_status,
+            action_text=empty_action,
+            action_callback=self._emit_add if empty_action else None,
+        )
+        if compact:
+            self.empty_state.setMaximumHeight(116)
         self.stack.addWidget(self.table)
         self.stack.addWidget(self.empty_state)
 
         layout.addWidget(self.actions_bar, 0)
-        layout.addLayout(self.stack, 1)
+        layout.addLayout(self.stack, 0 if compact else 1)
         self._connect_selection_model()
         self.refresh_state()
 
@@ -149,7 +170,9 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
     def refresh_state(self) -> None:
         is_empty = self._model.is_empty()
         self.stack.setCurrentWidget(self.empty_state if is_empty else self.table)
-        self.actions_bar.setVisible(self._show_actions_when_empty or not is_empty)
+        self.actions_bar.setVisible(self._show_actions and (self._show_actions_when_empty or not is_empty))
+        self.add_button.setVisible(self._on_add is not None)
+        self.more_button.setVisible(self._on_edit is not None or self._on_delete is not None)
         self.more_button.setEnabled(not is_empty)
 
     def _connect_selection_model(self) -> None:
