@@ -47,6 +47,11 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
     total_ram_gb = 0.0
     total_cpu_cores = 0.0
     total_storage_gb = 0.0
+    total_lan_ports = 0.0
+    max_lan_speed_mbps = 0.0
+    total_wifi_mbps = 0.0
+    ipv6_support_count = 0.0
+    metric_warnings = []
     perf_sum = 0.0
     rel_vals = []
     lifespan_vals = []
@@ -71,6 +76,13 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
         total_ram_gb += quantity * ram_value
         total_cpu_cores += quantity * cpu_value
         total_storage_gb += quantity * storage_value
+        total_lan_ports += quantity * float(d.get("lan_ports", 0.0) or 0.0)
+        max_lan_speed_mbps = max(max_lan_speed_mbps, float(d.get("lan_speed_mbps", 0.0) or 0.0))
+        total_wifi_mbps += quantity * float(d.get("wifi_total_mbps", 0.0) or 0.0)
+        if d.get("ipv6_support") is True:
+            ipv6_support_count += quantity
+        for warning in d.get("metric_warnings") or d.get("analysis_warnings") or []:
+            metric_warnings.append(str(warning))
         # Легаси-производительность оставлена для старых AHP-кейсов,
         # но scoped ПО/ТО профили используют явные метрики ниже.
         perf_sum += cpu_value + ram_value + float(d.get("perf", 0.0) or 0.0)
@@ -125,6 +137,10 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
     resolved_ram = float(totals.get("total_ram_gb", totals.get("ram_gb", total_ram_gb)) or 0.0)
     resolved_cpu = float(totals.get("total_cpu_cores", totals.get("cpu_cores", total_cpu_cores)) or 0.0)
     resolved_storage = float(totals.get("total_storage_gb", totals.get("storage_gb", total_storage_gb)) or 0.0)
+    resolved_lan_ports = float(totals.get("lan_ports", total_lan_ports) or 0.0)
+    resolved_lan_speed = float(totals.get("lan_speed_mbps", max_lan_speed_mbps) or 0.0)
+    resolved_wifi = float(totals.get("wifi_total_mbps", total_wifi_mbps) or 0.0)
+    resolved_ipv6 = float(totals.get("ipv6_support_count", ipv6_support_count) or 0.0)
     res = {
         "id": cfg.get("id", None),
         "total_cost": resolved_total_cost,
@@ -134,6 +150,11 @@ def aggregate_configuration(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "total_ram_gb": float(metrics.get("total_ram_gb", resolved_ram) or 0.0),
         "total_cpu_cores": float(metrics.get("total_cpu_cores", resolved_cpu) or 0.0),
         "total_storage_gb": float(metrics.get("total_storage_gb", resolved_storage) or 0.0),
+        "lan_ports": float(metrics.get("lan_ports", resolved_lan_ports) or 0.0),
+        "lan_speed_mbps": float(metrics.get("lan_speed_mbps", resolved_lan_speed) or 0.0),
+        "wifi_total_mbps": float(metrics.get("wifi_total_mbps", resolved_wifi) or 0.0),
+        "ipv6_support_count": float(metrics.get("ipv6_support_count", resolved_ipv6) or 0.0),
+        "metric_warnings": list(metrics.get("metric_warnings", metric_warnings) or []),
         "functionality_score": float(metrics.get("functionality_score", avg_functionality) or 0.0),
         "support_score": float(metrics.get("support_score", avg_support) or 0.0),
         "total_performance": float(metrics.get("total_performance", perf_sum) or 0.0),

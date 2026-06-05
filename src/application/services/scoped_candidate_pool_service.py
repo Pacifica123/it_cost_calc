@@ -209,7 +209,11 @@ class ScopedCandidatePoolService:
             "total_ram_gb": ("ram_gb",),
             "total_cpu_cores": ("cpu_cores",),
             "total_storage_gb": ("storage_gb",),
-            "total_power_watts": ("total_power_watts", "power_watts", "max_power", "energy"),
+            "total_power_watts": ("total_power_watts", "power_watts", "max_power_watts", "max_power", "energy"),
+            "lan_ports": ("lan_ports",),
+            "lan_speed_mbps": ("lan_speed_mbps",),
+            "wifi_total_mbps": ("wifi_total_mbps",),
+            "ipv6_support_count": ("ipv6_support_count", "ipv6_support"),
             "capital_cost": ("capital_cost", "total_cost", "tco"),
             "software_license_quantity": ("software_license_quantity", "license_units"),
         }

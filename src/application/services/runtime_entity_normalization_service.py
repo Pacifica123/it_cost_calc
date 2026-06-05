@@ -4,6 +4,12 @@ The project still stores user data grouped by legacy category names.  This
 service is the single application-level adapter that derives missing
 ``scope`` and ``component_type`` values from those categories until the runtime
 format becomes explicit everywhere.
+
+Patch 8 also makes technical metrics explicit.  Runtime rows may still come
+from manual tables, demo JSON or future parser payloads with slightly different
+field names, so this adapter normalizes conservative aliases and records metric
+warnings instead of silently converting every unknown characteristic into a
+hidden zero penalty.
 """
 
 from __future__ import annotations
@@ -45,6 +51,12 @@ _FIXED_COMPONENT_TYPE_BY_CATEGORY: dict[str, ComponentType] = {
     "server_administration": ComponentType.SUPPORT_SERVICE,
 }
 
+_GENERAL_TECHNICAL_METRICS = ("max_power_watts",)
+_COMPUTE_METRICS = ("ram_gb", "cpu_cores", "storage_gb")
+_NETWORK_METRICS = ("lan_ports", "lan_speed_mbps", "wifi_total_mbps", "ipv6_support")
+_COMPUTE_COMPONENT_TYPES = {ComponentType.SERVER.value, ComponentType.WORKSTATION.value}
+_NETWORK_COMPONENT_TYPES = {ComponentType.NETWORK_DEVICE.value}
+
 
 def normalize_runtime_row(row: Mapping[str, Any], *, category: str) -> dict[str, Any]:
     """Return a copy of a runtime row with transition fields filled.
@@ -73,6 +85,7 @@ def normalize_runtime_row(row: Mapping[str, Any], *, category: str) -> dict[str,
         normalized["component_type"] = str(component_type)
 
     _normalize_client_seats(normalized, category=category_name)
+    _normalize_technical_metrics(normalized, category=category_name)
     return normalized
 
 
@@ -132,6 +145,95 @@ def _normalize_client_seats(row: dict[str, Any], *, category: str) -> None:
         row["client_seats"] = row.get("quantity", 1)
     elif component_type == ComponentType.PERIPHERAL.value:
         row["client_seats"] = 0
+
+
+def _normalize_technical_metrics(row: dict[str, Any], *, category: str) -> None:
+    """Normalize concrete ТО fields and attach non-fatal completeness warnings."""
+
+    if str(row.get("scope") or infer_scope(category)) != AnalysisScope.TECHNICAL.value:
+        return
+
+    component_type = str(row.get("component_type") or "")
+    _copy_first_number(row, "ram_gb", ("ram_score", "memory_gb"))
+    _copy_first_number(row, "cpu_cores", ("cpu_score", "cores"))
+    _copy_first_number(row, "storage_gb", ("disk_gb", "ssd_gb", "hdd_gb"))
+    _copy_first_number(row, "max_power_watts", ("max_power", "power_watts", "energy"))
+    if "max_power" not in row and "max_power_watts" in row:
+        row["max_power"] = row["max_power_watts"]
+    elif "max_power_watts" not in row and "max_power" in row:
+        row["max_power_watts"] = row["max_power"]
+
+    _copy_first_number(row, "lan_ports", ("lan_port_count", "ethernet_ports"))
+    _copy_first_number(row, "lan_speed_mbps", ("ethernet_speed_mbps", "port_speed_mbps"))
+    _copy_first_number(row, "wifi_total_mbps", ("wifi_speed_mbps", "wireless_speed_mbps"))
+    if "ipv6_support" not in row and "ipv6" in row:
+        row["ipv6_support"] = _normalize_bool(row.get("ipv6"))
+    elif "ipv6_support" in row:
+        row["ipv6_support"] = _normalize_bool(row.get("ipv6_support"))
+
+    warnings = list(row.get("metric_warnings") or row.get("analysis_warnings") or [])
+    for field in _GENERAL_TECHNICAL_METRICS:
+        if not _has_metric(row, field):
+            warnings.append(f"technical metric {field} is missing")
+    if component_type in _COMPUTE_COMPONENT_TYPES:
+        for field in _COMPUTE_METRICS:
+            if not _has_metric(row, field):
+                warnings.append(f"compute metric {field} is missing")
+    if component_type in _NETWORK_COMPONENT_TYPES:
+        for field in _NETWORK_METRICS:
+            if not _has_metric(row, field):
+                warnings.append(f"network metric {field} is missing")
+
+    if warnings:
+        row["metric_warnings"] = _unique(warnings)
+
+
+def _copy_first_number(row: dict[str, Any], target: str, aliases: tuple[str, ...]) -> None:
+    if _has_metric(row, target):
+        row[target] = _number(row.get(target), default=0.0)
+        return
+    for alias in aliases:
+        if not _has_metric(row, alias):
+            continue
+        row[target] = _number(row.get(alias), default=0.0)
+        return
+
+
+def _has_metric(row: Mapping[str, Any], key: str) -> bool:
+    return key in row and row.get(key) not in {None, ""}
+
+
+def _normalize_bool(value: Any) -> bool | None:
+    if value in {None, ""}:
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "да", "+", "поддерживается", "есть"}:
+        return True
+    if text in {"0", "false", "no", "n", "нет", "-", "не поддерживается"}:
+        return False
+    return None
+
+
+def _number(value: Any, *, default: float) -> float:
+    try:
+        if value is None or value == "":
+            return float(default)
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _unique(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value)
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
 
 
 class RuntimeEntityNormalizationService:

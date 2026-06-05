@@ -302,6 +302,14 @@ class AnalysisScopeProfileService:
             return self._software_quantity
         if metric == "total_power_watts":
             return lambda subset, lookup=power_lookup: self._total_power(subset, lookup)
+        if metric == "lan_ports":
+            return lambda subset: self._sum_property(subset, "lan_ports")
+        if metric == "lan_speed_mbps":
+            return lambda subset: self._max_property(subset, "lan_speed_mbps")
+        if metric == "wifi_total_mbps":
+            return lambda subset: self._sum_property(subset, "wifi_total_mbps")
+        if metric == "ipv6_support_count":
+            return lambda subset: self._sum_bool_property(subset, "ipv6_support")
         if metric in {"selected_software_items", "selected_count"}:
             return lambda subset: float(len(subset))
         if metric in {"ram_gb", "total_ram_gb"}:
@@ -334,6 +342,13 @@ class AnalysisScopeProfileService:
         values = [self._number(self._properties(item).get(property_name), default=0.0) for item in subset]
         return sum(values) / len(values) if values else 0.0
 
+    def _max_property(self, subset: Sequence[Any], property_name: str) -> float:
+        values = [self._number(self._properties(item).get(property_name), default=0.0) for item in subset]
+        return max(values) if values else 0.0
+
+    def _sum_bool_property(self, subset: Sequence[Any], property_name: str) -> float:
+        return sum(self._bool_as_number(self._properties(item).get(property_name)) for item in subset)
+
     def _properties(self, item: Any) -> Mapping[str, Any]:
         if isinstance(item, Mapping):
             return item
@@ -357,8 +372,21 @@ class AnalysisScopeProfileService:
     def _item_power(self, item: Mapping[str, Any], power_lookup: Mapping[str, float]) -> float:
         name = str(item.get("name", ""))
         quantity = self._number(item.get("quantity"), default=1.0)
-        per_unit_power = self._number(item.get("max_power", power_lookup.get(name, 0.0)), default=0.0)
+        per_unit_power = self._number(
+            item.get("max_power_watts", item.get("max_power", power_lookup.get(name, 0.0))),
+            default=0.0,
+        )
         return quantity * per_unit_power
+
+    def _bool_as_number(self, value: Any) -> float:
+        if isinstance(value, bool):
+            return 1.0 if value else 0.0
+        if value in {None, ""}:
+            return 0.0
+        text = str(value).strip().lower()
+        if text in {"1", "true", "yes", "y", "да", "+", "есть", "поддерживается"}:
+            return 1.0
+        return 0.0
 
     def _number(self, value: Any, *, default: float = 0.0) -> float:
         try:
@@ -410,6 +438,34 @@ TECHNICAL_PROFILE = AnalysisScopeProfile(
             metric="total_power_watts",
             description="Суммарная мощность выбранных технических компонентов; связана с OPEX электроэнергии.",
         ),
+        AnalysisCriterionProfile(
+            id="lan_ports",
+            label="LAN-порты",
+            direction="max",
+            metric="lan_ports",
+            description="Суммарное число LAN-портов сетевых устройств, если характеристика явно заполнена.",
+        ),
+        AnalysisCriterionProfile(
+            id="lan_speed_mbps",
+            label="LAN-скорость, Мбит/с",
+            direction="max",
+            metric="lan_speed_mbps",
+            description="Максимальная скорость LAN-порта среди сетевых устройств.",
+        ),
+        AnalysisCriterionProfile(
+            id="wifi_total_mbps",
+            label="Wi-Fi, Мбит/с",
+            direction="max",
+            metric="wifi_total_mbps",
+            description="Суммарная заявленная скорость Wi-Fi для сетевых устройств.",
+        ),
+        AnalysisCriterionProfile(
+            id="ipv6_support_count",
+            label="IPv6, устройств",
+            direction="max",
+            metric="ipv6_support_count",
+            description="Количество выбранных сетевых устройств с явной поддержкой IPv6.",
+        ),
     ),
     constraints=(
         AnalysisConstraintProfile(
@@ -454,16 +510,24 @@ TECHNICAL_PROFILE = AnalysisScopeProfile(
         ),
     ),
     default_weights={
-        "total_ram_gb": 0.30,
-        "total_cpu_cores": 0.30,
-        "total_storage_gb": 0.20,
-        "total_power_watts": 0.20,
+        "total_ram_gb": 0.22,
+        "total_cpu_cores": 0.22,
+        "total_storage_gb": 0.16,
+        "total_power_watts": 0.16,
+        "lan_ports": 0.08,
+        "lan_speed_mbps": 0.06,
+        "wifi_total_mbps": 0.06,
+        "ipv6_support_count": 0.04,
     },
     metric_extractors={
         "total_ram_gb": "sum ram_gb; empty metric means no data",
         "total_cpu_cores": "sum cpu_cores; empty metric means no data",
         "total_storage_gb": "sum storage_gb; empty metric means no data",
-        "total_power_watts": "quantity × max_power with energy-tab lookup fallback",
+        "total_power_watts": "quantity × max_power_watts/max_power with energy-tab lookup fallback",
+        "lan_ports": "sum lan_ports for network devices; missing data is reported in metric_warnings",
+        "lan_speed_mbps": "max lan_speed_mbps for network devices; missing data is reported in metric_warnings",
+        "wifi_total_mbps": "sum wifi_total_mbps for network devices; missing data is reported in metric_warnings",
+        "ipv6_support_count": "count explicit ipv6_support=true for network devices",
         "capital_cost": "sum total_cost; report-only and cost tie-breaker, not a base soft criterion",
     },
     explanation_rules={

@@ -473,7 +473,19 @@ class GeneticOptimizationService:
                 "ram_gb": self._number(properties.get("ram_gb", properties.get("ram_score")), default=0.0),
                 "cpu_cores": self._number(properties.get("cpu_cores", properties.get("cpu_score")), default=0.0),
                 "storage_gb": self._number(properties.get("storage_gb"), default=0.0),
-                "max_power": self._number(properties.get("max_power", properties.get("energy")), default=0.0),
+                "max_power": self._number(
+                    properties.get("max_power", properties.get("max_power_watts", properties.get("energy"))),
+                    default=0.0,
+                ),
+                "max_power_watts": self._number(
+                    properties.get("max_power_watts", properties.get("max_power", properties.get("energy"))),
+                    default=0.0,
+                ),
+                "lan_ports": self._number(properties.get("lan_ports"), default=0.0),
+                "lan_speed_mbps": self._number(properties.get("lan_speed_mbps"), default=0.0),
+                "wifi_total_mbps": self._number(properties.get("wifi_total_mbps"), default=0.0),
+                "ipv6_support": self._bool_as_number(properties.get("ipv6_support")),
+                "metric_warnings": list(properties.get("metric_warnings") or []),
             }
         )
         return properties
@@ -744,6 +756,40 @@ class GeneticOptimizationService:
                 self._number(item.get("storage_gb"), default=0.0)
                 for item in selected_items
             ),
+            "total_ram_gb": sum(
+                self._number(item.get("ram_gb"), default=0.0)
+                for item in selected_items
+            ),
+            "total_cpu_cores": sum(
+                self._number(item.get("cpu_cores"), default=0.0)
+                for item in selected_items
+            ),
+            "total_storage_gb": sum(
+                self._number(item.get("storage_gb"), default=0.0)
+                for item in selected_items
+            ),
+            "total_power_watts": sum(
+                self._number(item.get("max_power_watts", item.get("max_power")), default=0.0)
+                * self._number(item.get("quantity"), default=1.0)
+                for item in selected_items
+            ),
+            "lan_ports": sum(
+                self._number(item.get("lan_ports"), default=0.0)
+                for item in selected_items
+            ),
+            "lan_speed_mbps": max(
+                [self._number(item.get("lan_speed_mbps"), default=0.0) for item in selected_items]
+                or [0.0]
+            ),
+            "wifi_total_mbps": sum(
+                self._number(item.get("wifi_total_mbps"), default=0.0)
+                for item in selected_items
+            ),
+            "ipv6_support_count": sum(
+                self._bool_as_number(item.get("ipv6_support"))
+                for item in selected_items
+            ),
+            "metric_warnings": self._metric_warnings(selected_items),
             "software_license_quantity": sum(
                 self._number(item.get("license_units"), default=0.0)
                 for item in selected_items
@@ -752,6 +798,30 @@ class GeneticOptimizationService:
                 1 for item in selected_items if item.get("source_format") == "solution_component"
             ),
         }
+
+    def _metric_warnings(self, selected_items: Sequence[Mapping[str, Any]]) -> list[str]:
+        warnings: list[str] = []
+        for item in selected_items:
+            name = str(item.get("name") or item.get("id") or "component")
+            for warning in item.get("metric_warnings") or item.get("analysis_warnings") or []:
+                warnings.append(f"{name}: {warning}")
+        result: list[str] = []
+        seen: set[str] = set()
+        for warning in warnings:
+            if warning not in seen:
+                seen.add(warning)
+                result.append(warning)
+        return result
+
+    def _bool_as_number(self, value: Any) -> float:
+        if isinstance(value, bool):
+            return 1.0 if value else 0.0
+        if value in {None, ""}:
+            return 0.0
+        text = str(value).strip().lower()
+        if text in {"1", "true", "yes", "y", "да", "+", "есть", "поддерживается"}:
+            return 1.0
+        return 0.0
 
     def _scope_from_categories(self, categories: Sequence[str]) -> str | None:
         category_set = {str(category) for category in categories}

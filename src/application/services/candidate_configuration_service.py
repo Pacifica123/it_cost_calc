@@ -305,6 +305,11 @@ class CandidateConfigurationService:
             "total_cpu_cores": aggregate.get("total_cpu_cores", 0.0),
             "total_storage_gb": aggregate.get("total_storage_gb", 0.0),
             "total_power_watts": aggregate.get("total_power_watts", 0.0),
+            "lan_ports": aggregate.get("lan_ports", 0.0),
+            "lan_speed_mbps": aggregate.get("lan_speed_mbps", 0.0),
+            "wifi_total_mbps": aggregate.get("wifi_total_mbps", 0.0),
+            "ipv6_support_count": aggregate.get("ipv6_support_count", 0.0),
+            "metric_warnings": deepcopy(aggregate.get("metric_warnings", [])),
             "functionality_score": aggregate.get("functionality_score", 0.0),
             "support_score": aggregate.get("support_score", 0.0),
             "avg_reliability": aggregate.get("avg_reliability", 0.0),
@@ -322,12 +327,25 @@ class CandidateConfigurationService:
             "total_ram_gb": aggregate.get("total_ram_gb", 0.0),
             "total_cpu_cores": aggregate.get("total_cpu_cores", 0.0),
             "total_storage_gb": aggregate.get("total_storage_gb", 0.0),
+            "lan_ports": aggregate.get("lan_ports", 0.0),
+            "lan_speed_mbps": aggregate.get("lan_speed_mbps", 0.0),
+            "wifi_total_mbps": aggregate.get("wifi_total_mbps", 0.0),
+            "ipv6_support_count": aggregate.get("ipv6_support_count", 0.0),
         }
 
     def _totals_from_components(self, components: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         capital_cost = 0.0
         monthly_cost = 0.0
         one_time_cost = 0.0
+        ram_gb = 0.0
+        cpu_cores = 0.0
+        storage_gb = 0.0
+        total_power = 0.0
+        lan_ports = 0.0
+        lan_speed_mbps = 0.0
+        wifi_total_mbps = 0.0
+        ipv6_support_count = 0.0
+        metric_warnings: list[str] = []
         for component in components:
             quantity = self._number(component.get("quantity"), default=1.0)
             price = self._number(component.get("price", component.get("unit_price")), default=0.0)
@@ -337,11 +355,34 @@ class CandidateConfigurationService:
             )
             monthly_cost += self._number(component.get("monthly_cost"), default=0.0)
             one_time_cost += self._number(component.get("one_time_cost"), default=0.0)
+            ram_gb += quantity * self._number(component.get("ram_gb"), default=0.0)
+            cpu_cores += quantity * self._number(component.get("cpu_cores"), default=0.0)
+            storage_gb += quantity * self._number(component.get("storage_gb"), default=0.0)
+            total_power += quantity * self._number(
+                component.get("max_power_watts", component.get("max_power")),
+                default=0.0,
+            )
+            lan_ports += quantity * self._number(component.get("lan_ports"), default=0.0)
+            lan_speed_mbps = max(lan_speed_mbps, self._number(component.get("lan_speed_mbps"), default=0.0))
+            wifi_total_mbps += quantity * self._number(component.get("wifi_total_mbps"), default=0.0)
+            if component.get("ipv6_support") is True:
+                ipv6_support_count += quantity
+            for warning in component.get("metric_warnings") or component.get("analysis_warnings") or []:
+                metric_warnings.append(str(warning))
         return {
             "capital_cost": capital_cost,
             "monthly_cost": monthly_cost,
             "one_time_cost": one_time_cost,
             "component_count": len(components),
+            "total_ram_gb": ram_gb,
+            "total_cpu_cores": cpu_cores,
+            "total_storage_gb": storage_gb,
+            "total_power_watts": total_power,
+            "lan_ports": lan_ports,
+            "lan_speed_mbps": lan_speed_mbps,
+            "wifi_total_mbps": wifi_total_mbps,
+            "ipv6_support_count": ipv6_support_count,
+            "metric_warnings": self._unique(metric_warnings),
         }
 
     def _component_to_ahp_device(self, component: Mapping[str, Any]) -> dict[str, Any]:
@@ -351,8 +392,13 @@ class CandidateConfigurationService:
             quantity = self._number(device.get("quantity"), default=1.0)
             price = self._number(device.get("price", device.get("unit_price")), default=0.0)
             device["cost"] = self._number(device.get("total_cost"), default=quantity * price)
-        if "energy" not in device and "max_power" in device:
-            device["energy"] = self._number(device.get("max_power"), default=0.0)
+        if "energy" not in device and ("max_power_watts" in device or "max_power" in device):
+            device["energy"] = self._number(
+                device.get("max_power_watts", device.get("max_power")),
+                default=0.0,
+            )
+        if "max_power" not in device and "max_power_watts" in device:
+            device["max_power"] = device["max_power_watts"]
         return device
 
     def _with_tco(self, candidate: CandidateConfiguration) -> CandidateConfiguration:
@@ -367,6 +413,16 @@ class CandidateConfigurationService:
         if isinstance(value, CandidateConfigurationSource):
             return value
         return CandidateConfigurationSource(str(value))
+
+    def _unique(self, values: Sequence[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            text = str(value)
+            if text and text not in seen:
+                seen.add(text)
+                result.append(text)
+        return result
 
     def _number(self, value: Any, *, default: float) -> float:
         try:

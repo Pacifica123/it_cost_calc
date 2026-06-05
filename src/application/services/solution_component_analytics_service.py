@@ -192,7 +192,18 @@ class SolutionComponentAnalyticsIntegrationService:
         source_category = self._source_category(normalized, profile=profile)
         quantity = self._number(payload.get("quantity"), default=1.0)
         analysis_cost = self._analysis_cost(payload)
-        max_power = self._number(payload.get("max_power"), default=self._number(metrics.get("max_power"), default=0.0))
+        max_power = self._first_number(
+            {**metrics, **payload},
+            ("max_power_watts", "max_power", "power_watts", "energy"),
+            default=0.0,
+        )
+        ram_gb = self._first_number({**metrics, **payload}, ("ram_gb", "ram_score", "memory_gb"), default=0.0)
+        cpu_cores = self._first_number({**metrics, **payload}, ("cpu_cores", "cpu_score", "cores"), default=0.0)
+        storage_gb = self._first_number({**metrics, **payload}, ("storage_gb", "disk_gb", "ssd_gb", "hdd_gb"), default=0.0)
+        lan_ports = self._first_number({**metrics, **payload}, ("lan_ports", "lan_port_count", "ethernet_ports"), default=0.0)
+        lan_speed_mbps = self._first_number({**metrics, **payload}, ("lan_speed_mbps", "ethernet_speed_mbps", "port_speed_mbps"), default=0.0)
+        wifi_total_mbps = self._first_number({**metrics, **payload}, ("wifi_total_mbps", "wifi_speed_mbps", "wireless_speed_mbps"), default=0.0)
+        ipv6_support = self._bool_or_none(metrics.get("ipv6_support", payload.get("ipv6_support", metrics.get("ipv6"))))
         performance = self._first_number(
             metrics,
             ("perf", "performance_score", "functionality_score", "cpu_score"),
@@ -234,6 +245,14 @@ class SolutionComponentAnalyticsIntegrationService:
                 "capital_cost": analysis_cost,
                 "energy": max_power if profile.scope == ANALYSIS_SCOPE_TECHNICAL else 0.0,
                 "max_power": max_power,
+                "max_power_watts": max_power,
+                "ram_gb": ram_gb,
+                "cpu_cores": cpu_cores,
+                "storage_gb": storage_gb,
+                "lan_ports": lan_ports,
+                "lan_speed_mbps": lan_speed_mbps,
+                "wifi_total_mbps": wifi_total_mbps,
+                "ipv6_support": ipv6_support,
                 "client_seats": client_seats,
                 "license_units": license_units,
                 "perf": performance,
@@ -250,6 +269,13 @@ class SolutionComponentAnalyticsIntegrationService:
                     source_category=source_category,
                     analysis_cost=analysis_cost,
                     max_power=max_power,
+                    ram_gb=ram_gb,
+                    cpu_cores=cpu_cores,
+                    storage_gb=storage_gb,
+                    lan_ports=lan_ports,
+                    lan_speed_mbps=lan_speed_mbps,
+                    wifi_total_mbps=wifi_total_mbps,
+                    ipv6_support=ipv6_support,
                     client_seats=client_seats,
                     license_units=license_units,
                 ),
@@ -365,6 +391,15 @@ class SolutionComponentAnalyticsIntegrationService:
             "total_cost": total_cost,
             "total_energy": energy,
             "energy": energy,
+            "total_power_watts": energy * self._number(payload.get("quantity"), default=1.0),
+            "total_ram_gb": self._number(payload.get("ram_gb"), default=0.0) * self._number(payload.get("quantity"), default=1.0),
+            "total_cpu_cores": self._number(payload.get("cpu_cores"), default=0.0) * self._number(payload.get("quantity"), default=1.0),
+            "total_storage_gb": self._number(payload.get("storage_gb"), default=0.0) * self._number(payload.get("quantity"), default=1.0),
+            "lan_ports": self._number(payload.get("lan_ports"), default=0.0) * self._number(payload.get("quantity"), default=1.0),
+            "lan_speed_mbps": self._number(payload.get("lan_speed_mbps"), default=0.0),
+            "wifi_total_mbps": self._number(payload.get("wifi_total_mbps"), default=0.0) * self._number(payload.get("quantity"), default=1.0),
+            "ipv6_support_count": self._bool_as_number(payload.get("ipv6_support")) * self._number(payload.get("quantity"), default=1.0),
+            "metric_warnings": list(payload.get("analysis_warnings", [])),
             "component_count": 1,
             "solution_component_count": 1,
         }
@@ -381,8 +416,22 @@ class SolutionComponentAnalyticsIntegrationService:
             "lifespan": self._number(payload.get("lifespan"), default=0.0),
             "client_capacity": self._number(payload.get("client_seats"), default=0.0),
             "software_license_quantity": self._number(payload.get("license_units"), default=0.0),
-            "total_power_watts": self._number(payload.get("max_power"), default=0.0)
+            "total_power_watts": self._number(payload.get("max_power_watts", payload.get("max_power")), default=0.0)
             * self._number(payload.get("quantity"), default=1.0),
+            "total_ram_gb": self._number(payload.get("ram_gb"), default=0.0)
+            * self._number(payload.get("quantity"), default=1.0),
+            "total_cpu_cores": self._number(payload.get("cpu_cores"), default=0.0)
+            * self._number(payload.get("quantity"), default=1.0),
+            "total_storage_gb": self._number(payload.get("storage_gb"), default=0.0)
+            * self._number(payload.get("quantity"), default=1.0),
+            "lan_ports": self._number(payload.get("lan_ports"), default=0.0)
+            * self._number(payload.get("quantity"), default=1.0),
+            "lan_speed_mbps": self._number(payload.get("lan_speed_mbps"), default=0.0),
+            "wifi_total_mbps": self._number(payload.get("wifi_total_mbps"), default=0.0)
+            * self._number(payload.get("quantity"), default=1.0),
+            "ipv6_support_count": self._bool_as_number(payload.get("ipv6_support"))
+            * self._number(payload.get("quantity"), default=1.0),
+            "metric_warnings": list(payload.get("analysis_warnings", [])),
             "people": int(self._number(payload.get("client_seats"), default=0.0)),
         }
 
@@ -394,6 +443,13 @@ class SolutionComponentAnalyticsIntegrationService:
         source_category: str,
         analysis_cost: float,
         max_power: float,
+        ram_gb: float,
+        cpu_cores: float,
+        storage_gb: float,
+        lan_ports: float,
+        lan_speed_mbps: float,
+        wifi_total_mbps: float,
+        ipv6_support: bool | None,
         client_seats: float,
         license_units: float,
     ) -> list[str]:
@@ -406,7 +462,23 @@ class SolutionComponentAnalyticsIntegrationService:
             if component.component_type == ComponentType.WORKSTATION and client_seats <= 0:
                 warnings.append("workstation has no client_seats; it cannot cover user workplaces")
             if component.component_type in {ComponentType.SERVER, ComponentType.WORKSTATION, ComponentType.NETWORK_DEVICE} and max_power <= 0:
-                warnings.append("technical component has no max_power; power criterion will be incomplete")
+                warnings.append("technical component has no max_power_watts/max_power; power criterion will be incomplete")
+            if component.component_type in {ComponentType.SERVER, ComponentType.WORKSTATION}:
+                if ram_gb <= 0:
+                    warnings.append("compute metric ram_gb is missing")
+                if cpu_cores <= 0:
+                    warnings.append("compute metric cpu_cores is missing")
+                if storage_gb <= 0:
+                    warnings.append("compute metric storage_gb is missing")
+            if component.component_type == ComponentType.NETWORK_DEVICE:
+                if lan_ports <= 0:
+                    warnings.append("network metric lan_ports is missing")
+                if lan_speed_mbps <= 0:
+                    warnings.append("network metric lan_speed_mbps is missing")
+                if wifi_total_mbps <= 0:
+                    warnings.append("network metric wifi_total_mbps is missing")
+                if ipv6_support is None:
+                    warnings.append("network metric ipv6_support is missing")
         if profile.scope == ANALYSIS_SCOPE_SOFTWARE and license_units <= 0:
             warnings.append("software component has no license_units/quantity metric")
         if not any(
@@ -415,6 +487,21 @@ class SolutionComponentAnalyticsIntegrationService:
         ):
             warnings.append("quality/performance metric is missing; AHP/GA will not infer a hidden score")
         return self._unique(warnings)
+
+    def _bool_or_none(self, value: Any) -> bool | None:
+        if value in {None, ""}:
+            return None
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in {"1", "true", "yes", "y", "да", "+", "есть", "поддерживается"}:
+            return True
+        if text in {"0", "false", "no", "n", "нет", "-", "не поддерживается"}:
+            return False
+        return None
+
+    def _bool_as_number(self, value: Any) -> float:
+        return 1.0 if self._bool_or_none(value) is True else 0.0
 
     def _scope_value(self, value: str | AnalysisScope) -> str:
         return value.value if isinstance(value, AnalysisScope) else str(value)

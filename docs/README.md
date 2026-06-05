@@ -111,7 +111,8 @@
 28. `architecture/scoped_candidate_pool_implementation.md`
 29. `architecture/system_schema.md`
 30. `architecture/module_map.md`
-31. `architecture/data_map.md`
+31. `architecture/equipment_metrics_profile_implementation.md`
+32. `architecture/data_map.md`
 32. `research/decision_criteria_unification_plan.md`
 33. `research/equipment_metrics_and_catalog_parsing_plan.md`
 34. `research/genetic_algorithm.md`
