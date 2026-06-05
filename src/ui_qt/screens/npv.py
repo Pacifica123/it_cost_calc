@@ -3,7 +3,7 @@ from __future__ import annotations
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import NpvInput, NpvPresenter, QtAppPresenter
 from ui_qt.presenters.npv_presenter import format_cash_flows, parse_cash_flows
-from ui_qt.widgets import CollapsibleSection, CompactLabel, InfoHint
+from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint
 
 try:
     from PySide6.QtCore import Qt
@@ -15,6 +15,8 @@ try:
         QHeaderView,
         QLineEdit,
         QPushButton,
+        QScrollArea,
+        QStackedLayout,
         QTableView,
         QVBoxLayout,
         QWidget,
@@ -25,7 +27,7 @@ except ModuleNotFoundError as exc:
     Qt = None  # type: ignore[assignment]
     QDoubleValidator = QIntValidator = None  # type: ignore[assignment]
     QFrame = QGridLayout = QHBoxLayout = QHeaderView = QLineEdit = QPushButton = None  # type: ignore[assignment]
-    QTableView = QVBoxLayout = None  # type: ignore[assignment]
+    QScrollArea = QStackedLayout = QTableView = QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
 
 
@@ -54,9 +56,25 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.setSpacing(10)
 
         layout.addWidget(self._build_header(), 0)
-        layout.addWidget(self._build_summary(), 0)
-        layout.addWidget(self._build_inputs(), 0)
-        layout.addWidget(self._build_details(), 1)
+
+        scroll = QScrollArea(self)
+        scroll.setObjectName("contentArea")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        content = QWidget(scroll)
+        content.setObjectName("contentArea")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
+        content_layout.addWidget(self._build_summary(), 0)
+        content_layout.addWidget(self._build_inputs(), 0)
+        content_layout.addWidget(self._build_details(), 0)
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+
+        layout.addWidget(scroll, 1)
         layout.addLayout(self._build_actions(), 0)
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
@@ -143,7 +161,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.setSpacing(8)
         layout.addWidget(self._build_cash_flow_section(), 0)
         layout.addWidget(self._build_basis_section(), 0)
-        layout.addWidget(self._build_table_section(), 1)
+        layout.addWidget(self._build_table_section(), 0)
         return details
 
     def _build_cash_flow_section(self) -> CollapsibleSection:
@@ -169,12 +187,21 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         content.setObjectName("card")
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
+        self.basis_stack = QStackedLayout()
         self.basis_table = QTableView(content)
         self.basis_table.setModel(self.basis_model)
         self.basis_table.verticalHeader().setVisible(False)
         self.basis_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.basis_table.setMinimumHeight(120)
-        layout.addWidget(self.basis_table)
+        self.basis_empty = EmptyState(
+            "Нет основы",
+            content,
+            status="Нажмите Из TCO",
+        )
+        self.basis_empty.setMinimumHeight(120)
+        self.basis_stack.addWidget(self.basis_table)
+        self.basis_stack.addWidget(self.basis_empty)
+        layout.addLayout(self.basis_stack)
         return CollapsibleSection(
             "Основа TCO",
             content,
@@ -188,18 +215,27 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         content.setObjectName("card")
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
+        self.cash_flow_stack = QStackedLayout()
         self.cash_flow_table = QTableView(content)
         self.cash_flow_table.setModel(self.cash_flow_model)
         self.cash_flow_table.verticalHeader().setVisible(False)
         self.cash_flow_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.cash_flow_table.setMinimumHeight(180)
-        layout.addWidget(self.cash_flow_table)
+        self.cash_flow_table.setMinimumHeight(160)
+        self.cash_flow_empty = EmptyState(
+            "Нет расчёта",
+            content,
+            status="Нажмите Рассчитать",
+        )
+        self.cash_flow_empty.setMinimumHeight(140)
+        self.cash_flow_stack.addWidget(self.cash_flow_table)
+        self.cash_flow_stack.addWidget(self.cash_flow_empty)
+        layout.addLayout(self.cash_flow_stack)
         return CollapsibleSection(
             "Таблица",
             content,
             self,
             tooltip="Показывает дисконтированные значения и накопленный NPV.",
-            expanded=True,
+            expanded=False,
         )
 
     def _build_actions(self) -> QHBoxLayout:  # type: ignore[valid-type]
@@ -224,10 +260,19 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         grid.addWidget(CompactLabel(label, self), row, column)
         grid.addWidget(widget, row, column + 1)
 
+    def _sync_detail_state(self) -> None:
+        self.basis_stack.setCurrentWidget(
+            self.basis_empty if self.basis_model.is_empty() else self.basis_table,
+        )
+        self.cash_flow_stack.setCurrentWidget(
+            self.cash_flow_empty if self.cash_flow_model.is_empty() else self.cash_flow_table,
+        )
+
     def _load_defaults(self) -> None:
         values = self.presenter.default_input()
         self._apply_input(values)
         self.status_label.setText("Нет расчёта")
+        self._sync_detail_state()
 
     def refresh_data(self) -> None:
         self.load_from_costs()
@@ -245,6 +290,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
             return
         self._apply_input(values)
         self.basis_model.replace_rows(self.presenter.basis_rows())
+        self._sync_detail_state()
         self.status_label.setText("TCO загружен")
 
     def calculate(self) -> None:
@@ -257,6 +303,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
             return
         self.cash_flow_model.replace_rows(self.presenter.table_rows(report))
         self.basis_model.replace_rows(self.presenter.basis_rows(report))
+        self._sync_detail_state()
         self._sync_summary(report)
         warnings = self.presenter.warnings(report)
         self.status_label.setText("Есть риски" if warnings else "Рассчитано")
