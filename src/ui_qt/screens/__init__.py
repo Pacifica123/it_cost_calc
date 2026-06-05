@@ -2,6 +2,7 @@ from __future__ import annotations
 
 _SCREEN_MODULES = {
     "ComponentEditorScreen": "ui_qt.screens.component_editor",
+    "EnergyScreen": "ui_qt.screens.energy",
     "PlaceholderScreen": "ui_qt.screens.placeholder_screen",
 }
 

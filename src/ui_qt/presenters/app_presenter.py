@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from application.services.entity_catalog_service import EntityCatalogService
+from application.services.electricity_cost_service import ElectricityCostService
 from application.services.equipment_service import EquipmentService
+from application.use_cases.calculate_electricity_costs import CalculateElectricityCostsUseCase
 from application.use_cases.load_demo_dataset import LoadDemoDatasetUseCase
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
 from infrastructure.storage import JsonFileStorage
@@ -69,7 +71,17 @@ class QtAppPresenter:
         )
         self.catalog_service = EntityCatalogService(self.repository)
         self.equipment_service = EquipmentService(self.repository)
+        self.electricity_cost_service = ElectricityCostService()
+        self.electricity_calculator = CalculateElectricityCostsUseCase(
+            self.electricity_cost_service,
+        )
         self.demo_loader = LoadDemoDatasetUseCase(self.storage, self.equipment_service)
+        self._electricity_profile: dict[str, float] = {
+            "hours_per_day": 8.0,
+            "working_days": 22.0,
+            "cost_per_kwh": 1.0,
+        }
+        self._electricity_report: dict[str, Any] = {"total_cost": 0.0, "items": []}
 
     @property
     def entities(self) -> dict[str, list[dict[str, Any]]]:
@@ -85,7 +97,9 @@ class QtAppPresenter:
         return deepcopy(self.catalog_service.get_entity(entity_name, row_index))
 
     def add_entity(self, entity_name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        return deepcopy(self.catalog_service.add_entity(entity_name, dict(payload)))
+        row = self.catalog_service.add_entity(entity_name, dict(payload))
+        self._reset_electricity_result()
+        return deepcopy(row)
 
     def update_entity(
         self,
@@ -93,10 +107,14 @@ class QtAppPresenter:
         row_index: int,
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
-        return deepcopy(self.catalog_service.update_entity(entity_name, row_index, dict(payload)))
+        row = self.catalog_service.update_entity(entity_name, row_index, dict(payload))
+        self._reset_electricity_result()
+        return deepcopy(row)
 
     def delete_entity(self, entity_name: str, row_index: int) -> dict[str, Any]:
-        return deepcopy(self.catalog_service.delete_entity(entity_name, row_index))
+        row = self.catalog_service.delete_entity(entity_name, row_index)
+        self._reset_electricity_result()
+        return deepcopy(row)
 
     def replace_entities(self, payload: Mapping[str, list[Mapping[str, Any]]]) -> None:
         normalized_payload = {
@@ -104,9 +122,11 @@ class QtAppPresenter:
             for entity_name, rows in dict(payload).items()
         }
         self.equipment_service.replace_all(normalized_payload)
+        self._reset_electricity_result()
 
     def load_demo_dataset(self, path: str | Path | None = None) -> dict[str, list[dict[str, Any]]]:
         dataset = self.demo_loader.execute(path or self.paths.demo_dataset_path)
+        self._reset_electricity_result()
         return deepcopy(dataset)
 
     def save(self) -> Path:
@@ -117,6 +137,52 @@ class QtAppPresenter:
 
     def has_runtime_data(self) -> bool:
         return self.total_rows() > 0
+
+    def _reset_electricity_result(self) -> None:
+        self._electricity_report = {"total_cost": 0.0, "items": []}
+
+    def list_energy_rows(self) -> list[dict[str, Any]]:
+        """Return equipment rows that can participate in electricity cost calculation."""
+
+        return deepcopy(self.equipment_service.list_energy_relevant_rows())
+
+    def list_round_the_clock_equipment_names(self) -> set[str]:
+        return set(self.equipment_service.list_round_the_clock_equipment_names())
+
+    def calculate_electricity_costs(
+        self,
+        *,
+        hours_per_day: float,
+        working_days: float,
+        cost_per_kwh: float,
+        equipment_rows: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Calculate electricity costs and keep the latest result for other screens."""
+
+        rows = deepcopy(equipment_rows if equipment_rows is not None else self.list_energy_rows())
+        report = self.electricity_calculator.execute(
+            equipment_rows=rows,
+            hours_per_day=float(hours_per_day),
+            working_days=float(working_days),
+            cost_per_kwh=float(cost_per_kwh),
+            round_the_clock_names=self.list_round_the_clock_equipment_names(),
+        )
+        self._electricity_profile = {
+            "hours_per_day": float(hours_per_day),
+            "working_days": float(working_days),
+            "cost_per_kwh": float(cost_per_kwh),
+        }
+        self._electricity_report = deepcopy(report)
+        return deepcopy(report)
+
+    def get_electricity_cost(self) -> float:
+        return float(self._electricity_report.get("total_cost", 0.0) or 0.0)
+
+    def get_electricity_profile(self) -> dict[str, float]:
+        return dict(self._electricity_profile)
+
+    def get_electricity_report(self) -> dict[str, Any]:
+        return deepcopy(self._electricity_report)
 
     def table_rows(self, entity_name: str) -> list[dict[str, Any]]:
         """Return plain rows ready for Qt table models."""

@@ -9,7 +9,7 @@ from ui_qt.design import ThemeManager
 from ui_qt.navigation import DEFAULT_ROOT_ROUTE_ID, ROOT_ROUTES, require_root_route
 from ui_qt.navigation.root_menu import RootMenu
 from ui_qt.presenters import QtAppPresenter
-from ui_qt.screens import ComponentEditorScreen, PlaceholderScreen
+from ui_qt.screens import ComponentEditorScreen, EnergyScreen, PlaceholderScreen
 from ui_qt.widgets import ActionBar, SettingsPanel, StatusStrip
 
 
@@ -74,6 +74,8 @@ class QtMainWindow(QMainWindow):
                 self._screen_factories[route.route_id] = (
                     lambda: ComponentEditorScreen(self.presenter)
                 )
+            elif route.route_id == "energy":
+                self._screen_factories[route.route_id] = lambda: EnergyScreen(self.presenter)
             else:
                 self._screen_factories[route.route_id] = lambda value=route: PlaceholderScreen(value)
 
@@ -117,6 +119,9 @@ class QtMainWindow(QMainWindow):
             self.status_strip.setToolTip(str(exc))
             return
         self.action_bar.set_status(self._data_status())
+        current = self.screen_stack.currentWidget()
+        if hasattr(current, "refresh_data"):
+            current.refresh_data()
         self.status_strip.set_message("Демо загружено")
 
     def _data_status(self) -> str:
