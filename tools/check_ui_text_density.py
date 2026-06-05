@@ -47,6 +47,9 @@ VISIBLE_CALL_NAMES = {
     "StatusStrip",
     "CollapsibleSection",
     "SettingsPanel",
+    "SmartTable",
+    "RecordFormDialog",
+    "FieldSpec",
 }
 
 VISIBLE_METHOD_NAMES = {
@@ -78,6 +81,10 @@ VISIBLE_KEYWORDS = {
     "subtitle",
     "description",
     "action_text",
+    "empty_title",
+    "empty_status",
+    "add_text",
+    "more_text",
 }
 
 HELP_OR_TOOLTIP_NAMES = {

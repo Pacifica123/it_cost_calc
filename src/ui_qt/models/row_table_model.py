@@ -48,7 +48,20 @@ class RowTableModel(BaseQtTableModel):
             self.endResetModel()
 
     def append_row(self, row: Mapping[str, Any]) -> None:
-        self.replace_rows([*self._rows, dict(row)])
+        self.insert_row(self.rowCount(), row)
+
+    def insert_row(self, row_index: int, row: Mapping[str, Any]) -> None:
+        rows = [*self._rows]
+        safe_index = max(0, min(row_index, len(rows)))
+        rows.insert(safe_index, dict(row))
+        self.replace_rows(rows)
+
+    def update_row(self, row_index: int, row: Mapping[str, Any]) -> dict[str, Any]:
+        old_row = self.row_dict(row_index)
+        rows = [*self._rows]
+        rows[row_index] = dict(row)
+        self.replace_rows(rows)
+        return old_row
 
     def remove_row(self, row_index: int) -> dict[str, Any]:
         row = self.row_dict(row_index)
@@ -88,6 +101,15 @@ class RowTableModel(BaseQtTableModel):
 
     def as_rows(self) -> list[dict[str, Any]]:
         return deepcopy(self._rows)
+
+    def is_empty(self) -> bool:
+        return not self._rows
+
+    def column_index(self, column: str) -> int:
+        try:
+            return self._columns.index(column)
+        except ValueError as exc:
+            raise KeyError(column) from exc
 
     def value_at(self, row_index: int, column: str) -> Any:
         return self._rows[row_index].get(column)

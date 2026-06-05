@@ -8,6 +8,7 @@ _WIDGET_MODULES = {
     "InfoHint": "ui_qt.widgets.info_hint",
     "SettingsPanel": "ui_qt.widgets.settings_panel",
     "StatusStrip": "ui_qt.widgets.status_strip",
+    "SmartTable": "ui_qt.widgets.smart_table",
 }
 
 __all__ = [*_WIDGET_MODULES]
