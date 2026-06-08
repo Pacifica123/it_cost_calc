@@ -1,5 +1,14 @@
 """Публичный API модуля AHP."""
 
+
+from .matrix_utils import (
+    build_pairwise_matrix,
+    default_pairwise_value,
+    extract_default_expert_matrices,
+    format_pairwise_value,
+    parse_pairwise_value,
+)
+
 from .configuration_selector import (
     DEFAULT_CONSTRAINTS,
     DEFAULT_EXPERT_MATRICES,
@@ -28,4 +37,9 @@ __all__ = [
     "DEFAULT_SOFT_CRITERIA",
     "DEFAULT_EXPERT_MATRICES",
     "DEFAULT_CONSTRAINTS",
+    "build_pairwise_matrix",
+    "default_pairwise_value",
+    "extract_default_expert_matrices",
+    "format_pairwise_value",
+    "parse_pairwise_value",
 ]

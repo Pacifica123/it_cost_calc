@@ -17,22 +17,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Create Qt objects without showing the window.",
     )
-    parser.add_argument(
-        "--legacy-tk",
-        action="store_true",
-        help="Run the archived Tkinter UI fallback.",
-    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    from bootstrap import main as app_main, main_legacy_tk, smoke_check_qt
+    from bootstrap import main as app_main, smoke_check_qt
     from ui_qt.app import QtDependencyError
 
     try:
-        if args.legacy_tk:
-            return main_legacy_tk()
         if args.smoke_check:
             return smoke_check_qt()
         return app_main()

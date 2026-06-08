@@ -6,8 +6,7 @@ from collections.abc import Sequence
 def create_app():
     """Create the default Qt main window.
 
-    The historical Tkinter implementation was moved to ``ui_legacy.app`` and
-    is no longer imported by the normal runtime path.
+    The historical Tkinter runtime has been removed; this is the only desktop UI.
     """
 
     from ui_qt.app import create_main_window

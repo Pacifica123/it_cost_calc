@@ -3,7 +3,7 @@ import json
 
 from application.services.equipment_service import EquipmentService
 from infrastructure.repositories.in_memory_entity_repository import InMemoryEntityRepository
-from ui.tabs.genetic_optimization_tab import GeneticOptimizationTab
+from application.services.analysis_scope_profile_service import AnalysisScopeProfileService
 from application.services.genetic_optimization_service import RuntimeOptimizationItem
 from domain.decision.ahp.aggregation import aggregate_configuration
 
@@ -22,8 +22,8 @@ def test_demo_dataset_contains_power_and_client_seats_for_ga():
     assert printer["max_power"] > 0
 
 
-def test_genetic_tab_client_capacity_uses_client_seats_when_present():
-    tab = object.__new__(GeneticOptimizationTab)
+def test_profile_client_capacity_uses_client_seats_when_present():
+    service = AnalysisScopeProfileService()
     subset = [
         RuntimeOptimizationItem(name="Atlas H434", category="client", quantity=3, client_seats=3),
         RuntimeOptimizationItem(name="AuBox", category="client", quantity=1, client_seats=1),
@@ -31,10 +31,10 @@ def test_genetic_tab_client_capacity_uses_client_seats_when_present():
         RuntimeOptimizationItem(name="Router", category="network", quantity=1),
     ]
 
-    assert tab._client_capacity(subset) == 4
+    assert service._client_capacity(subset) == 4
 
     rows = [item.properties for item in subset]
-    assert tab._client_capacity_from_dicts(rows) == 4
+    assert service._client_capacity(rows) == 4
 
 
 def test_energy_relevant_rows_preserve_demo_power_fields():

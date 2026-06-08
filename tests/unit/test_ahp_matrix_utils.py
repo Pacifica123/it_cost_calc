@@ -1,6 +1,6 @@
 import numpy as np
 
-from ui.tabs.ahp_analysis.matrix_utils import (
+from domain.decision.ahp.matrix_utils import (
     build_pairwise_matrix,
     extract_default_expert_matrices,
     format_pairwise_value,

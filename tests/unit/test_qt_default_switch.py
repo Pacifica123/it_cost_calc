@@ -23,27 +23,25 @@ def test_default_app_module_does_not_import_tkinter():
     assert "from ui_legacy" not in source
 
 
-def test_bootstrap_default_main_runs_qt_and_legacy_is_lazy():
+def test_bootstrap_default_main_runs_qt_only():
     source = Path("src/bootstrap.py").read_text(encoding="utf-8")
 
     assert "def main(" in source
     assert "return main_qt(argv)" in source
-    assert "def main_legacy_tk" in source
-    assert "from ui_legacy.app import CalculatorApp" in source
+    assert "main_legacy_tk" not in source
+    assert "ui_legacy" not in source
     assert not source.lstrip().startswith("import tkinter")
 
 
-def test_run_app_supports_qt_default_and_legacy_flag():
+def test_run_app_supports_qt_default_without_legacy_flag():
     source = Path("scripts/run_app.py").read_text(encoding="utf-8")
 
-    assert "--legacy-tk" in source
+    assert "--legacy-tk" not in source
     assert "--smoke-check" in source
     assert "return app_main()" in source
-    assert "return main_legacy_tk()" in source
+    assert "main_legacy_tk" not in source
 
 
-def test_legacy_app_is_archived_separately():
-    source = Path("src/ui_legacy/app.py").read_text(encoding="utf-8")
-
-    assert "class CalculatorApp" in source
-    assert "import tkinter as tk" in source
+def test_legacy_ui_directories_are_removed():
+    assert not Path("src/ui_legacy").exists()
+    assert not Path("src/ui").exists()

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_app():
-    """Create the default Qt main window without importing legacy Tkinter UI."""
+    """Create the default Qt main window without importing removed Tkinter UI."""
 
     from ui_qt.app import create_main_window
 
@@ -49,29 +49,6 @@ def smoke_check_qt(argv: Sequence[str] | None = None) -> int:
     from ui_qt.app import smoke_check
 
     return smoke_check(argv)
-
-
-def create_legacy_tk_app():
-    """Create the archived Tkinter app explicitly.
-
-    This fallback is intentionally lazy-imported so the default Qt runtime path
-    does not import tkinter/ttkbootstrap.
-    """
-
-    from ui_legacy.app import CalculatorApp
-
-    logger.info("Создание legacy Tkinter UI")
-    return CalculatorApp()
-
-
-def main_legacy_tk() -> int:
-    """Run the archived Tkinter UI fallback."""
-
-    configure_logging()
-    logger.info("Запуск legacy Tkinter UI")
-    app = create_legacy_tk_app()
-    app.mainloop()
-    return 0
 
 
 def load_demo_data(

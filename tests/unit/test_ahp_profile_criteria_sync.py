@@ -3,7 +3,7 @@ import numpy as np
 from application.services.candidate_configuration_service import CandidateConfigurationService
 from domain.decision.ahp.aggregation import aggregate_configuration
 from domain.decision.ahp.pipeline import run_ahp_pipeline
-from ui.tabs.ahp_analysis.matrix_utils import extract_default_expert_matrices, default_pairwise_value
+from domain.decision.ahp.matrix_utils import extract_default_expert_matrices, default_pairwise_value
 
 
 def test_ahp_aggregate_exposes_profile_metrics_from_devices_and_candidate_payload():

@@ -237,7 +237,7 @@ def scan_file(path: Path, *, max_words: int) -> list[Violation]:
 
 
 def _default_scan_paths(root: Path) -> list[Path]:
-    candidates = [root / "src" / "ui_qt", root / "src" / "ui"]
+    candidates = [root / "src" / "ui_qt"]
     return [path for path in candidates if path.exists()]
 
 
@@ -249,7 +249,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "paths",
         nargs="*",
         type=Path,
-        help="Files or directories to scan. Defaults to src/ui_qt and src/ui when present.",
+        help="Files or directories to scan. Defaults to src/ui_qt.",
     )
     parser.add_argument(
         "--max-words",

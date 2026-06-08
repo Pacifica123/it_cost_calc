@@ -17,7 +17,6 @@ dependencies = [
     "playwright",
     "PySide6>=6.7,<7",
     "requests",
-    "ttkbootstrap==1.18.0",
     "tqdm",
 ]
 
@@ -66,16 +65,5 @@ ignore = ["E501", "I001", "B905"]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*.py" = ["E402"]
-"src/application/legacy_crud.py" = ["F401"]
-"src/ui/tabs/ahp_analysis_tab.py" = ["F401"]
-"src/ui/tabs/ahp_tab.py" = ["F401"]
-"src/ui/tabs/capital_costs.py" = ["F401"]
-"src/ui/tabs/capital_costs_tab.py" = ["F401"]
-"src/ui/tabs/electricity_costs.py" = ["F401"]
-"src/ui/tabs/electricity_costs_tab.py" = ["F401"]
-"src/ui/tabs/it_infrastructure.py" = ["F401"]
-"src/ui/tabs/npv_analysis.py" = ["F401"]
-"src/ui/tabs/operational_costs.py" = ["F401"]
-"src/ui/tabs/operational_costs_tab.py" = ["F401"]
 "src/domain/decision/ahp/ahp_config_selector.py" = ["F401"]
 "src/domain/decision/criteria_importance/importance_method.py" = ["F401"]

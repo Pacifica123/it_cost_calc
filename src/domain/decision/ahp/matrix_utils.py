@@ -5,7 +5,7 @@ from typing import Iterable, Sequence
 
 import numpy as np
 
-from .constants import DEFAULT_EXPERT_MATRICES, DEFAULT_SOFT_CRITERIA
+from .defaults import DEFAULT_EXPERT_MATRICES, DEFAULT_SOFT_CRITERIA
 
 
 ALLOWED_PAIRWISE_HINTS = ("1/9", "1/7", "1/5", "1/3", "1", "3", "5", "7", "9")

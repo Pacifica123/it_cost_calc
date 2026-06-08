@@ -40,4 +40,4 @@ IT_COST_LOG_LEVEL=DEBUG python scripts/run_app.py
 
 ## Интерфейс по умолчанию
 
-`python scripts/run_app.py` запускает Qt-интерфейс. Старый Tkinter fallback доступен только явно через `--legacy-tk`.
+`python scripts/run_app.py` запускает Qt-интерфейс. Tkinter runtime удалён из активного кода.

@@ -10,7 +10,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from application.services.solution_component_runtime_service import SolutionComponentRuntimeService
 from infrastructure.repositories.in_memory_entity_repository import InMemoryEntityRepository
-from ui.tabs.solution_component_editor_tab import (
+from ui_qt.presenters.component_editor_presenter import (
     build_solution_component_payload,
     format_normalization_preview,
     readiness_label,
