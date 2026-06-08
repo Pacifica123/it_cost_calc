@@ -32,7 +32,9 @@ class ActionBar(QWidget):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         self.more_button = QToolButton(self)
-        self.more_button.setText("Ещё")
+        self.more_button.setObjectName("moreButton")
+        self.more_button.setText("Ещё ▾")
+        self.more_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.more_menu = QMenu(self.more_button)
         self.more_button.setMenu(self.more_menu)

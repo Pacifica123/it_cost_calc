@@ -15,6 +15,7 @@ class QtTableCompat:
 
     display_role: int
     edit_role: int
+    tool_tip_role: int
     horizontal: int
     vertical: int
 
@@ -39,6 +40,7 @@ def load_qt_table_compat() -> tuple[type[Any], QtTableCompat]:
         return object, QtTableCompat(
             display_role=0,
             edit_role=2,
+            tool_tip_role=3,
             horizontal=1,
             vertical=2,
         )
@@ -46,6 +48,7 @@ def load_qt_table_compat() -> tuple[type[Any], QtTableCompat]:
     return QAbstractTableModel, QtTableCompat(
         display_role=_qt_int(Qt.ItemDataRole.DisplayRole),
         edit_role=_qt_int(Qt.ItemDataRole.EditRole),
+        tool_tip_role=_qt_int(Qt.ItemDataRole.ToolTipRole),
         horizontal=_qt_int(Qt.Orientation.Horizontal),
         vertical=_qt_int(Qt.Orientation.Vertical),
     )

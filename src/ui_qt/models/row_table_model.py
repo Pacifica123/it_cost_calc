@@ -78,12 +78,19 @@ class RowTableModel(BaseQtTableModel):
 
     def data(self, index: Any, role: int = QT_TABLE.display_role) -> Any:
         role_value = self._qt_value(role)
-        if role_value not in {QT_TABLE.display_role, QT_TABLE.edit_role}:
+        if role_value not in {
+            QT_TABLE.display_role,
+            QT_TABLE.edit_role,
+            QT_TABLE.tool_tip_role,
+        }:
             return None
         if not self._is_valid_index(index):
             return None
         value = self._rows[index.row()].get(self._columns[index.column()], "")
-        return self._format_value(value)
+        formatted = self._format_value(value)
+        if role_value == QT_TABLE.tool_tip_role:
+            return formatted or None
+        return formatted
 
     def headerData(
         self, section: int, orientation: int, role: int = QT_TABLE.display_role

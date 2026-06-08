@@ -9,9 +9,11 @@ class InfoHint(QToolButton):
 
     def __init__(self, tooltip: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("infoHint")
         self.setText("ⓘ")
         self.setToolTip(tooltip)
         self.setCursor(Qt.CursorShape.WhatsThisCursor)
         self.setAutoRaise(True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAccessibleName("Подсказка")
+        self.setFixedSize(22, 22)

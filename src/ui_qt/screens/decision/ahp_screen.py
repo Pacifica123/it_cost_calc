@@ -91,7 +91,7 @@ class AhpScreen(QWidget):  # type: ignore[misc,valid-type]
             "Критерии",
             self.criteria_table,
             self,
-            tooltip="Веса взяты из профиля области.",
+            tooltip="Критерии и веса зависят от вкладки ПО/ТО.",
             expanded=False,
         )
         layout.addWidget(self.criteria_section, 0)

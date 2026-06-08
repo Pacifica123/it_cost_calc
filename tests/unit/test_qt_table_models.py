@@ -44,3 +44,10 @@ def test_row_table_model_accepts_qt_enum_like_roles_and_orientation():
 
     assert model.headerData(0, DummyEnum(1), DummyEnum(0)) == "Название"
     assert model.data(DummyIndex(0, 0), DummyEnum(0)) == "srv"
+
+
+def test_row_table_model_exposes_cell_text_as_tooltip():
+    model = EntityTableModel([{"name": "очень длинное значение для подсказки", "quantity": 1, "price": 10}])
+
+    assert model.data(DummyIndex(0, 0), DummyEnum(3)) == "очень длинное значение для подсказки"
+    assert model.data(DummyIndex(0, 0), 9999) is None
