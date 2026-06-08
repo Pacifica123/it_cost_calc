@@ -63,6 +63,14 @@ class QtMainWindow(QMainWindow):
 
         self.action_bar = ActionBar("IT Cost Calc", root, status=self._data_status())
         self.action_bar.add_primary_action("Демо", self._load_demo_dataset)
+        self.action_bar.add_secondary_action(
+            "Демо: обычный",
+            lambda: self._load_demo_profile("default"),
+        )
+        self.action_bar.add_secondary_action(
+            "Демо: расчётный",
+            lambda: self._load_demo_profile("calculation_control"),
+        )
         self.action_bar.add_secondary_action("Настройки", self.open_settings)
         self.action_bar.add_secondary_action("Светлая", lambda: self._apply_theme("light"))
         self.action_bar.add_secondary_action("Тёмная", lambda: self._apply_theme("dark"))
@@ -153,8 +161,16 @@ class QtMainWindow(QMainWindow):
         return panel
 
     def _load_demo_dataset(self) -> None:
+        self._load_demo_profile("default")
+
+    def _load_demo_profile(self, profile_id: str) -> None:
         try:
-            self.presenter.load_demo_dataset()
+            if profile_id == "default":
+                self.presenter.load_demo_dataset()
+                message = "Демо загружено"
+            else:
+                self.presenter.load_demo_profile(profile_id)
+                message = "Расчётное демо загружено"
         except Exception as exc:  # pragma: no cover - GUI status fallback
             self.action_bar.set_status("Ошибка демо")
             self.status_strip.set_message("Ошибка демо")
@@ -164,7 +180,7 @@ class QtMainWindow(QMainWindow):
         current = self.screen_stack.currentWidget()
         if hasattr(current, "refresh_data"):
             current.refresh_data()
-        self.status_strip.set_message("Демо загружено")
+        self.status_strip.set_message(message)
 
     def _data_status(self) -> str:
         total = self.presenter.total_rows()

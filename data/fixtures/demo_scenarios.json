@@ -10,6 +10,10 @@
       {
         "path": "scripts/run_ga_demo.py",
         "purpose": "Учебный запуск универсального ядра GA на малом синтетическом наборе."
+      },
+      {
+        "path": "scripts/run_calculation_control_demo.py",
+        "purpose": "Headless-проверка расчётного demo-профиля без GUI: запускает GA, AHP и Pareto и сверяет ожидаемых победителей."
       }
     ],
     "demonstration": [
@@ -17,6 +21,11 @@
         "path": "data/fixtures/demo_dataset.json",
         "scenario_id": "it_solution_demo_control_v1",
         "purpose": "Сквозной пользовательский сценарий: CAPEX/OPEX/энергия + SolutionComponent → CandidateConfiguration → TCO → DecisionReport."
+      },
+      {
+        "path": "data/fixtures/demo_calculation_control_dataset.json",
+        "scenario_id": "ga_ahp_pareto_calculation_control_v1",
+        "purpose": "Минимальный расчётный demo-профиль для ручной проверки GA/AHP/Pareto: ожидаемые ответы заранее посчитаны в документации."
       },
       {
         "path": "data/fixtures/solution_component_c9_demo_dataset.json",
@@ -42,6 +51,9 @@
     "hybrid_assessment_candidate_pool": "same_as_ga_ahp_export_payload",
     "solution_component_storage": "data/fixtures/demo_dataset.json::entities.solution_components",
     "solution_component_c9_fixture": "data/fixtures/solution_component_c9_demo_dataset.json",
-    "solution_component_c9_check": "python -B scripts/run_solution_component_c9_demo.py"
+    "solution_component_c9_check": "python -B scripts/run_solution_component_c9_demo.py",
+    "calculation_control_fixture": "data/fixtures/demo_calculation_control_dataset.json",
+    "calculation_control_profile": "calculation_control",
+    "calculation_control_check": "python -B scripts/run_calculation_control_demo.py --check-only"
   }
 }

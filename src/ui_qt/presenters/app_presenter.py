@@ -46,6 +46,7 @@ class QtRuntimePaths:
     repo_root: Path
     runtime_entities_path: Path
     demo_dataset_path: Path
+    demo_profiles_path: Path
 
     @classmethod
     def from_repo_root(
@@ -54,6 +55,7 @@ class QtRuntimePaths:
         *,
         runtime_entities_path: str | Path | None = None,
         demo_dataset_path: str | Path | None = None,
+        demo_profiles_path: str | Path | None = None,
     ) -> "QtRuntimePaths":
         root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[3]
         root = root.resolve()
@@ -64,6 +66,9 @@ class QtRuntimePaths:
                 runtime_entities_path or data_root / "generated" / "runtime_entities.json"
             ),
             demo_dataset_path=Path(demo_dataset_path or data_root / "fixtures" / "demo_dataset.json"),
+            demo_profiles_path=Path(
+                demo_profiles_path or data_root / "fixtures" / "demo_profiles.json"
+            ),
         )
 
 
@@ -81,6 +86,7 @@ class QtAppPresenter:
         repo_root: str | Path | None = None,
         runtime_entities_path: str | Path | None = None,
         demo_dataset_path: str | Path | None = None,
+        demo_profiles_path: str | Path | None = None,
         storage: JsonFileStorage | None = None,
         repository: JsonEntityRepository | None = None,
     ) -> None:
@@ -88,6 +94,7 @@ class QtAppPresenter:
             repo_root,
             runtime_entities_path=runtime_entities_path,
             demo_dataset_path=demo_dataset_path,
+            demo_profiles_path=demo_profiles_path,
         )
         self.storage = storage or JsonFileStorage()
         self.repository = repository or JsonEntityRepository(
@@ -180,6 +187,53 @@ class QtAppPresenter:
         dataset = self.demo_loader.execute(path or self.paths.demo_dataset_path)
         self._reset_derived_results()
         return deepcopy(dataset)
+
+    def list_demo_profiles(self) -> list[dict[str, Any]]:
+        """Return selectable demo data profiles for the Qt shell."""
+
+        registry_path = self.paths.demo_profiles_path
+        if not registry_path.exists():
+            return [
+                {
+                    "id": "default",
+                    "title": "Обычный демо-набор",
+                    "description": "Fallback profile for the default demo fixture.",
+                    "path": str(self.paths.demo_dataset_path),
+                }
+            ]
+        payload = self.storage.read(registry_path)
+        profiles = payload.get("profiles", []) if isinstance(payload, Mapping) else []
+        result: list[dict[str, Any]] = []
+        for item in profiles:
+            if not isinstance(item, Mapping):
+                continue
+            profile_id = str(item.get("id") or "").strip()
+            raw_path = item.get("path")
+            if not profile_id or not raw_path:
+                continue
+            result.append(
+                {
+                    "id": profile_id,
+                    "title": str(item.get("title") or profile_id),
+                    "description": str(item.get("description") or ""),
+                    "path": str(raw_path),
+                }
+            )
+        return result
+
+    def load_demo_profile(self, profile_id: str) -> dict[str, list[dict[str, Any]]]:
+        """Load one registered demo profile by id."""
+
+        requested_id = str(profile_id or "default")
+        for profile in self.list_demo_profiles():
+            if profile.get("id") != requested_id:
+                continue
+            profile_path = Path(str(profile.get("path")))
+            if not profile_path.is_absolute():
+                profile_path = self.paths.repo_root / profile_path
+            return self.load_demo_dataset(profile_path)
+        available = ", ".join(profile["id"] for profile in self.list_demo_profiles())
+        raise ValueError(f"Неизвестный demo-профиль: {requested_id}. Доступно: {available}")
 
     def save(self) -> Path:
         return self.repository.save()

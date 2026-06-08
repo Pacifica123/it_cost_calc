@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "scenario_id": "ga_ahp_pareto_calculation_control_v1",
+  "dataset_role": "demonstration_calculation_control",
+  "description": "Минимальный расчётный набор для ручной проверки GA, AHP и Pareto на защите: 3 технических позиции и 2 программные лицензии.",
+  "reproducibility": {
+    "ga_seed": 42,
+    "ga_pop_size": 24,
+    "ga_generations": 30,
+    "budget_by_scope": {
+      "technical": 300.0,
+      "software": 300.0
+    },
+    "target_units_by_scope": {
+      "technical": 3.0,
+      "software": 3.0
+    },
+    "expected_winners": {
+      "technical": "T1 + T2 + T3",
+      "software": "S2 Pro"
+    }
+  },
+  "entities": {
+    "server": [
+      {
+        "name": "T1 Сервер",
+        "quantity": 1,
+        "price": 100.0,
+        "max_power": 0.0,
+        "client_seats": 0,
+        "category": "server",
+        "scope": "technical",
+        "component_type": "server",
+        "ram_gb": 8,
+        "cpu_cores": 4,
+        "storage_gb": 100,
+        "max_power_watts": 0.0
+      }
+    ],
+    "client": [
+      {
+        "name": "T2 Рабочее место",
+        "quantity": 1,
+        "price": 100.0,
+        "max_power": 0.0,
+        "client_seats": 3,
+        "category": "client",
+        "scope": "technical",
+        "component_type": "workstation",
+        "ram_gb": 4,
+        "cpu_cores": 2,
+        "storage_gb": 50,
+        "max_power_watts": 0.0
+      }
+    ],
+    "network": [
+      {
+        "name": "T3 Сеть",
+        "quantity": 1,
+        "price": 100.0,
+        "max_power": 0.0,
+        "client_seats": 0,
+        "category": "network",
+        "scope": "technical",
+        "component_type": "network_device",
+        "lan_ports": 4,
+        "lan_speed_mbps": 100,
+        "wifi_total_mbps": 0,
+        "ipv6_support": false,
+        "max_power_watts": 0.0
+      }
+    ],
+    "licenses": [
+      {
+        "name": "S1 Lite",
+        "quantity": 1,
+        "price": 100.0,
+        "license_units": 3,
+        "functionality_score": 3,
+        "support_score": 3,
+        "max_power": 0.0,
+        "client_seats": 0,
+        "category": "licenses",
+        "scope": "software",
+        "component_type": "software_license"
+      },
+      {
+        "name": "S2 Pro",
+        "quantity": 1,
+        "price": 200.0,
+        "license_units": 3,
+        "functionality_score": 5,
+        "support_score": 5,
+        "max_power": 0.0,
+        "client_seats": 0,
+        "category": "licenses",
+        "scope": "software",
+        "component_type": "software_license"
+      }
+    ],
+    "subscription_licenses": [],
+    "server_rental": [],
+    "migration": [],
+    "testing": [],
+    "backup": [],
+    "labor_costs": [],
+    "server_administration": [],
+    "solution_components": []
+  }
+}

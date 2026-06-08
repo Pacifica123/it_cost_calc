@@ -5,6 +5,7 @@
 ## Материалы
 
 - `ga_ahp_defense_guide.md` — актуальный сценарий демонстрации GA, AHP, Pareto и Hybrid внутри рабочих областей ПО/ТО.
+- `ga_ahp_pareto_calculation_control.md` — школьный расчётный пример для ручной сверки GA/AHP/Pareto с программой.
 - `demo_data_contract.md` — контракт ролей demo/educational/regression-данных и контрольный сценарий после этапа 8.
 - `solution_component_editor_defense_guide.md` — финальный сценарий защиты редактора `SolutionComponent` после C9.
 
@@ -24,6 +25,7 @@
 
 ```bash
 python -B scripts/run_demo_control_scenario.py --check-only
+python -B scripts/run_calculation_control_demo.py --check-only
 ```
 
 Проверка подтверждает, что fixture-строки имеют `scope` и `component_type`, формируют общий пул `CandidateConfiguration`, получают TCO и попадают в `DecisionReport`.

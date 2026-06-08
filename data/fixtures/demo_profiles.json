@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "default_profile_id": "default",
+  "description": "Профили загрузки демонстрационных данных для ручного выбора в приложении.",
+  "profiles": [
+    {
+      "id": "default",
+      "title": "Обычный демо-набор",
+      "description": "Текущий сквозной demo-набор проекта для CAPEX/OPEX, энергии, SolutionComponent и DecisionReport.",
+      "path": "data/fixtures/demo_dataset.json"
+    },
+    {
+      "id": "calculation_control",
+      "title": "Расчётный демо-набор",
+      "description": "Минимальный набор для ручной проверки совпадения GA, AHP и Pareto с ожидаемыми ответами.",
+      "path": "data/fixtures/demo_calculation_control_dataset.json"
+    }
+  ]
+}
