@@ -8,10 +8,16 @@
 pip install -r requirements/base.txt
 ```
 
-Запустить приложение:
+Запустить основной Qt-интерфейс:
 
 ```bash
 python scripts/run_app.py
+```
+
+Аварийный запуск старого Tkinter-интерфейса:
+
+```bash
+python scripts/run_app.py --legacy-tk
 ```
 
 ## Загрузка демонстрационных данных

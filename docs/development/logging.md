@@ -36,3 +36,8 @@ IT_COST_LOG_LEVEL=DEBUG python scripts/run_app.py
 ```
 
 Допустимые уровни: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`.
+
+
+## Интерфейс по умолчанию
+
+`python scripts/run_app.py` запускает Qt-интерфейс. Старый Tkinter fallback доступен только явно через `--legacy-tk`.

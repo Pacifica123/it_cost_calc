@@ -56,7 +56,7 @@ def create_main_window():
 
 
 def run_qt_app(argv: Sequence[str] | None = None, *, show: bool = True) -> int:
-    """Run the parallel Qt UI shell."""
+    """Run the Qt UI shell."""
 
     app = create_qt_application(argv)
     window = create_main_window()

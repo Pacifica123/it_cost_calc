@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from collections.abc import Sequence
 
 from application.services.equipment_service import EquipmentService
 from application.use_cases.load_demo_dataset import LoadDemoDatasetUseCase
@@ -10,25 +10,20 @@ from infrastructure.logging import configure_logging
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
 from infrastructure.storage import JsonFileStorage
 
-if TYPE_CHECKING:
-    from app import CalculatorApp
-
 logger = logging.getLogger(__name__)
 
 
-def create_app() -> "CalculatorApp":
-    from app import CalculatorApp
+def create_app():
+    """Create the default Qt main window without importing legacy Tkinter UI."""
 
-    logger.info("Создание экземпляра CalculatorApp")
-    return CalculatorApp()
+    from ui_qt.app import create_main_window
+
+    logger.info("Создание главного окна Qt UI")
+    return create_main_window()
 
 
 def create_qt_app(argv: Sequence[str] | None = None):
-    """Create the parallel Qt application instance.
-
-    The Tkinter application remains the default runtime during the migration;
-    this helper is used by scripts/run_qt_app.py and future Qt smoke checks.
-    """
+    """Create the default Qt application instance."""
 
     from ui_qt.app import create_qt_application
 
@@ -37,10 +32,10 @@ def create_qt_app(argv: Sequence[str] | None = None):
 
 
 def main_qt(argv: Sequence[str] | None = None) -> int:
-    """Run the parallel PySide6/Qt UI shell."""
+    """Run the PySide6/Qt UI."""
 
     configure_logging()
-    logger.info("Запуск параллельного Qt-интерфейса")
+    logger.info("Запуск Qt-интерфейса")
     from ui_qt.app import run_qt_app
 
     return run_qt_app(argv)
@@ -54,6 +49,29 @@ def smoke_check_qt(argv: Sequence[str] | None = None) -> int:
     from ui_qt.app import smoke_check
 
     return smoke_check(argv)
+
+
+def create_legacy_tk_app():
+    """Create the archived Tkinter app explicitly.
+
+    This fallback is intentionally lazy-imported so the default Qt runtime path
+    does not import tkinter/ttkbootstrap.
+    """
+
+    from ui_legacy.app import CalculatorApp
+
+    logger.info("Создание legacy Tkinter UI")
+    return CalculatorApp()
+
+
+def main_legacy_tk() -> int:
+    """Run the archived Tkinter UI fallback."""
+
+    configure_logging()
+    logger.info("Запуск legacy Tkinter UI")
+    app = create_legacy_tk_app()
+    app.mainloop()
+    return 0
 
 
 def load_demo_data(
@@ -77,8 +95,7 @@ def load_demo_data(
     return use_case.execute(dataset_path)
 
 
-def main() -> None:
-    configure_logging()
-    logger.info("Запуск настольного приложения")
-    app = create_app()
-    app.mainloop()
+def main(argv: Sequence[str] | None = None) -> int:
+    """Default desktop entry point: Qt UI."""
+
+    return main_qt(argv)

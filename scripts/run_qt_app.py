@@ -11,7 +11,7 @@ if str(SRC) not in sys.path:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the parallel PySide6 UI shell.")
+    parser = argparse.ArgumentParser(description="Run the PySide6 UI shell.")
     parser.add_argument(
         "--smoke-check",
         action="store_true",
