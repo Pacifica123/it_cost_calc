@@ -71,6 +71,10 @@ class QtMainWindow(QMainWindow):
             "Демо: расчётный",
             lambda: self._load_demo_profile("calculation_control"),
         )
+        self.action_bar.add_secondary_action(
+            "Демо: нагрузочный ТО",
+            lambda: self._load_demo_profile("technical_load_1000"),
+        )
         self.action_bar.add_secondary_action("Настройки", self.open_settings)
         self.action_bar.add_secondary_action("Светлая", lambda: self._apply_theme("light"))
         self.action_bar.add_secondary_action("Тёмная", lambda: self._apply_theme("dark"))
@@ -165,12 +169,16 @@ class QtMainWindow(QMainWindow):
 
     def _load_demo_profile(self, profile_id: str) -> None:
         try:
+            profiles = {
+                str(profile.get("id")): profile
+                for profile in self.presenter.list_demo_profiles()
+            }
             if profile_id == "default":
                 self.presenter.load_demo_dataset()
-                message = "Демо загружено"
             else:
                 self.presenter.load_demo_profile(profile_id)
-                message = "Расчётное демо загружено"
+            title = str(profiles.get(profile_id, {}).get("title") or "Демо")
+            message = f"{title} загружен"
         except Exception as exc:  # pragma: no cover - GUI status fallback
             self.action_bar.set_status("Ошибка демо")
             self.status_strip.set_message("Ошибка демо")

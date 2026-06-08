@@ -14,6 +14,12 @@
       "title": "Расчётный демо-набор",
       "description": "Минимальный набор для ручной проверки совпадения GA, AHP и Pareto с ожидаемыми ответами.",
       "path": "data/fixtures/demo_calculation_control_dataset.json"
+    },
+    {
+      "id": "technical_load_1000",
+      "title": "Нагрузочный ТО 1000",
+      "description": "Большой синтетический набор для проверки скорости: 1000 технических устройств в server/client/network.",
+      "path": "data/fixtures/demo_technical_load_1000_dataset.json"
     }
   ]
 }

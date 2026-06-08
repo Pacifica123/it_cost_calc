@@ -142,10 +142,22 @@ class EquipmentService:
         return {item.name for item in self.list_capital_items("server") if item.name}
 
     def replace_all(self, payload: dict[str, list[dict[str, Any]]]) -> None:
-        self.repository.clear()
+        normalized_payload: dict[str, list[dict[str, Any]]] = {}
         for entity_name, rows in payload.items():
+            normalized_rows: list[dict[str, Any]] = []
             for row in rows:
                 if entity_name in CAPITAL_COST_CATEGORIES or entity_name in OPERATIONAL_COST_CATEGORIES:
-                    self.repository.add(entity_name, normalize_runtime_row(row, category=entity_name))
+                    normalized_rows.append(normalize_runtime_row(row, category=entity_name))
                 else:
-                    self.repository.add(entity_name, deepcopy(row))
+                    normalized_rows.append(deepcopy(row))
+            normalized_payload[entity_name] = normalized_rows
+
+        bulk_replace = getattr(self.repository, "replace_all", None)
+        if callable(bulk_replace):
+            bulk_replace(normalized_payload)
+            return
+
+        self.repository.clear()
+        for entity_name, rows in normalized_payload.items():
+            for row in rows:
+                self.repository.add(entity_name, row)

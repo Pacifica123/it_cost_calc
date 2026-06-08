@@ -79,6 +79,20 @@ class JsonEntityRepository:
         self._persist()
         return row
 
+    def replace_all(self, entities: dict[str, list[dict[str, Any]]]) -> None:
+        """Replace the whole runtime payload and persist it once.
+
+        Large demo fixtures must not call ``add`` hundreds or thousands of
+        times, because autosave would rewrite the JSON file after every row.
+        """
+
+        self._entities = deepcopy(entities)
+        logger.info(
+            "Runtime-хранилище заменено целиком: %s строк",
+            sum(len(rows) for rows in self._entities.values()),
+        )
+        self._persist()
+
     def clear(self) -> None:
         logger.warning("Runtime-хранилище очищено: %s", self.path)
         self._entities.clear()

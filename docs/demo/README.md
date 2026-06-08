@@ -6,6 +6,7 @@
 
 - `ga_ahp_defense_guide.md` — актуальный сценарий демонстрации GA, AHP, Pareto и Hybrid внутри рабочих областей ПО/ТО.
 - `ga_ahp_pareto_calculation_control.md` — школьный расчётный пример для ручной сверки GA/AHP/Pareto с программой.
+- `technical_load_1000_demo.md` — нагрузочный сценарий ТО на 1000 устройств для проверки скорости и устойчивости.
 - `demo_data_contract.md` — контракт ролей demo/educational/regression-данных и контрольный сценарий после этапа 8.
 - `solution_component_editor_defense_guide.md` — финальный сценарий защиты редактора `SolutionComponent` после C9.
 
@@ -26,9 +27,10 @@
 ```bash
 python -B scripts/run_demo_control_scenario.py --check-only
 python -B scripts/run_calculation_control_demo.py --check-only
+python -B scripts/run_technical_load_demo.py --check-only
 ```
 
-Проверка подтверждает, что fixture-строки имеют `scope` и `component_type`, формируют общий пул `CandidateConfiguration`, получают TCO и попадают в `DecisionReport`.
+Проверка подтверждает, что fixture-строки имеют `scope` и `component_type`, формируют общий пул `CandidateConfiguration`, получают TCO и попадают в `DecisionReport`. Нагрузочный сценарий отдельно подтверждает загрузку 1000 строк ТО и прохождение цепочки GA → AHP → Pareto по большому исходному массиву.
 
 ## Контроль финального C9-сценария редактора компонентов
 

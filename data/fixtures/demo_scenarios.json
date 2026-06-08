@@ -14,6 +14,10 @@
       {
         "path": "scripts/run_calculation_control_demo.py",
         "purpose": "Headless-проверка расчётного demo-профиля без GUI: запускает GA, AHP и Pareto и сверяет ожидаемых победителей."
+      },
+      {
+        "path": "scripts/run_technical_load_demo.py",
+        "purpose": "Headless-нагрузочная проверка: загружает 1000 строк ТО, запускает GA без полного перебора, затем AHP и Pareto по GA-пулу."
       }
     ],
     "demonstration": [
@@ -31,6 +35,11 @@
         "path": "data/fixtures/solution_component_c9_demo_dataset.json",
         "scenario_id": "solution_component_c9_defense_demo",
         "purpose": "Финальный C9-сценарий защиты редактора SolutionComponent: mixed-комплект, ПО-подписка, периферия без клиентского места и черновик с предупреждениями."
+      },
+      {
+        "path": "data/fixtures/demo_technical_load_1000_dataset.json",
+        "scenario_id": "technical_load_1000_v1",
+        "purpose": "Нагрузочный demo-профиль для проверки скорости и устойчивости обработки большого массива технического обеспечения."
       }
     ],
     "regression": [
@@ -54,6 +63,9 @@
     "solution_component_c9_check": "python -B scripts/run_solution_component_c9_demo.py",
     "calculation_control_fixture": "data/fixtures/demo_calculation_control_dataset.json",
     "calculation_control_profile": "calculation_control",
-    "calculation_control_check": "python -B scripts/run_calculation_control_demo.py --check-only"
+    "calculation_control_check": "python -B scripts/run_calculation_control_demo.py --check-only",
+    "technical_load_fixture": "data/fixtures/demo_technical_load_1000_dataset.json",
+    "technical_load_profile": "technical_load_1000",
+    "technical_load_check": "python -B scripts/run_technical_load_demo.py --check-only"
   }
 }
