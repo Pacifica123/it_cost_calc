@@ -14,6 +14,7 @@ from application.services.cost_aggregation_service import CostAggregationService
 from application.services.decision_report_service import DecisionReportService
 from application.services.entity_catalog_service import EntityCatalogService
 from application.services.genetic_optimization_service import GeneticOptimizationService
+from application.services.hybrid_decision_assessment_service import HybridDecisionAssessmentService
 from application.services.electricity_cost_service import ElectricityCostService
 from application.services.equipment_service import EquipmentService
 from application.services.npv_report_service import NPVReportService
@@ -113,6 +114,7 @@ class QtAppPresenter:
         self.npv_report_builder = BuildNpvReportUseCase(NPVReportService())
         self.decision_report_builder = BuildDecisionReportUseCase(DecisionReportService())
         self.genetic_optimization_service = GeneticOptimizationService(self.repository)
+        self.hybrid_assessment_service = HybridDecisionAssessmentService()
         self.genetic_optimizer = RunGeneticOptimizationUseCase(
             self.genetic_optimization_service,
         )
@@ -131,6 +133,7 @@ class QtAppPresenter:
         self._ga_results: dict[str, dict[str, Any]] = {}
         self._ahp_results: dict[str, dict[str, Any]] = {}
         self._pareto_results: dict[str, dict[str, Any]] = {}
+        self._hybrid_results: dict[str, dict[str, Any]] = {}
 
     @property
     def entities(self) -> dict[str, list[dict[str, Any]]]:
@@ -193,6 +196,7 @@ class QtAppPresenter:
         self._ga_results.clear()
         self._ahp_results.clear()
         self._pareto_results.clear()
+        self._hybrid_results.clear()
         self.scoped_candidate_pool_service.clear("technical")
         self.scoped_candidate_pool_service.clear("software")
 
@@ -350,6 +354,7 @@ class QtAppPresenter:
             }
             self._ahp_results[scope_key] = deepcopy(report)
             self._pareto_results.pop(scope_key, None)
+            self._hybrid_results.pop(scope_key, None)
             return deepcopy(report)
         if not criteria:
             report = {
@@ -361,6 +366,7 @@ class QtAppPresenter:
             }
             self._ahp_results[scope_key] = deepcopy(report)
             self._pareto_results.pop(scope_key, None)
+            self._hybrid_results.pop(scope_key, None)
             return deepcopy(report)
 
         profile = self.analysis_scope_profile_service.get_profile(scope_key)
@@ -465,6 +471,7 @@ class QtAppPresenter:
         }
         self._ahp_results[scope_key] = deepcopy(report)
         self._pareto_results.pop(scope_key, None)
+        self._hybrid_results.pop(scope_key, None)
         return deepcopy(report)
 
     def get_ahp_result(self, scope: str) -> dict[str, Any]:
@@ -484,6 +491,7 @@ class QtAppPresenter:
                 "candidate_configurations": [],
             }
             self._pareto_results[scope_key] = deepcopy(report)
+            self._hybrid_results.pop(scope_key, None)
             return deepcopy(report)
 
         case = self.scoped_candidate_pool_service.to_criteria_case(scope_key)
@@ -499,10 +507,39 @@ class QtAppPresenter:
                 }
             )
         self._pareto_results[scope_key] = deepcopy(report)
+        self._hybrid_results.pop(scope_key, None)
         return deepcopy(report)
 
     def get_pareto_result(self, scope: str) -> dict[str, Any]:
         return deepcopy(self._pareto_results.get(str(scope), {}))
+
+
+    def run_hybrid_assessment(self, scope: str, *, lambda_value: float = 0.5) -> dict[str, Any]:
+        """Build a Hybrid summary for the current scoped GA/AHP/Pareto state."""
+
+        scope_key = str(scope)
+        snapshot = self.scoped_candidate_pool_service.get(scope_key)
+        result = self.hybrid_assessment_service.assess(
+            snapshot.candidates,
+            ahp_report=self.get_ahp_result(scope_key),
+            pareto_report=self.get_pareto_result(scope_key) or None,
+            lambda_value=lambda_value,
+            source_label=snapshot.source_label,
+        )
+        result.setdefault("metadata", {})
+        if isinstance(result["metadata"], dict):
+            result["metadata"].update(
+                {
+                    "analysis_scope": scope_key,
+                    "candidate_pool_source": snapshot.source_label,
+                    "source_method": snapshot.source_method,
+                }
+            )
+        self._hybrid_results[scope_key] = deepcopy(result)
+        return deepcopy(result)
+
+    def get_hybrid_result(self, scope: str) -> dict[str, Any]:
+        return deepcopy(self._hybrid_results.get(str(scope), {}))
 
     @staticmethod
     def _finite_float(value: Any, default: float = 0.0) -> float:
@@ -553,7 +590,7 @@ class QtAppPresenter:
             lines.append("NPV: нет расчёта")
 
         lines.append("")
-        lines.append("GA/AHP/Pareto/Hybrid будут подключены после переноса ПО/ТО.")
+        lines.append(self._decision_status_line())
         return "\n".join(lines)
 
     def export_selected_fragment(self, mode: str) -> dict[str, Path]:
@@ -607,25 +644,26 @@ class QtAppPresenter:
 
     def export_decision_report(self) -> dict[str, Path]:
         export_root = self.generated_reports_dir()
+        scoped_inputs = self._scoped_decision_report_inputs()
         report = self.decision_report_builder.execute(
             project={
                 "id": "current-it-solution-choice",
                 "title": "Итоговый отчёт выбора ИТ-решения",
-                "goal": "Свести компоненты, стоимость, NPV и будущий анализ ПО/ТО.",
+                "goal": "Свести компоненты, стоимость, NPV и анализ ПО/ТО.",
             },
             entities=self.entities_snapshot(),
             cost_totals=self.prepare_cost_summary(),
-            candidate_configurations=None,
-            ahp_result=None,
-            criteria_importance_result=None,
-            genetic_result=None,
+            candidate_configurations=scoped_inputs["candidate_configurations"],
+            ahp_result=scoped_inputs["ahp_result"],
+            criteria_importance_result=scoped_inputs["criteria_importance_result"],
+            genetic_result=scoped_inputs["genetic_result"],
             genetic_ahp_result=None,
-            hybrid_assessment_result=None,
+            hybrid_assessment_result=scoped_inputs["hybrid_assessment_result"],
             npv_report=self.get_npv_report() or None,
             metadata={
                 "source": "qt_export_screen",
-                "qt_migration_stage": "export_screen",
-                "analysis_note": "ПО/ТО analysis screens are not migrated yet.",
+                "qt_migration_stage": "hybrid_screen",
+                "scoped_analysis_state": self._scoped_analysis_state(),
             },
         )
         paths = {
@@ -651,6 +689,72 @@ class QtAppPresenter:
         except Exception as exc:  # noqa: BLE001 - GUI needs a readable message.
             raise RuntimeError(f"Не удалось открыть папку: {export_root}") from exc
         return export_root
+
+
+    def _scoped_decision_report_inputs(self) -> dict[str, Any]:
+        scopes = ("software", "technical")
+        ga_results: dict[str, dict[str, Any]] = {}
+        ahp_results: dict[str, dict[str, Any]] = {}
+        pareto_results: dict[str, dict[str, Any]] = {}
+        hybrid_results: dict[str, dict[str, Any]] = {}
+        candidates: list[dict[str, Any]] = []
+
+        for scope in scopes:
+            snapshot = self.scoped_candidate_pool_service.get(scope)
+            for index, candidate in enumerate(snapshot.candidates, start=1):
+                exported = deepcopy(candidate)
+                metadata = dict(exported.get("metadata") or {})
+                metadata.setdefault("candidate_pool_scope", scope)
+                metadata.setdefault("candidate_pool_source", snapshot.source_label)
+                metadata.setdefault("candidate_pool_method", snapshot.source_method)
+                metadata.setdefault("candidate_pool_position", index)
+                exported["metadata"] = metadata
+                exported.setdefault("scope", scope)
+                candidates.append(exported)
+
+            ga_result = self.get_ga_result(scope)
+            if ga_result:
+                ga_results[scope] = ga_result
+            ahp_result = self.get_ahp_result(scope)
+            if ahp_result:
+                ahp_results[scope] = ahp_result
+            pareto_result = self.get_pareto_result(scope)
+            if pareto_result:
+                pareto_results[scope] = pareto_result
+            hybrid_result = self.get_hybrid_result(scope)
+            if hybrid_result:
+                hybrid_results[scope] = hybrid_result
+
+        return {
+            "candidate_configurations": candidates or None,
+            "ahp_result": {"by_scope": ahp_results} if ahp_results else None,
+            "criteria_importance_result": {"by_scope": pareto_results} if pareto_results else None,
+            "genetic_result": {"by_scope": ga_results} if ga_results else None,
+            "hybrid_assessment_result": {"by_scope": hybrid_results} if hybrid_results else None,
+        }
+
+    def _scoped_analysis_state(self) -> dict[str, Any]:
+        state: dict[str, Any] = {}
+        for scope in ("software", "technical"):
+            snapshot = self.scoped_candidate_pool_service.get(scope)
+            state[scope] = {
+                "candidate_pool_count": len(snapshot.candidates),
+                "ga_status": self.get_ga_result(scope).get("status", "not_run"),
+                "ahp_status": self.get_ahp_result(scope).get("status", "not_run"),
+                "pareto_status": self.get_pareto_result(scope).get("status", "not_run"),
+                "hybrid_status": self.get_hybrid_result(scope).get("status", "not_run"),
+            }
+        return state
+
+    def _decision_status_line(self) -> str:
+        parts = []
+        for scope, label in (("software", "ПО"), ("technical", "ТО")):
+            hybrid = self.get_hybrid_result(scope)
+            if hybrid.get("status") == "ok":
+                parts.append(f"{label}: Hybrid готов")
+            elif self.get_pareto_result(scope).get("status") == "ok":
+                parts.append(f"{label}: ждёт Hybrid")
+        return "; ".join(parts) if parts else "ПО/ТО: нет итогового Hybrid."
 
     def _write_markdown_export(self, path: Path, title: str, body: str) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -8,6 +8,8 @@ from ui_qt.presenters.decision_method_presenter import (
     AhpPresenter,
     DecisionMethodSummary,
     ParetoPresenter,
+    HybridPresenter,
+    HybridSummary,
 )
 from ui_qt.presenters.ga_presenter import GaInput, GaPresenter, GaSummary
 from ui_qt.presenters.npv_presenter import NpvInput, NpvPresenter, NpvSummary
@@ -31,6 +33,8 @@ __all__ = [
     "GaInput",
     "GaPresenter",
     "GaSummary",
+    "HybridPresenter",
+    "HybridSummary",
     "NpvInput",
     "NpvPresenter",
     "NpvSummary",

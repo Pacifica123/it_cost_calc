@@ -4,7 +4,7 @@ from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL
 from ui_qt.models import RowTableModel
 from ui_qt.navigation import WorkflowStep, WorkflowStepper
 from ui_qt.presenters import QtAppPresenter, WorkspacePresenter, format_money
-from ui_qt.screens.decision import AhpScreen, GaScreen, ParetoScreen
+from ui_qt.screens.decision import AhpScreen, GaScreen, HybridScreen, ParetoScreen
 from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint, SmartTable
 
 try:
@@ -108,10 +108,18 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             on_result_changed=self._refresh_step_availability,
         )
         self.pareto_step_page = self._wrap_step_scroll(self.pareto_step)
+        self.hybrid_step = HybridScreen(
+            self.presenter.app_presenter,
+            self,
+            scope=self.presenter.scope,
+            on_result_changed=self._refresh_step_availability,
+        )
+        self.hybrid_step_page = self._wrap_step_scroll(self.hybrid_step)
         self.step_stack.addWidget(self.data_step_page)
         self.step_stack.addWidget(self.ga_step_page)
         self.step_stack.addWidget(self.ahp_step_page)
         self.step_stack.addWidget(self.pareto_step_page)
+        self.step_stack.addWidget(self.hybrid_step_page)
         layout.addWidget(self.step_stack, 1)
 
 
@@ -314,6 +322,12 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             self.pareto_step.refresh_data()
             self._refresh_step_availability()
             return
+        if step_id == "hybrid" and self._has_pareto_result():
+            self.step_stack.setCurrentWidget(self.hybrid_step_page)
+            self.stepper.set_active("hybrid")
+            self.hybrid_step.refresh_data()
+            self._refresh_step_availability()
+            return
         self.step_stack.setCurrentWidget(self.data_step_page)
         self.stepper.set_active("data")
         self._refresh_step_availability()
@@ -363,6 +377,7 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.ga_step.refresh_data()
         self.ahp_step.refresh_data()
         self.pareto_step.refresh_data()
+        self.hybrid_step.refresh_data()
         self._refresh_step_availability()
 
 
