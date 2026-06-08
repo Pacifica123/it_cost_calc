@@ -13,6 +13,7 @@ from ui_qt.presenters.decision_method_presenter import (
 )
 from ui_qt.presenters.ga_presenter import GaInput, GaPresenter, GaSummary
 from ui_qt.presenters.npv_presenter import NpvInput, NpvPresenter, NpvSummary
+from ui_qt.presenters.settings_presenter import QtSettingsPresenter, QtUiSettings, allowed_scales
 from ui_qt.presenters.workspace_presenter import (
     WorkspaceCategory,
     WorkspacePresenter,
@@ -41,8 +42,11 @@ __all__ = [
     "ParetoPresenter",
     "QtAppPresenter",
     "QtRuntimePaths",
+    "QtSettingsPresenter",
+    "QtUiSettings",
     "WorkspaceCategory",
     "WorkspacePresenter",
     "WorkspaceSummary",
+    "allowed_scales",
     "format_money",
 ]

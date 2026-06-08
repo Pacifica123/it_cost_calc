@@ -174,6 +174,9 @@ class HybridScreen(QWidget):  # type: ignore[misc,valid-type]
         self.ranking_section.set_expanded(has_ranking)
         self.warning_section.set_expanded(summary.warning_count > 0)
 
+    def run_primary_action(self) -> None:
+        self._run_hybrid()
+
     def _run_hybrid(self) -> None:
         try:
             self.presenter.run(lambda_value=float(self.lambda_input.value()))

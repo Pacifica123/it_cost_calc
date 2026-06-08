@@ -38,12 +38,22 @@ class ActionBar(QWidget):
         self.more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.more_menu = QMenu(self.more_button)
         self.more_button.setMenu(self.more_menu)
+        self.more_button.setToolTip("Дополнительные действия")
         self.more_button.hide()
+        self._compact = False
 
         self._layout.addWidget(self.title_label, 0)
         self._layout.addStretch(1)
         self._layout.addWidget(self.status_label, 0)
         self._layout.addWidget(self.more_button, 0)
+
+
+    def set_compact(self, compact: bool) -> None:
+        """Reduce secondary text on narrow windows."""
+
+        self._compact = bool(compact)
+        self.status_label.setVisible(not self._compact)
+        self.more_button.setText("Ещё" if self._compact else "Ещё ▾")
 
     def set_status(self, status: str) -> None:
         self.status_label.setText(status)

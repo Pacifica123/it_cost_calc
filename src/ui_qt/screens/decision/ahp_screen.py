@@ -153,6 +153,9 @@ class AhpScreen(QWidget):  # type: ignore[misc,valid-type]
         self.ranking_section.set_expanded(summary.ranked_count > 0)
         self.criteria_section.set_expanded(False)
 
+    def run_primary_action(self) -> None:
+        self._run_ahp()
+
     def _run_ahp(self) -> None:
         try:
             self.presenter.run()

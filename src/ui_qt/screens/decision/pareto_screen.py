@@ -151,6 +151,9 @@ class ParetoScreen(QWidget):  # type: ignore[misc,valid-type]
         self.ranking_section.set_expanded(summary.ranked_count > 0)
         self.nondominated_section.set_expanded(False)
 
+    def run_primary_action(self) -> None:
+        self._run_pareto()
+
     def _run_pareto(self) -> None:
         try:
             self.presenter.run()

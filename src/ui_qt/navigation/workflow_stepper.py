@@ -51,6 +51,7 @@ class WorkflowStepper(QWidget):  # type: ignore[misc,valid-type]
         super().__init__(parent)
         self.setObjectName("surface")
         self._buttons: dict[str, QPushButton] = {}
+        self._active_step_id = active_step_id
         self._callback = on_step_changed
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
@@ -73,11 +74,16 @@ class WorkflowStepper(QWidget):  # type: ignore[misc,valid-type]
         layout.addStretch(1)
         self.set_active(active_step_id)
 
+    @property
+    def current_step_id(self) -> str:
+        return self._active_step_id
+
     def set_active(self, step_id: str) -> None:
         button = self._buttons.get(step_id)
         if button is None:
             raise ValueError(f"Unknown workflow step: {step_id!r}")
         button.setChecked(True)
+        self._active_step_id = step_id
 
     def set_step_enabled(self, step_id: str, enabled: bool) -> None:
         button = self._buttons.get(step_id)

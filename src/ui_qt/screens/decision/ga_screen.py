@@ -276,6 +276,9 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
             min_units=float(self.units_input.value()),
         )
 
+    def run_primary_action(self) -> None:
+        self._run_ga()
+
     def _run_ga(self) -> None:
         try:
             self.presenter.run(self._values())

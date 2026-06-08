@@ -15,6 +15,7 @@ class RootMenu(QFrame):
         super().__init__(parent)
         self.setObjectName("rootNav")
         self._buttons: dict[str, QPushButton] = {}
+        self._compact = False
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
 
@@ -27,6 +28,7 @@ class RootMenu(QFrame):
             button.setObjectName("rootMenuButton")
             button.setCheckable(True)
             button.setToolTip(route.title)
+            button.setMinimumWidth(150)
             button.clicked.connect(lambda _checked=False, value=route.route_id: self.set_active(value))
             self._group.addButton(button)
             self._buttons[route.route_id] = button
@@ -34,6 +36,15 @@ class RootMenu(QFrame):
 
         layout.addStretch(1)
         self.set_active(DEFAULT_ROOT_ROUTE_ID, emit=False)
+
+
+    def set_compact(self, compact: bool) -> None:
+        """Keep root navigation usable on narrow windows."""
+
+        self._compact = bool(compact)
+        self.setFixedWidth(96 if self._compact else 198)
+        for button in self._buttons.values():
+            button.setMinimumWidth(72 if self._compact else 150)
 
     def set_active(self, route_id: str, *, emit: bool = True) -> None:
         button = self._buttons.get(route_id)

@@ -380,6 +380,53 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.hybrid_step.refresh_data()
         self._refresh_step_availability()
 
+    def current_step_id(self) -> str:
+        return self.stepper.current_step_id
+
+    def next_workflow_step(self) -> None:
+        order = ("data", "ga", "ahp", "pareto", "hybrid")
+        current = self.current_step_id()
+        for step_id in order[order.index(current) + 1 :]:
+            if self._can_open_step(step_id):
+                self._open_step(step_id)
+                return
+
+    def previous_workflow_step(self) -> None:
+        order = ("data", "ga", "ahp", "pareto", "hybrid")
+        current = self.current_step_id()
+        for step_id in reversed(order[: order.index(current)]):
+            if self._can_open_step(step_id):
+                self._open_step(step_id)
+                return
+
+    def run_primary_action(self) -> None:
+        step_id = self.current_step_id()
+        if step_id == "data":
+            self._open_step("ga")
+        elif step_id == "ga":
+            self.ga_step.run_primary_action()
+        elif step_id == "ahp":
+            self.ahp_step.run_primary_action()
+        elif step_id == "pareto":
+            self.pareto_step.run_primary_action()
+        elif step_id == "hybrid":
+            self.hybrid_step.run_primary_action()
+        self._refresh_step_availability()
+
+    def _can_open_step(self, step_id: str) -> bool:
+        if step_id == "data":
+            return True
+        if step_id == "ga":
+            return self.presenter.has_data()
+        if step_id == "ahp":
+            return self._has_candidate_pool()
+        if step_id == "pareto":
+            return self._has_ahp_result()
+        if step_id == "hybrid":
+            return self._has_pareto_result()
+        return False
+
+
 
 class SoftwareWorkspaceScreen(WorkspaceDataScreen):  # type: ignore[misc]
     def __init__(
