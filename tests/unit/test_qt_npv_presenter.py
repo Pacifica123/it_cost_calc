@@ -28,6 +28,10 @@ def test_npv_presenter_calculates_manual_flow(tmp_path: Path):
     assert summary.years == 3
     assert presenter.table_rows(report)[0]["year"] == 0
     assert presenter.table_rows(report)[-1]["accumulated_npv"] == report["rows"][-1]["accumulated_npv"]
+    chart_points = presenter.chart_points(report)
+    assert [point.year for point in chart_points] == [0, 1, 2, 3]
+    assert chart_points[-1].accumulated_npv == report["rows"][-1]["accumulated_npv"]
+    assert summary.rate == 0.1
 
 
 def test_npv_presenter_prepares_basis_from_current_costs(tmp_path: Path):

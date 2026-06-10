@@ -4,6 +4,7 @@ from ui_qt.models import RowTableModel
 from ui_qt.presenters import NpvInput, NpvPresenter, QtAppPresenter
 from ui_qt.presenters.npv_presenter import format_cash_flows, parse_cash_flows
 from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint
+from ui_qt.widgets.npv_chart import NpvChart
 
 try:
     from PySide6.QtCore import Qt
@@ -159,10 +160,27 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         layout = QVBoxLayout(details)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
+        layout.addWidget(self._build_chart_section(), 0)
         layout.addWidget(self._build_cash_flow_section(), 0)
         layout.addWidget(self._build_basis_section(), 0)
         layout.addWidget(self._build_table_section(), 0)
         return details
+
+
+    def _build_chart_section(self) -> CollapsibleSection:
+        content = QFrame(self)
+        content.setObjectName("card")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(10, 8, 10, 8)
+        self.npv_chart = NpvChart(content)
+        layout.addWidget(self.npv_chart)
+        return CollapsibleSection(
+            "График",
+            content,
+            self,
+            tooltip="Показывает накопленный NPV и точку окупаемости.",
+            expanded=True,
+        )
 
     def _build_cash_flow_section(self) -> CollapsibleSection:
         content = QFrame(self)
@@ -273,6 +291,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self._apply_input(values)
         self.status_label.setText("Нет расчёта")
         self._sync_detail_state()
+        self._sync_chart()
 
     def refresh_data(self) -> None:
         self.load_from_costs()
@@ -291,6 +310,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self._apply_input(values)
         self.basis_model.replace_rows(self.presenter.basis_rows())
         self._sync_detail_state()
+        self._sync_chart()
         self.status_label.setText("TCO загружен")
 
     def calculate(self) -> None:
@@ -305,6 +325,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self.basis_model.replace_rows(self.presenter.basis_rows(report))
         self._sync_detail_state()
         self._sync_summary(report)
+        self._sync_chart(report)
         warnings = self.presenter.warnings(report)
         self.status_label.setText("Есть риски" if warnings else "Рассчитано")
         if warnings:
@@ -330,6 +351,22 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
             ),
             annual_effect=annual_effect,
             horizon_years=horizon,
+        )
+
+
+    def _sync_chart(self, report: dict | None = None) -> None:
+        if not hasattr(self, "npv_chart"):
+            return
+        if report is None:
+            self.npv_chart.update_points(
+                [],
+                discount_rate=self._float_value(self.rate_input.text(), default=0.0),
+            )
+            return
+        summary = self.presenter.summary(report)
+        self.npv_chart.update_points(
+            self.presenter.chart_points(report),
+            discount_rate=summary.rate,
         )
 
     def _sync_summary(self, report: dict | None = None) -> None:

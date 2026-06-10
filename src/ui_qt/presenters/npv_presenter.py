@@ -17,6 +17,12 @@ class NpvInput:
 
 
 @dataclass(frozen=True)
+class NpvChartPoint:
+    year: int
+    accumulated_npv: float
+
+
+@dataclass(frozen=True)
 class NpvSummary:
     npv: float
     investment: float
@@ -72,6 +78,7 @@ class NpvPresenter:
             cash_flows=list(npv_input.cash_flows),
             financial_basis=self._financial_basis,
         )
+        report["discount_rate"] = npv_input.discount_rate
         self._last_report = deepcopy(report)
         return report
 
@@ -102,6 +109,29 @@ class NpvPresenter:
             final_accumulated=final_accumulated,
             status=status,
         )
+
+    def chart_points(self, report: Mapping[str, Any] | None = None) -> list[NpvChartPoint]:
+        payload = dict(report or self._last_report or {})
+        raw_points = payload.get("accumulated_points")
+        if isinstance(raw_points, Sequence) and not isinstance(raw_points, (str, bytes)):
+            return [
+                NpvChartPoint(year=index, accumulated_npv=float(value or 0.0))
+                for index, value in enumerate(raw_points)
+            ]
+
+        rows = list(payload.get("rows", []))
+        points: list[NpvChartPoint] = []
+        for index, row in enumerate(rows):
+            if not isinstance(row, Mapping):
+                continue
+            year = int(float(row.get("year", index) or 0))
+            points.append(
+                NpvChartPoint(
+                    year=year,
+                    accumulated_npv=float(row.get("accumulated_npv", 0.0) or 0.0),
+                )
+            )
+        return points
 
     def table_rows(self, report: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
         payload = dict(report or self._last_report or {})
@@ -151,6 +181,8 @@ class NpvPresenter:
         }
 
     def _basis_rate(self, payload: Mapping[str, Any]) -> float:
+        if "discount_rate" in payload:
+            return float(payload.get("discount_rate", 0.0) or 0.0)
         basis = payload.get("financial_basis")
         if isinstance(basis, Mapping) and "discount_rate" in basis:
             return float(basis.get("discount_rate", 0.0) or 0.0)
