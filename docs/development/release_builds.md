@@ -46,6 +46,16 @@ python scripts/build_windows_exe.py --onefile
 python scripts/build_windows_exe.py --console
 ```
 
+## Диагностика запуска exe
+
+Qt-экраны и виджеты в проекте подключаются лениво, поэтому build-скрипты явно добавляют внутренние модули `ui_qt.*` в hidden imports PyInstaller. Если после сборки появляется ошибка вида `No module named 'ui_qt.screens...'`, значит использован старый build-скрипт или вручную собранная команда без этих hidden imports.
+
+Для диагностики запуска можно временно собрать приложение с консолью:
+
+```powershell
+python scripts/build_windows_exe.py --console
+```
+
 ## Linux AppImage
 
 На Linux с Python 3.11+:

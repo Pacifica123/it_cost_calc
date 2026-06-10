@@ -8,8 +8,10 @@ from pathlib import Path
 
 MIN_PYTHON = (3, 11)
 ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = ROOT / "src"
 ENTRYPOINT = ROOT / "scripts" / "run_app.py"
 DEFAULT_NAME = "ITCostCalc"
+PROJECT_HIDDEN_IMPORT_PACKAGES = ("ui_qt",)
 
 
 def _require_python() -> None:
@@ -43,6 +45,33 @@ def _add_data_arg(source: Path, target: str) -> str:
     return f"{source}{separator}{target}"
 
 
+def _iter_package_modules(package_name: str) -> list[str]:
+    """Return project modules that PyInstaller cannot see through lazy imports."""
+
+    package_dir = SRC_ROOT / package_name.replace(".", "/")
+    if not package_dir.exists():
+        return []
+
+    modules: list[str] = []
+    for path in sorted(package_dir.rglob("*.py")):
+        if any(part == "__pycache__" for part in path.parts):
+            continue
+        relative = path.relative_to(SRC_ROOT).with_suffix("")
+        if relative.name == "__init__":
+            continue
+        modules.append(".".join(relative.parts))
+    return modules
+
+
+def project_hidden_imports() -> list[str]:
+    """Collect lazy Qt modules explicitly for frozen builds."""
+
+    hidden_imports: list[str] = []
+    for package_name in PROJECT_HIDDEN_IMPORT_PACKAGES:
+        hidden_imports.extend(_iter_package_modules(package_name))
+    return hidden_imports
+
+
 def build_command(args: argparse.Namespace) -> list[str]:
     command = [
         sys.executable,
@@ -53,7 +82,7 @@ def build_command(args: argparse.Namespace) -> list[str]:
         "--name",
         args.name,
         "--paths",
-        str(ROOT / "src"),
+        str(SRC_ROOT),
         "--distpath",
         str(ROOT / "dist" / "windows"),
         "--workpath",
@@ -65,14 +94,12 @@ def build_command(args: argparse.Namespace) -> list[str]:
         "--add-data",
         _add_data_arg(ROOT / "src" / "ui_qt" / "design", "ui_qt/design"),
         "--collect-data",
-        "PySide6",
-        "--collect-submodules",
-        "PySide6",
-        "--collect-data",
         "matplotlib",
         "--hidden-import",
         "matplotlib.backends.backend_qtagg",
     ]
+    for module_name in project_hidden_imports():
+        command.extend(("--hidden-import", module_name))
     if args.onefile:
         command.append("--onefile")
     else:
