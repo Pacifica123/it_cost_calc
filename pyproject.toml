@@ -27,6 +27,9 @@ dev = [
     "ruff>=0.11.0",
     "pre-commit>=3.7.0",
 ]
+build = [
+    "pyinstaller>=6.10,<7",
+]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -34,6 +37,9 @@ py-modules = ["app", "bootstrap"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"ui_qt.design" = ["*.qss"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

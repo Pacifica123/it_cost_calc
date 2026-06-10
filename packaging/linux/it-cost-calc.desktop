@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=IT Cost Calc
+Comment=IT infrastructure cost and decision support calculator
+Exec=ITCostCalc
+Icon=it-cost-calc
+Terminal=false
+Categories=Office;Development;Utility;

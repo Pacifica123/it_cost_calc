@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+MIN_PYTHON = (3, 11)
+ROOT = Path(__file__).resolve().parents[1]
+ENTRYPOINT = ROOT / "scripts" / "run_app.py"
+DEFAULT_NAME = "ITCostCalc"
+
+
+def _require_python() -> None:
+    if sys.version_info < (*MIN_PYTHON, 0):
+        current = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        required = ".".join(str(part) for part in MIN_PYTHON)
+        raise SystemExit(
+            f"ERROR: для сборки нужен Python >= {required}. Обнаружен Python {current}. "
+            "Установите Python 3.11+ или используйте готовую сборку."
+        )
+
+
+def _require_pyinstaller() -> None:
+    if shutil.which("pyinstaller") is None:
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "PyInstaller", "--version"],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise SystemExit(
+                "ERROR: PyInstaller не установлен. Выполните: "
+                "pip install -r requirements/build.txt"
+            ) from None
+
+
+def _add_data_arg(source: Path, target: str) -> str:
+    separator = ";" if sys.platform.startswith("win") else ":"
+    return f"{source}{separator}{target}"
+
+
+def build_command(args: argparse.Namespace) -> list[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--clean",
+        "--name",
+        args.name,
+        "--paths",
+        str(ROOT / "src"),
+        "--distpath",
+        str(ROOT / "dist" / "windows"),
+        "--workpath",
+        str(ROOT / "build" / "pyinstaller-windows"),
+        "--specpath",
+        str(ROOT / "build" / "pyinstaller-specs"),
+        "--add-data",
+        _add_data_arg(ROOT / "data", "data"),
+        "--add-data",
+        _add_data_arg(ROOT / "src" / "ui_qt" / "design", "ui_qt/design"),
+        "--collect-data",
+        "PySide6",
+        "--collect-submodules",
+        "PySide6",
+        "--collect-data",
+        "matplotlib",
+        "--hidden-import",
+        "matplotlib.backends.backend_qtagg",
+    ]
+    if args.onefile:
+        command.append("--onefile")
+    else:
+        command.append("--onedir")
+    if not args.console:
+        command.append("--windowed")
+    command.append(str(ENTRYPOINT))
+    return command
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Собрать Windows exe для IT Cost Calc.")
+    parser.add_argument("--name", default=DEFAULT_NAME, help="Имя исполняемого файла.")
+    parser.add_argument("--onefile", action="store_true", help="Собрать один exe вместо onedir.")
+    parser.add_argument("--console", action="store_true", help="Оставить консольное окно для диагностики.")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    _require_python()
+    _require_pyinstaller()
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    command = build_command(args)
+    subprocess.run(command, cwd=ROOT, check=True)
+    output_dir = ROOT / "dist" / "windows"
+    print(f"Готово. Артефакты сборки: {output_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -31,6 +31,14 @@
 
 ## Быстрый запуск
 
+### Требования к Python
+
+Для запуска из исходников нужен Python 3.11+. Если установлен Python 3.10 или ниже, используйте готовую сборку `exe`/`AppImage` либо обновите интерпретатор. Проверка окружения:
+
+```bash
+python scripts/doctor.py
+```
+
 ### Установка зависимостей
 ```bash
 pip install -r requirements/base.txt
@@ -67,6 +75,26 @@ python -B scripts/run_demo_control_scenario.py --check-only
 ```bash
 pytest
 ```
+
+### Release-сборки без Python у пользователя
+
+```bash
+pip install -r requirements/build.txt
+```
+
+Windows exe:
+
+```powershell
+python scripts/build_windows_exe.py
+```
+
+Linux AppImage:
+
+```bash
+bash scripts/build_linux_appimage.sh
+```
+
+Подробности: `docs/development/release_builds.md`.
 
 ## Структура репозитория
 

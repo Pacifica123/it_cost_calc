@@ -2,6 +2,14 @@
 
 ## Базовый запуск
 
+Проверить версию Python:
+
+```bash
+python scripts/doctor.py
+```
+
+Для разработки нужен Python 3.11+. Если локально установлен Python 3.10, лучше обновить интерпретатор или запускать готовую сборку из `exe`/`AppImage`.
+
 Установить зависимости:
 
 ```bash
@@ -62,3 +70,7 @@ python scripts/update_equipment_catalog.py --mode examples
 ```
 
 Результат сохраняется в `data/generated/catalog/equipment_catalog.json`.
+
+## Сборки для запуска без Python
+
+Инструкция по Windows exe и Linux AppImage вынесена в `docs/development/release_builds.md`.

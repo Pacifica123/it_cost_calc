@@ -1,0 +1,2 @@
+-r base.txt
+pyinstaller>=6.10,<7
