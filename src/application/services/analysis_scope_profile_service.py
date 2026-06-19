@@ -202,6 +202,7 @@ class AnalysisScopeProfileService:
         power_lookup: Mapping[str, float] | None = None,
         max_power: float | None = None,
         target_units: float | None = None,
+        max_target_units: float | None = None,
     ) -> list[dict[str, Any]]:
         """Build dynamic GA constraints described by the profile."""
 
@@ -222,17 +223,30 @@ class AnalysisScopeProfileService:
                         "profile_scope": profile.scope,
                     }
                 )
-            elif descriptor.metric in {"client_capacity", "software_license_quantity"} and target_units:
-                result.append(
-                    {
-                        "name": descriptor.id,
-                        "label": descriptor.label,
-                        "func": self._metric_callable(descriptor.metric, lookup),
-                        "operator": ">=",
-                        "bound": float(target_units),
-                        "profile_scope": profile.scope,
-                    }
-                )
+            elif descriptor.metric in {"client_capacity", "software_license_quantity"}:
+                metric_func = self._metric_callable(descriptor.metric, lookup)
+                if target_units:
+                    result.append(
+                        {
+                            "name": descriptor.id,
+                            "label": descriptor.label,
+                            "func": metric_func,
+                            "operator": ">=",
+                            "bound": float(target_units),
+                            "profile_scope": profile.scope,
+                        }
+                    )
+                if max_target_units:
+                    result.append(
+                        {
+                            "name": f"{descriptor.id}_max",
+                            "label": self._maximum_label(descriptor.label),
+                            "func": metric_func,
+                            "operator": "<=",
+                            "bound": float(max_target_units),
+                            "profile_scope": profile.scope,
+                        }
+                    )
         return result
 
     def required_categories(
@@ -294,6 +308,12 @@ class AnalysisScopeProfileService:
                 if constraint.id == constraint_id:
                     return constraint.label
         return constraint_id
+
+    def _maximum_label(self, label: str) -> str:
+        text = str(label or "").strip()
+        if text.startswith("Минимум"):
+            return "Максимум" + text[len("Минимум") :]
+        return f"Максимум для ограничения: {text}" if text else "Максимум"
 
     def _metric_callable(self, metric: str, power_lookup: Mapping[str, float]):
         if metric == "client_capacity":

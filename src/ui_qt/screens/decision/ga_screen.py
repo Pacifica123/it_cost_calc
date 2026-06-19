@@ -161,6 +161,8 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         defaults = self.presenter.default_input()
         self.budget_input = self._money_input(defaults.budget)
         self.units_input = self._spin_input(int(defaults.min_units), 0, 10_000)
+        self.max_units_input = self._spin_input(int(defaults.max_units), 0, 10_000)
+        self.units_input.valueChanged.connect(self._sync_max_units_floor)
         self.population_input = self._spin_input(defaults.population, 4, 1000)
         self.generations_input = self._spin_input(defaults.generations, 1, 2000)
         self.mutation_input = self._ratio_input(defaults.mutation_rate)
@@ -172,6 +174,7 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         fields_layout.setSpacing(10)
         fields_layout.addWidget(self._field_box("Бюджет", self.budget_input, fields), 1)
         fields_layout.addWidget(self._field_box("Мин. мест", self.units_input, fields), 1)
+        fields_layout.addWidget(self._field_box("Макс. мест", self.max_units_input, fields), 1)
         fields_layout.addWidget(self._field_box("Популяция", self.population_input, fields), 1)
         fields_layout.addWidget(self._field_box("Поколений", self.generations_input, fields), 1)
         layout.addWidget(fields, 0)
@@ -204,6 +207,10 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         self.run_button.clicked.connect(self._run_ga)
         actions.addWidget(self.run_button, 0)
         return actions
+
+    def _sync_max_units_floor(self, min_value: int) -> None:
+        if self.max_units_input.value() > 0 and self.max_units_input.value() < int(min_value):
+            self.max_units_input.setValue(int(min_value))
 
     def _field_box(self, title: str, field: QWidget, parent: QWidget) -> QWidget:  # type: ignore[valid-type]
         box = QWidget(parent)
@@ -274,6 +281,7 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
             seed=int(self.seed_input.value()),
             budget=float(self.budget_input.value()),
             min_units=float(self.units_input.value()),
+            max_units=float(self.max_units_input.value()),
         )
 
     def run_primary_action(self) -> None:

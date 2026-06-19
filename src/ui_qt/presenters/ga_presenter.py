@@ -18,6 +18,7 @@ class GaInput:
     budget: float = 600_000.0
     max_power: float | None = None
     min_units: float = 3.0
+    max_units: float = 3.0
 
 
 @dataclass(frozen=True)
@@ -69,7 +70,7 @@ class GaPresenter:
         budget = summary.capex_total + summary.opex_once + summary.opex_monthly * 12
         if budget <= 0:
             budget = 600_000.0
-        return GaInput(budget=float(budget), min_units=3.0)
+        return GaInput(budget=float(budget), min_units=3.0, max_units=3.0)
 
     def summary(self) -> GaSummary:
         workspace_summary = self.workspace_presenter.summary()
@@ -96,11 +97,18 @@ class GaPresenter:
         return self.workspace_presenter.has_data()
 
     def run(self, values: GaInput) -> dict[str, Any]:
+        min_units = float(values.min_units) if values.min_units > 0 else None
+        max_units = float(values.max_units) if values.max_units > 0 else None
+        if min_units is not None and max_units is not None and max_units < min_units:
+            max_units = min_units
+
         result = self.app_presenter.run_genetic_optimization(
             scope=self.scope,
             max_budget=float(values.budget) if values.budget > 0 else None,
             max_power=values.max_power,
-            target_units=float(values.min_units) if values.min_units > 0 else None,
+            target_units=min_units,
+            max_target_units=max_units,
+            max_selected_items=int(max_units) if max_units is not None else None,
             ga_params={
                 "pop_size": int(values.population),
                 "generations": int(values.generations),

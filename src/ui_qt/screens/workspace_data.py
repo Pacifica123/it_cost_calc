@@ -166,7 +166,6 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         layout = QVBoxLayout(step)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-        layout.addWidget(self._build_summary_cards(), 0)
 
         self.content_stack = QStackedLayout()
         self.empty_state = EmptyState(
@@ -179,6 +178,7 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.content_stack.addWidget(self.empty_state)
         self.content_stack.addWidget(self.data_panel)
         layout.addLayout(self.content_stack, 1)
+        layout.addWidget(self._build_summary_cards(), 0)
 
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)

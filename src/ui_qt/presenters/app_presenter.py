@@ -352,6 +352,8 @@ class QtAppPresenter:
         max_budget: float | None = None,
         max_power: float | None = None,
         target_units: float | None = None,
+        max_target_units: float | None = None,
+        max_selected_items: int | None = None,
         ga_params: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Run GA for one analysis scope and update the shared candidate pool."""
@@ -362,6 +364,8 @@ class QtAppPresenter:
             max_budget=max_budget,
             max_power=max_power,
             target_units=target_units,
+            max_target_units=max_target_units,
+            max_selected_items=max_selected_items,
             ga_params=dict(ga_params or {}),
         )
         scope_key = str(scope)

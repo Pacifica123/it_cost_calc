@@ -108,6 +108,7 @@ class GeneticOptimizationService:
         analysis_profile: AnalysisScopeProfile | None = None,
         power_lookup: Mapping[str, float] | None = None,
         target_units: float | None = None,
+        max_target_units: float | None = None,
         max_power: float | None = None,
         criteria: Sequence[CriterionSpec | Callable[[list[RuntimeOptimizationItem]], Any]] | None = None,
         constraints: Sequence[ConstraintSpec | Callable[[list[RuntimeOptimizationItem]], Any]] | None = None,
@@ -168,12 +169,18 @@ class GeneticOptimizationService:
                     power_lookup=power_lookup,
                     max_power=max_power,
                     target_units=target_units,
+                    max_target_units=max_target_units,
                 )
             )
+        effective_required_categories = (
+            required_categories
+            if required_categories is not None or profile is None
+            else profile.default_required_categories()
+        )
         constraint_specs = self._build_constraints(
             dynamic_constraints,
             max_budget=max_budget,
-            required_categories=required_categories,
+            required_categories=effective_required_categories,
             excluded_categories=excluded_categories,
             min_selected_items=min_selected_items,
             max_selected_items=max_selected_items,

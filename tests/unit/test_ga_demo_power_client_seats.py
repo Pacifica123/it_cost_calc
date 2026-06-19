@@ -99,3 +99,94 @@ def test_genetic_tab_category_policy_supports_required_excluded_optional_states(
 
     assert service.required_categories("technical", category_policy=policy) == ["server"]
     assert service.excluded_categories("technical", category_policy=policy) == ["client"]
+
+
+def test_profile_builds_maximum_capacity_constraint_for_ga():
+    service = AnalysisScopeProfileService()
+
+    constraints = service.build_ga_constraints(
+        "technical",
+        target_units=3,
+        max_target_units=3,
+    )
+
+    by_name = {constraint["name"]: constraint for constraint in constraints}
+    assert by_name["client_capacity_required"]["operator"] == ">="
+    assert by_name["client_capacity_required"]["bound"] == 3.0
+    assert by_name["client_capacity_required_max"]["operator"] == "<="
+    assert by_name["client_capacity_required_max"]["bound"] == 3.0
+    assert by_name["client_capacity_required_max"]["label"] == "Максимум клиентских мест"
+
+
+def test_ga_respects_maximum_places_and_selected_items_on_large_technical_pool():
+    from application.services.genetic_optimization_service import GeneticOptimizationService
+    from infrastructure.repositories.in_memory_entity_repository import InMemoryEntityRepository
+
+    repository = InMemoryEntityRepository(
+        {
+            "server": [
+                {
+                    "name": f"Server {index}",
+                    "quantity": 1,
+                    "price": 1000.0 + index,
+                    "ram_gb": 64 + index,
+                    "cpu_cores": 16 + index,
+                    "storage_gb": 512,
+                    "max_power": 200,
+                }
+                for index in range(12)
+            ],
+            "client": [
+                {
+                    "name": f"Client {index}",
+                    "quantity": 1,
+                    "price": 100.0 + index,
+                    "ram_gb": 8,
+                    "cpu_cores": 4,
+                    "storage_gb": 256,
+                    "max_power": 50,
+                    "client_seats": 3,
+                }
+                for index in range(12)
+            ],
+            "network": [
+                {
+                    "name": f"Network {index}",
+                    "quantity": 1,
+                    "price": 50.0 + index,
+                    "lan_ports": 8 + index,
+                    "lan_speed_mbps": 1000,
+                    "max_power": 15,
+                }
+                for index in range(12)
+            ],
+        }
+    )
+    service = GeneticOptimizationService(repository)
+
+    summary = service.run(
+        analysis_scope="technical",
+        target_units=3,
+        max_target_units=3,
+        max_selected_items=3,
+        required_categories=("server", "client", "network"),
+        max_budget=50_000.0,
+        ga_params={
+            "pop_size": 12,
+            "generations": 8,
+            "mutation_rate": 0.04,
+            "elite": 1,
+            "seed": 9,
+            "stagnation_limit": 20,
+            "max_random_attempts": 80,
+            "quality_check_enabled": False,
+        },
+    )
+
+    assert summary["status"] == "ok"
+    assert summary["totals"]["selected_count"] <= 3
+    assert summary["totals"]["client_seats"] <= 3
+    assert summary["selected_by_category"]["server"]
+    assert summary["selected_by_category"]["client"]
+    assert summary["selected_by_category"]["network"]
+    assert all(constraint["passed"] for constraint in summary["constraints"])

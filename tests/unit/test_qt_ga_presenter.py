@@ -70,6 +70,7 @@ def test_ga_presenter_runs_technical_scope_and_updates_pool(tmp_path: Path):
             seed=3,
             budget=1000,
             min_units=1,
+            max_units=3,
         )
     )
 
@@ -109,6 +110,7 @@ def test_ga_presenter_uses_software_scope_only(tmp_path: Path):
             seed=5,
             budget=500,
             min_units=1,
+            max_units=5,
         )
     )
 
@@ -131,6 +133,8 @@ def test_ga_screen_source_keeps_primary_action_outside_parameter_grid():
     assert "actions.addWidget(self.run_button, 0)" in source
     assert "layout.addWidget(self.run_button, 3, 3)" not in source
     assert "NoButtons" in source
+    assert "Макс. мест" in source
+    assert "max_units_input" in source
 
 
 def test_ga_screen_source_uses_separate_parameter_section():
@@ -163,3 +167,19 @@ def test_workspace_ga_source_uses_scroll_and_hides_result_sections_before_run():
     assert "self.candidate_section.setVisible(False)" in ga_source
     assert "self.best_section.setVisible(False)" in ga_source
     assert "setMaximumHeight(self.sizeHint().height())" not in collapsible_source
+
+
+def test_workspace_data_summary_cards_are_after_source_details():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "ui_qt"
+        / "screens"
+        / "workspace_data.py"
+    ).read_text(encoding="utf-8")
+
+    content_pos = source.index("layout.addLayout(self.content_stack, 1)")
+    summary_pos = source.index("layout.addWidget(self._build_summary_cards(), 0)")
+    actions_pos = source.index("actions = QHBoxLayout()")
+
+    assert content_pos < summary_pos < actions_pos

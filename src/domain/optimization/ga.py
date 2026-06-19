@@ -784,11 +784,64 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
     def scores_by_criterion(values: Sequence[float]) -> Dict[str, float]:
         return {name: float(value) for name, value in zip(criterion_names, values)}
 
+    def repair_by_removal(mask: Sequence[int]) -> Mask | None:
+        """Shrink an oversized random mask until it satisfies hard constraints.
+
+        Tight upper bounds such as ``max_selected_items`` make a directly
+        random feasible mask practically impossible on large catalogs.  Removing
+        items from an initially broad mask keeps the GA generic while giving the
+        initial population a realistic way to satisfy "at most N" constraints.
+        """
+
+        mutable_mask = [int(bool(bit)) for bit in mask]
+        if sparse_selection_limit is not None:
+            while sum(mutable_mask) > sparse_selection_limit:
+                ones = [idx for idx, bit in enumerate(mutable_mask) if bit]
+                mutable_mask[rnd.choice(ones)] = 0
+        while allow_empty or any(mutable_mask):
+            if is_feasible(mutable_mask):
+                return tuple(mutable_mask)
+            if not any(mutable_mask):
+                break
+            ones = [idx for idx, bit in enumerate(mutable_mask) if bit]
+            mutable_mask[rnd.choice(ones)] = 0
+        return None
+
+    def max_selected_items_bound() -> int | None:
+        bounds: List[int] = []
+        for constraint in constraints:
+            if constraint.get("name") != "max_selected_items":
+                continue
+            if constraint.get("operator") != "<=" or constraint.get("bound") is None:
+                continue
+            try:
+                bound = int(float(constraint["bound"]))
+            except (TypeError, ValueError):
+                continue
+            if bound >= 0:
+                bounds.append(bound)
+        return min(bounds) if bounds else None
+
+    sparse_selection_limit = max_selected_items_bound()
+
+    def sparse_random_mask(limit: int) -> Mask:
+        min_count = 0 if allow_empty else 1
+        selected_count = rnd.randint(min_count, max(min_count, min(limit, len(items))))
+        selected_indexes = set(rnd.sample(range(len(items)), selected_count))
+        return tuple(1 if index in selected_indexes else 0 for index in range(len(items)))
+
     def random_mask() -> Mask | None:
         for _attempt in range(max_random_attempts):
-            mask = tuple(rnd.choice((0, 1)) for _item in items)
+            if sparse_selection_limit is not None and sparse_selection_limit < len(items):
+                mask = sparse_random_mask(sparse_selection_limit)
+            else:
+                mask = tuple(rnd.choice((0, 1)) for _item in items)
             if is_feasible(mask):
                 return mask
+            if sparse_selection_limit is None:
+                repaired = repair_by_removal(mask)
+                if repaired is not None:
+                    return repaired
         return None
 
     def add_singleton_masks(target: List[Mask]) -> int:
@@ -955,15 +1008,11 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
         return tuple(child_a), tuple(child_b)
 
     def repair(mask: Sequence[int]) -> Mask:
-        mutable_mask = [int(bool(bit)) for bit in mask]
-        while allow_empty or any(mutable_mask):
-            if is_feasible(mutable_mask):
-                return tuple(mutable_mask)
-            if not any(mutable_mask):
-                break
-            ones = [idx for idx, bit in enumerate(mutable_mask) if bit]
-            mutable_mask[rnd.choice(ones)] = 0
+        repaired = repair_by_removal(mask)
+        if repaired is not None:
+            return repaired
 
+        mutable_mask = [int(bool(bit)) for bit in mask]
         for index in rnd.sample(range(len(mutable_mask)), len(mutable_mask)):
             candidate = [0] * len(mutable_mask)
             candidate[index] = 1
@@ -974,6 +1023,28 @@ def run_ga_mvp(params: Dict[str, Any]) -> Dict[str, Any]:
 
     def mutate(mask: Mask) -> Mask:
         mutable_mask = list(mask)
+        if sparse_selection_limit is not None and sparse_selection_limit < len(mutable_mask):
+            selected = [index for index, bit in enumerate(mutable_mask) if bit]
+            selected_set = set(selected)
+            mutation_steps = max(1, min(sparse_selection_limit, int(round(mutation_rate * len(selected))) + 1))
+            for _step in range(mutation_steps):
+                if selected and rnd.random() < mutation_rate:
+                    removed = rnd.choice(selected)
+                    mutable_mask[removed] = 0
+                    selected.remove(removed)
+                    selected_set.discard(removed)
+                if len(selected) < sparse_selection_limit and rnd.random() < mutation_rate:
+                    added = rnd.randrange(len(mutable_mask))
+                    for _probe in range(len(mutable_mask)):
+                        if added not in selected_set:
+                            break
+                        added = (added + 1) % len(mutable_mask)
+                    if added not in selected_set:
+                        mutable_mask[added] = 1
+                        selected.append(added)
+                        selected_set.add(added)
+            return repair(mutable_mask)
+
         for index in range(len(mutable_mask)):
             if rnd.random() < mutation_rate:
                 mutable_mask[index] = 1 - mutable_mask[index]
