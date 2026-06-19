@@ -17,6 +17,7 @@ from application.services.genetic_optimization_service import GeneticOptimizatio
 from application.services.hybrid_decision_assessment_service import HybridDecisionAssessmentService
 from application.services.electricity_cost_service import ElectricityCostService
 from application.services.equipment_service import EquipmentService
+from application.services.runtime_entity_normalization_service import normalize_runtime_row
 from application.services.npv_report_service import NPVReportService
 from application.services.scoped_candidate_pool_service import CandidatePoolSnapshot, ScopedCandidatePoolService
 from application.services.solution_component_runtime_service import SolutionComponentRuntimeService
@@ -37,6 +38,7 @@ from infrastructure.exporters.decision_report_exporter import (
 )
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
 from infrastructure.storage import JsonFileStorage
+from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL, TECHNICAL_CAPITAL_CATEGORIES
 
 
 @dataclass(frozen=True)
@@ -258,12 +260,42 @@ class QtAppPresenter:
         self._electricity_report = {"total_cost": 0.0, "items": []}
 
     def list_energy_rows(self) -> list[dict[str, Any]]:
-        """Return equipment rows that can participate in electricity cost calculation."""
+        """Return energy rows from the final selected technical configuration.
 
-        return deepcopy(self.equipment_service.list_energy_relevant_rows())
+        Runtime catalog rows are only input alternatives.  Electricity must be
+        calculated for the Hybrid winner, otherwise the screen would sum every
+        available device in the catalog instead of the chosen configuration.
+        """
+
+        return self.list_selected_energy_rows()
+
+    def list_selected_energy_rows(self) -> list[dict[str, Any]]:
+        """Return technical components of the current Hybrid winner for energy."""
+
+        candidate = self.selected_hybrid_candidate(ANALYSIS_SCOPE_TECHNICAL)
+        if not candidate:
+            return []
+        rows: list[dict[str, Any]] = []
+        components = candidate.get("components", [])
+        if not isinstance(components, list):
+            return rows
+        for component in components:
+            if not isinstance(component, Mapping):
+                continue
+            row = self._selected_energy_row(component)
+            if row is not None:
+                rows.append(row)
+        return rows
 
     def list_round_the_clock_equipment_names(self) -> set[str]:
-        return set(self.equipment_service.list_round_the_clock_equipment_names())
+        """Return 24/7 equipment names from the selected technical solution only."""
+
+        names: set[str] = set()
+        for row in self.list_selected_energy_rows():
+            category = str(row.get("source_category") or row.get("category") or "")
+            if category == "server" and row.get("name"):
+                names.add(str(row.get("name")))
+        return names
 
     def calculate_electricity_costs(
         self,
@@ -302,12 +334,33 @@ class QtAppPresenter:
         return deepcopy(self._electricity_report)
 
     def prepare_cost_summary(self) -> dict[str, Any]:
-        """Build a current CAPEX/OPEX/electricity summary for finance screens."""
+        """Build CAPEX/OPEX/TCO for the final selected Hybrid configuration.
 
-        return self.cost_summary_preparer.execute(
-            electricity_cost=self.get_electricity_cost(),
-            electricity_profile=self.get_electricity_profile(),
-        )
+        Source catalog rows are alternatives, not a purchase plan.  Until Hybrid
+        selects a winner, finance screens receive an explicit zero summary rather
+        than totals across every available input row.
+        """
+
+        return self.prepare_selected_cost_summary()
+
+    def prepare_selected_scope_cost_summary(self, scope: str) -> dict[str, Any]:
+        """Build finance totals for one scope winner, or an empty final-selection summary."""
+
+        candidate = self.selected_hybrid_candidate(scope)
+        return self._cost_summary_from_selected_candidates([candidate] if candidate else [])
+
+    def prepare_selected_cost_summary(self) -> dict[str, Any]:
+        """Build finance totals for all currently selected ПО/ТО Hybrid winners."""
+
+        candidates = [
+            candidate
+            for candidate in (
+                self.selected_hybrid_candidate(ANALYSIS_SCOPE_TECHNICAL),
+                self.selected_hybrid_candidate(ANALYSIS_SCOPE_SOFTWARE),
+            )
+            if candidate is not None
+        ]
+        return self._cost_summary_from_selected_candidates(candidates)
 
     def prepare_npv_basis_from_current_costs(
         self,
@@ -317,12 +370,20 @@ class QtAppPresenter:
         discount_rate: float | None = None,
     ) -> dict[str, Any]:
         totals = self.prepare_cost_summary()
-        return self.npv_report_builder.prepare_from_totals(
+        basis = self.npv_report_builder.prepare_from_totals(
             totals,
             horizon_years=horizon_years,
             annual_effect=annual_effect,
             discount_rate=discount_rate,
         )
+        financial_source = totals.get("financial_source")
+        if isinstance(financial_source, Mapping):
+            basis["financial_source"] = deepcopy(dict(financial_source))
+            if financial_source.get("status") == "missing":
+                warnings = list(basis.get("warnings", []))
+                warnings.append("NPV ожидает итоговый Hybrid-выбор, поэтому TCO-основа пока нулевая.")
+                basis["warnings"] = warnings
+        return basis
 
     def build_npv_report(
         self,
@@ -598,6 +659,161 @@ class QtAppPresenter:
 
     def get_hybrid_result(self, scope: str) -> dict[str, Any]:
         return deepcopy(self._hybrid_results.get(str(scope), {}))
+
+    def selected_hybrid_candidate(self, scope: str) -> dict[str, Any] | None:
+        """Return the current Hybrid winner from the scoped candidate pool.
+
+        The Hybrid report contains presentation rows, while the candidate pool
+        keeps the full selected component list.  Finance and energy screens use
+        this method so they work from the final choice rather than from all
+        source alternatives in the data catalog.
+        """
+
+        scope_key = str(scope)
+        report = self.get_hybrid_result(scope_key)
+        if report.get("status") != "ok":
+            return None
+        winner = report.get("winner") if isinstance(report.get("winner"), Mapping) else {}
+        winner_id = str(report.get("winner_id") or winner.get("id") or "")
+        if not winner_id:
+            return None
+        snapshot = self.scoped_candidate_pool_service.get(scope_key)
+        for candidate in snapshot.candidates:
+            if str(candidate.get("id") or "") == winner_id:
+                return deepcopy(candidate)
+        if isinstance(winner, Mapping):
+            return deepcopy(dict(winner))
+        return None
+
+    def _selected_energy_row(self, component: Mapping[str, Any]) -> dict[str, Any] | None:
+        category = str(component.get("source_category") or component.get("category") or "")
+        if category not in TECHNICAL_CAPITAL_CATEGORIES:
+            return None
+        row = normalize_runtime_row(component, category=category)
+        if self._finite_float(row.get("max_power", row.get("max_power_watts")), 0.0) <= 0.0:
+            return None
+        row.setdefault("source_category", category)
+        return row
+
+    def _cost_summary_from_selected_candidates(
+        self,
+        candidates: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        electricity_profile = self.get_electricity_profile()
+        if not candidates:
+            return self._empty_final_selection_cost_summary()
+
+        total_capital = 0.0
+        total_one_time = 0.0
+        total_monthly_without_energy = 0.0
+        total_electricity = 0.0
+        component_count = 0
+        candidate_summaries: list[dict[str, Any]] = []
+        for candidate in candidates:
+            tco = self._candidate_tco_summary(
+                candidate,
+                electricity_profile=electricity_profile,
+            )
+            electricity = self._finite_float(tco.get("electricity_monthly_cost"), 0.0)
+            monthly_opex = self._finite_float(tco.get("monthly_opex"), 0.0)
+            total_capital += self._finite_float(tco.get("total_capex"), 0.0)
+            total_one_time += self._finite_float(tco.get("one_time_costs"), 0.0)
+            total_monthly_without_energy += max(monthly_opex - electricity, 0.0)
+            total_electricity += electricity
+            components = candidate.get("components", [])
+            if isinstance(components, list) and components:
+                component_count += len(components)
+            else:
+                candidate_totals = (
+                    candidate.get("totals", {}) if isinstance(candidate.get("totals"), Mapping) else {}
+                )
+                component_count += int(self._first_number(candidate_totals, ("selected_count", "component_count")))
+            candidate_summaries.append(
+                {
+                    "id": candidate.get("id"),
+                    "name": candidate.get("name"),
+                    "scope": candidate.get("scope"),
+                    "tco": deepcopy(tco),
+                }
+            )
+
+        totals: dict[str, Any] = {
+            "total_capital": total_capital,
+            "total_operational_one_time": total_one_time,
+            "total_operational_monthly": total_monthly_without_energy,
+            "electricity_costs": total_electricity,
+        }
+        totals["tco"] = self.cost_aggregation_service.tco_model_service.from_cost_totals(totals)
+        totals["financial_source"] = {
+            "mode": "final_hybrid_selection",
+            "status": "ok",
+            "component_count": component_count,
+            "candidate_count": len(candidates),
+            "candidates": candidate_summaries,
+        }
+        return totals
+
+    def _candidate_tco_summary(
+        self,
+        candidate: Mapping[str, Any],
+        *,
+        electricity_profile: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        components = candidate.get("components", [])
+        if isinstance(components, list) and components:
+            return self.cost_aggregation_service.tco_model_service.build_candidate_tco(
+                candidate,
+                electricity_profile=electricity_profile,
+            )
+
+        totals = candidate.get("totals", {}) if isinstance(candidate.get("totals"), Mapping) else {}
+        tco = totals.get("tco") if isinstance(totals.get("tco"), Mapping) else None
+        if tco is not None:
+            return deepcopy(dict(tco))
+
+        fallback_totals = {
+            "total_capital": self._first_number(
+                totals,
+                ("capital_cost", "total_capital", "total_cost"),
+            ),
+            "total_operational_one_time": self._first_number(
+                totals,
+                ("one_time_cost", "total_operational_one_time", "one_time_costs"),
+            ),
+            "total_operational_monthly": self._first_number(
+                totals,
+                ("monthly_cost", "total_operational_monthly", "monthly_opex"),
+            ),
+            "electricity_costs": self._first_number(
+                totals,
+                ("electricity_monthly_cost", "electricity_costs"),
+            ),
+        }
+        return self.cost_aggregation_service.tco_model_service.from_cost_totals(fallback_totals)
+
+    def _empty_final_selection_cost_summary(self) -> dict[str, Any]:
+        totals: dict[str, Any] = {
+            "total_capital": 0.0,
+            "total_operational_one_time": 0.0,
+            "total_operational_monthly": 0.0,
+            "electricity_costs": 0.0,
+        }
+        totals["tco"] = self.cost_aggregation_service.tco_model_service.from_cost_totals(totals)
+        totals["financial_source"] = {
+            "mode": "final_hybrid_selection",
+            "status": "missing",
+            "message": "Финансовая сводка появится после итогового Hybrid-выбора.",
+            "component_count": 0,
+            "candidate_count": 0,
+            "candidates": [],
+        }
+        return totals
+
+    def _first_number(self, payload: Mapping[str, Any], keys: tuple[str, ...]) -> float:
+        for key in keys:
+            if key in payload:
+                return self._finite_float(payload.get(key), 0.0)
+        return 0.0
 
     @staticmethod
     def _finite_float(value: Any, default: float = 0.0) -> float:

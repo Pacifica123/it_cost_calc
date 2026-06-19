@@ -219,6 +219,18 @@ class ParetoPresenter:
 
 
 @dataclass(frozen=True)
+class HybridFinancialSummary:
+    """Final financial slice for the current Hybrid winner."""
+
+    capex: float
+    opex_monthly: float
+    one_time: float
+    electricity_monthly: float
+    item_count: int
+    source_status: str
+
+
+@dataclass(frozen=True)
 class HybridSummary:
     """Compact state for the final Hybrid Qt step."""
 
@@ -262,6 +274,18 @@ class HybridPresenter:
 
     def run(self, *, lambda_value: float = 0.5) -> dict[str, Any]:
         return self.app_presenter.run_hybrid_assessment(self.scope, lambda_value=lambda_value)
+
+    def financial_summary(self) -> HybridFinancialSummary:
+        totals = self.app_presenter.prepare_selected_scope_cost_summary(self.scope)
+        source = totals.get("financial_source", {}) if isinstance(totals.get("financial_source"), Mapping) else {}
+        return HybridFinancialSummary(
+            capex=self._number(totals.get("total_capital")),
+            opex_monthly=self._number(totals.get("total_operational_monthly")),
+            one_time=self._number(totals.get("total_operational_one_time")),
+            electricity_monthly=self._number(totals.get("electricity_costs")),
+            item_count=int(self._number(source.get("component_count"))),
+            source_status=str(source.get("status") or "missing"),
+        )
 
     def ranking_rows(self) -> list[dict[str, Any]]:
         report = self.app_presenter.get_hybrid_result(self.scope)
@@ -317,6 +341,14 @@ class HybridPresenter:
     def _format_score(self, value: Any) -> str:
         score = self._score(value)
         return "—" if score is None else f"{score:.4f}"
+
+    @staticmethod
+    def _number(value: Any) -> float:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        return numeric if numeric == numeric and numeric not in {float("inf"), float("-inf")} else 0.0
 
     @staticmethod
     def _score(value: Any) -> float | None:

@@ -24,6 +24,7 @@ class _CandidateRow:
     ga_rank: int
     ga_score: float | None
     totals: Mapping[str, Any]
+    components: tuple[Mapping[str, Any], ...]
 
 
 class HybridDecisionAssessmentService:
@@ -124,6 +125,7 @@ class HybridDecisionAssessmentService:
                     "rank_disagreement": abs(row.ga_rank - ahp_rank),
                     "pareto_status": pareto_status_by_id.get(row.id, "нет данных"),
                     "totals": dict(row.totals),
+                    "components": [dict(component) for component in row.components],
                 }
             )
 
@@ -191,6 +193,7 @@ class HybridDecisionAssessmentService:
                     ga_rank=self._positive_int(model.metadata.get("rank"), fallback=index),
                     ga_score=self._score_from_candidate(model),
                     totals=dict(model.totals),
+                    components=tuple(dict(component) for component in model.components),
                 )
             )
         return rows

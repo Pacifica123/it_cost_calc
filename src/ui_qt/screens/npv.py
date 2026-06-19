@@ -311,7 +311,9 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self.basis_model.replace_rows(self.presenter.basis_rows())
         self._sync_detail_state()
         self._sync_chart()
-        self.status_label.setText("TCO загружен")
+        self.status_label.setText(
+            "TCO загружен" if self.presenter.basis_source_status() == "ok" else "Нет Hybrid"
+        )
 
     def calculate(self) -> None:
         try:

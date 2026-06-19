@@ -3,7 +3,7 @@ from __future__ import annotations
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL
 from ui_qt.models import RowTableModel
 from ui_qt.navigation import WorkflowStep, WorkflowStepper
-from ui_qt.presenters import QtAppPresenter, WorkspacePresenter, format_money
+from ui_qt.presenters import QtAppPresenter, WorkspacePresenter
 from ui_qt.screens.decision import AhpScreen, GaScreen, HybridScreen, ParetoScreen
 from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint, SmartTable
 
@@ -66,7 +66,6 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             raise RuntimeError("PySide6 is required to create WorkspaceDataScreen")
         super().__init__(parent)
         self.presenter = WorkspacePresenter(app_presenter, scope=scope)
-        self._summary_labels: dict[str, CompactLabel] = {}
         self._build_ui()
         self.refresh_data()
 
@@ -178,8 +177,6 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.content_stack.addWidget(self.empty_state)
         self.content_stack.addWidget(self.data_panel)
         layout.addLayout(self.content_stack, 1)
-        layout.addWidget(self._build_summary_cards(), 0)
-
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
         self.ga_button = QPushButton("К GA", step)
@@ -188,34 +185,6 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         actions.addWidget(self.ga_button, 0)
         layout.addLayout(actions, 0)
         return step
-
-    def _build_summary_cards(self) -> QWidget:  # type: ignore[valid-type]
-        box = QWidget(self)
-        row = QHBoxLayout(box)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(10)
-        for key, title in (
-            ("capex", "CAPEX"),
-            ("opex", "OPEX/мес"),
-            ("once", "Разово"),
-            ("rows", "Позиций"),
-        ):
-            card, value_label = self._summary_card(title)
-            self._summary_labels[key] = value_label
-            row.addWidget(card, 1)
-        return box
-
-    def _summary_card(self, title: str) -> tuple[QFrame, CompactLabel]:  # type: ignore[valid-type]
-        card = QFrame(self)
-        card.setObjectName("surface")
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(4)
-        layout.addWidget(CompactLabel(title, card, object_name="pageStatus"))
-        value_label = CompactLabel("0", card, object_name="pageTitle")
-        layout.addWidget(value_label)
-        return card, value_label
 
     def _build_data_panel(self, parent: QWidget) -> QWidget:  # type: ignore[valid-type]
         panel = QWidget(parent)
@@ -356,10 +325,6 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
     def refresh_data(self) -> None:
         summary = self.presenter.summary()
         self.status_label.setText(f"{summary.label}: {summary.row_count}")
-        self._summary_labels["capex"].setText(format_money(summary.capex_total))
-        self._summary_labels["opex"].setText(format_money(summary.opex_monthly))
-        self._summary_labels["once"].setText(format_money(summary.opex_once))
-        self._summary_labels["rows"].setText(str(summary.row_count))
         self.category_model.replace_rows(self.presenter.category_rows())
         self.capex_model.replace_rows(self.presenter.capex_table_rows())
         self.opex_model.replace_rows(self.presenter.opex_table_rows())

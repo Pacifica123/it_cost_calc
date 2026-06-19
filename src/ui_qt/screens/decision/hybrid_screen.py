@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ui_qt.models import RowTableModel
-from ui_qt.presenters import HybridPresenter, QtAppPresenter
+from ui_qt.presenters import HybridPresenter, QtAppPresenter, format_money
 from ui_qt.widgets import CollapsibleSection, CompactLabel, SmartTable
 
 try:
@@ -55,6 +55,7 @@ class HybridScreen(QWidget):  # type: ignore[misc,valid-type]
         self.presenter = HybridPresenter(app_presenter, scope=scope)
         self._on_result_changed = on_result_changed
         self._summary_labels: dict[str, CompactLabel] = {}
+        self._finance_labels: dict[str, CompactLabel] = {}
         self._build_ui()
         self.refresh_data()
 
@@ -63,6 +64,7 @@ class HybridScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         layout.addWidget(self._build_summary_cards(), 0)
+        layout.addWidget(self._build_finance_cards(), 0)
         layout.addWidget(self._build_controls(), 0)
 
         self.ranking_model = RowTableModel([], columns=_RANKING_COLUMNS, headers=_RANKING_HEADERS)
@@ -134,6 +136,22 @@ class HybridScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(value_label)
         return card, value_label
 
+    def _build_finance_cards(self) -> QWidget:  # type: ignore[valid-type]
+        box = QWidget(self)
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
+        for key, title in (
+            ("capex", "CAPEX"),
+            ("opex", "OPEX/мес"),
+            ("once", "Разово"),
+            ("items", "Позиций"),
+        ):
+            card, value_label = self._summary_card(title)
+            self._finance_labels[key] = value_label
+            row.addWidget(card, 1)
+        return box
+
     def _build_controls(self) -> QWidget:  # type: ignore[valid-type]
         frame = QFrame(self)
         frame.setObjectName("surface")
@@ -163,6 +181,11 @@ class HybridScreen(QWidget):  # type: ignore[misc,valid-type]
         self._summary_labels["pool"].setText(str(summary.pool_count))
         self._summary_labels["winner"].setText(summary.winner_name)
         self._summary_labels["score"].setText("—" if summary.winner_score is None else f"{summary.winner_score:.4f}")
+        finance = self.presenter.financial_summary()
+        self._finance_labels["capex"].setText(format_money(finance.capex))
+        self._finance_labels["opex"].setText(format_money(finance.opex_monthly))
+        self._finance_labels["once"].setText(format_money(finance.one_time))
+        self._finance_labels["items"].setText(str(finance.item_count) if finance.source_status == "ok" else "—")
         self.ranking_model.replace_rows(self.presenter.ranking_rows())
         self.warning_model.replace_rows(self.presenter.warning_rows())
         self.ranking_table.refresh_state()

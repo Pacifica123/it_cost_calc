@@ -169,7 +169,7 @@ def test_workspace_ga_source_uses_scroll_and_hides_result_sections_before_run():
     assert "setMaximumHeight(self.sizeHint().height())" not in collapsible_source
 
 
-def test_workspace_data_summary_cards_are_after_source_details():
+def test_workspace_data_screen_does_not_show_catalog_cost_totals():
     source = (
         Path(__file__).resolve().parents[2]
         / "src"
@@ -178,8 +178,20 @@ def test_workspace_data_summary_cards_are_after_source_details():
         / "workspace_data.py"
     ).read_text(encoding="utf-8")
 
-    content_pos = source.index("layout.addLayout(self.content_stack, 1)")
-    summary_pos = source.index("layout.addWidget(self._build_summary_cards(), 0)")
-    actions_pos = source.index("actions = QHBoxLayout()")
+    assert "layout.addWidget(self._build_summary_cards(), 0)" not in source
+    assert "_summary_labels" not in source
 
-    assert content_pos < summary_pos < actions_pos
+
+def test_hybrid_screen_hosts_final_finance_cards():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "ui_qt"
+        / "screens"
+        / "decision"
+        / "hybrid_screen.py"
+    ).read_text(encoding="utf-8")
+
+    assert "layout.addWidget(self._build_finance_cards(), 0)" in source
+    assert "self.presenter.financial_summary()" in source
+    assert "format_money(finance.capex)" in source

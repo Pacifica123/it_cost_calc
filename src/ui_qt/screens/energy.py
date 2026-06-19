@@ -177,11 +177,10 @@ class EnergyScreen(QWidget):  # type: ignore[misc,valid-type]
         self.equipment_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.equipment_table.setMinimumHeight(220)
         self.empty_equipment = EmptyState(
-            "Нет оборудования",
+            "Нет итоговой конфигурации",
             content,
-            status="Загрузите демо",
-            action_text="Демо",
-            action_callback=self.load_demo,
+            status="Сначала соберите Hybrid для ТО",
+            details="Энергия считается только для выбранной итоговой конфигурации, а не для всего каталога.",
         )
         self.empty_equipment.setMinimumHeight(180)
         self.equipment_stack.addWidget(self.equipment_table)

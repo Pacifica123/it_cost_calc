@@ -158,6 +158,13 @@ class NpvPresenter:
         warnings = payload.get("warnings", [])
         return [str(value) for value in warnings]
 
+    def basis_source_status(self) -> str:
+        basis = self._financial_basis or {}
+        source = basis.get("financial_source") if isinstance(basis, Mapping) else None
+        if isinstance(source, Mapping):
+            return str(source.get("status") or "missing")
+        return "missing"
+
     def _ensure_input(self, values: NpvInput | Mapping[str, Any]) -> NpvInput:
         if isinstance(values, NpvInput):
             return values
