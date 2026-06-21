@@ -12,6 +12,8 @@
 - парсер собирает и нормализует данные об оборудовании;
 - результат сохраняется в отдельный каталог данных.
 
+Экран `Каталог` может запустить CLI как отдельный процесс и показать его журнал, но HTML-разбор и Playwright по-прежнему остаются внутри инструмента.
+
 ## Что лежит в этом каталоге
 
 ### Канонические модули инструмента
@@ -43,6 +45,22 @@ python scripts/update_equipment_catalog.py \
 ```
 
 Каталог снимка должен содержать `snapshot_manifest.json` и перечисленные в нём локальные HTML-файлы. Импорт сначала читает Product/Offer JSON-LD, затем использует ограниченный fallback по `h1`, meta и `dt`/`dd`. Сетевые запросы не выполняются.
+
+### Собрать ограниченный каталог DNS через браузер
+
+```bash
+python scripts/update_equipment_catalog.py \
+  --mode dns-live \
+  --categories routers,prebuilt_pcs,servers \
+  --limit 10 \
+  --time-limit 300 \
+  --snapshot-output data/generated/catalog/dns_runs/manual/snapshot \
+  --profile data/generated/catalog/dns_browser_profile \
+  --region Москва \
+  --output data/generated/catalog/dns_runs/manual/equipment_catalog.json
+```
+
+По умолчанию Chromium видим. Первый экран содержит паузу для выбора региона/cookies. Каждый товар сохраняется как HTML, после чего каталог строится каноническим `dns-snapshot` importer. Тот же сценарий доступен кнопкой `Собрать из DNS` на экране каталога.
 
 ## Для чего это нужно
 

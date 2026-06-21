@@ -5,6 +5,7 @@ from ui_qt.presenters.catalog_staging_presenter import (
     CatalogFilterOption,
     CatalogStagingPresenter,
     CatalogStagingSummary,
+    DnsCatalogJobSpec,
 )
 from ui_qt.presenters.component_editor_presenter import ComponentEditorPresenter
 from ui_qt.presenters.energy_presenter import EnergyPresenter, EnergyProfileInput, EnergySummary
@@ -32,6 +33,7 @@ __all__ = [
     "CatalogStagingPresenter",
     "CatalogStagingSummary",
     "CatalogFilterOption",
+    "DnsCatalogJobSpec",
     "ComponentEditorPresenter",
     "DecisionMethodSummary",
     "EnergyPresenter",

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+import sys
 from typing import Any
 
 from application.services.catalog_staging_service import (
@@ -64,6 +66,22 @@ class CatalogFilterOption:
     label: str
 
 
+@dataclass(frozen=True)
+class DnsCatalogJobSpec:
+    program: str
+    arguments: tuple[str, ...]
+    working_directory: Path
+    output_path: Path
+    snapshot_path: Path
+
+
+_DNS_CATEGORY_OPTIONS = (
+    ("routers", "Роутеры"),
+    ("prebuilt_pcs", "Готовые ПК"),
+    ("servers", "Серверы"),
+)
+
+
 class CatalogStagingPresenter:
     """Qt-facing orchestration for review and explicit catalog import."""
 
@@ -111,6 +129,65 @@ class CatalogStagingPresenter:
 
     def metric_fields(self) -> tuple[str, ...]:
         return catalog_metric_fields()
+
+    def dns_category_options(self) -> tuple[tuple[str, str], ...]:
+        return _DNS_CATEGORY_OPTIONS
+
+    def build_dns_job(
+        self,
+        *,
+        categories: list[str],
+        per_category_limit: int,
+        time_limit_seconds: int,
+        visible_browser: bool,
+        region: str = "",
+    ) -> DnsCatalogJobSpec:
+        allowed = {value for value, _label in _DNS_CATEGORY_OPTIONS}
+        selected = tuple(dict.fromkeys(str(value) for value in categories))
+        if not selected or any(value not in allowed for value in selected):
+            raise ValueError("Выберите хотя бы одну поддерживаемую DNS-категорию.")
+        if not 1 <= per_category_limit <= 50:
+            raise ValueError("Лимит карточек должен быть от 1 до 50.")
+        if not 30 <= time_limit_seconds <= 1800:
+            raise ValueError("Таймаут должен быть от 30 до 1800 секунд.")
+
+        repo_root = self.app_presenter.paths.repo_root
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = repo_root / "data" / "generated" / "catalog" / "dns_runs" / timestamp
+        output_path = run_root / "equipment_catalog.json"
+        snapshot_path = run_root / "snapshot"
+        profile_path = repo_root / "data" / "generated" / "catalog" / "dns_browser_profile"
+        arguments = [
+            "-u",
+            str(repo_root / "scripts" / "update_equipment_catalog.py"),
+            "--mode",
+            "dns-live",
+            "--categories",
+            ",".join(selected),
+            "--limit",
+            str(per_category_limit),
+            "--time-limit",
+            str(time_limit_seconds),
+            "--browser-wait",
+            "8",
+            "--snapshot-output",
+            str(snapshot_path),
+            "--profile",
+            str(profile_path),
+            "--region",
+            str(region).strip(),
+            "--output",
+            str(output_path),
+        ]
+        if not visible_browser:
+            arguments.append("--headless")
+        return DnsCatalogJobSpec(
+            program=sys.executable,
+            arguments=tuple(arguments),
+            working_directory=repo_root,
+            output_path=output_path,
+            snapshot_path=snapshot_path,
+        )
 
     def table_rows(self, status_filter: str = "all") -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -332,4 +409,5 @@ __all__ = [
     "CatalogFilterOption",
     "CatalogStagingPresenter",
     "CatalogStagingSummary",
+    "DnsCatalogJobSpec",
 ]
