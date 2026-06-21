@@ -78,10 +78,41 @@ def main() -> int:
         assert category == "network"
         assert row["origin"] == "catalog"
         assert row["lan_ports"] == 4
+        edited = service.update_record(
+            records[1]["staging_id"],
+            {
+                "title": "Check Workstation",
+                "category": "prebuilt_pc",
+                "price": "65000",
+                "currency": "RUB",
+                "target_category": "client",
+                "target_component_type": "workstation",
+                "quantity": "2",
+                "client_seats": "2",
+                "attributes": {
+                    "ram_gb": "16",
+                    "cpu_cores": "8",
+                    "storage_gb": "512",
+                    "max_power_watts": "250",
+                },
+            },
+        )
+        assert edited["status"] == "pending"
+        assert not edited["validation_errors"]
+        assert edited["source_catalog_item"]["category"] == "cpu"
+        approved_workstation = service.set_status(
+            edited["staging_id"],
+            STAGING_APPROVED,
+        )
+        category, workstation = catalog_item_to_runtime_row(approved_workstation)
+        assert category == "client"
+        assert workstation["quantity"] == 2
+        assert workstation["client_seats"] == 2
 
     print(
         "Catalog staging check passed: "
-        f"schema v2, {catalog['stats']['items_total']} example items, guarded runtime import."
+        f"schema v2, {catalog['stats']['items_total']} example items, "
+        "review overrides and guarded runtime import."
     )
     return 0
 

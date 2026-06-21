@@ -11,7 +11,10 @@ from application.services.catalog_staging_service import (
     STAGING_IMPORTED,
     STAGING_PENDING,
     STAGING_REJECTED,
+    catalog_metric_fields,
+    catalog_target_options,
     catalog_item_to_runtime_row,
+    staging_record_readiness,
     target_for_catalog_category,
 )
 from shared.constants import TECHNICAL_CAPITAL_CATEGORIES
@@ -29,6 +32,19 @@ _TARGET_LABELS = {
     "client": "Клиенты",
     "network": "Сеть",
 }
+_COMPONENT_TYPE_LABELS = {
+    "server": "Сервер",
+    "workstation": "Рабочая станция",
+    "peripheral": "Периферия",
+    "network_device": "Сетевое устройство",
+}
+_READINESS_LABELS = {
+    "blocked": "Заблокировано",
+    "review": "Нужна проверка",
+    "import_ready": "Готово к импорту",
+    "ga_ready": "В ТО / готово к GA",
+    "stale": "Источник обновлён",
+}
 
 
 @dataclass(frozen=True)
@@ -38,6 +54,14 @@ class CatalogStagingSummary:
     approved: int
     blocked: int
     imported: int
+    rejected: int
+    ready: int
+
+
+@dataclass(frozen=True)
+class CatalogFilterOption:
+    value: str
+    label: str
 
 
 class CatalogStagingPresenter:
@@ -66,19 +90,46 @@ class CatalogStagingPresenter:
     def records(self) -> list[dict[str, Any]]:
         return self.service.list_records()
 
-    def table_rows(self) -> list[dict[str, Any]]:
+    def filter_options(self) -> list[CatalogFilterOption]:
+        return [
+            CatalogFilterOption("all", "Все"),
+            CatalogFilterOption(STAGING_PENDING, "Ожидают"),
+            CatalogFilterOption(STAGING_APPROVED, "Подтверждены"),
+            CatalogFilterOption(STAGING_BLOCKED, "Заблокированы"),
+            CatalogFilterOption(STAGING_REJECTED, "Отклонены"),
+            CatalogFilterOption(STAGING_IMPORTED, "Импортированы"),
+        ]
+
+    def target_category_options(self) -> list[tuple[str, str]]:
+        return [(value, _TARGET_LABELS[value]) for value in catalog_target_options()]
+
+    def component_type_options(self, target_category: str) -> list[tuple[str, str]]:
+        return [
+            (value, _COMPONENT_TYPE_LABELS.get(value, value))
+            for value in catalog_target_options().get(target_category, ())
+        ]
+
+    def metric_fields(self) -> tuple[str, ...]:
+        return catalog_metric_fields()
+
+    def table_rows(self, status_filter: str = "all") -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for record in self.records():
+            if status_filter != "all" and record.get("status") != status_filter:
+                continue
             item = dict(record.get("catalog_item") or {})
             offer = dict(item.get("offer") or {})
-            target = target_for_catalog_category(str(item.get("category") or ""))
+            target_category = str(record.get("target_category") or "")
+            readiness = staging_record_readiness(record)
             rows.append(
                 {
+                    "staging_id": str(record.get("staging_id") or ""),
                     "status": _STATUS_LABELS.get(str(record.get("status")), str(record.get("status"))),
+                    "readiness": _READINESS_LABELS.get(readiness, readiness),
                     "name": str(item.get("title") or ""),
                     "source": str(item.get("source") or ""),
                     "category": str(item.get("category") or ""),
-                    "target": _TARGET_LABELS.get(target[0], target[0]) if target else "—",
+                    "target": _TARGET_LABELS.get(target_category, target_category or "—"),
                     "price": float(offer.get("price") or 0.0),
                     "issues": len(record.get("validation_errors") or [])
                     + len(record.get("validation_warnings") or []),
@@ -95,10 +146,21 @@ class CatalogStagingPresenter:
             approved=statuses.count(STAGING_APPROVED),
             blocked=statuses.count(STAGING_BLOCKED),
             imported=statuses.count(STAGING_IMPORTED),
+            rejected=statuses.count(STAGING_REJECTED),
+            ready=sum(
+                staging_record_readiness(record) in {"import_ready", "ga_ready"}
+                for record in records
+            ),
         )
 
     def record_at(self, index: int) -> dict[str, Any]:
         return self.records()[index]
+
+    def record_by_id(self, staging_id: str) -> dict[str, Any]:
+        for record in self.records():
+            if record.get("staging_id") == staging_id:
+                return record
+        raise KeyError(staging_id)
 
     def approve(self, index: int) -> dict[str, Any]:
         record = self.record_at(index)
@@ -111,6 +173,33 @@ class CatalogStagingPresenter:
     def reset_pending(self, index: int) -> dict[str, Any]:
         record = self.record_at(index)
         return self.service.set_status(str(record["staging_id"]), STAGING_PENDING)
+
+    def approve_ids(self, staging_ids: list[str]) -> dict[str, int]:
+        return self.service.set_status_many(staging_ids, STAGING_APPROVED)
+
+    def reject_ids(self, staging_ids: list[str]) -> dict[str, int]:
+        return self.service.set_status_many(staging_ids, STAGING_REJECTED)
+
+    def edit_values(self, staging_id: str) -> dict[str, Any]:
+        record = self.record_by_id(staging_id)
+        item = dict(record.get("catalog_item") or {})
+        offer = dict(item.get("offer") or {})
+        runtime_inputs = dict(record.get("runtime_inputs") or {})
+        return {
+            "title": str(item.get("title") or ""),
+            "category": str(item.get("category") or ""),
+            "price": _format_number(offer.get("price")),
+            "currency": str(offer.get("currency") or "RUB"),
+            "target_category": str(record.get("target_category") or ""),
+            "target_component_type": str(record.get("target_component_type") or ""),
+            "quantity": _format_number(runtime_inputs.get("quantity")),
+            "client_seats": _format_number(runtime_inputs.get("client_seats")),
+            "attributes": dict(item.get("attributes") or {}),
+            "locked": record.get("status") == STAGING_IMPORTED,
+        }
+
+    def save_edits(self, staging_id: str, values: dict[str, Any]) -> dict[str, Any]:
+        return self.service.update_record(staging_id, values)
 
     def import_approved(self) -> dict[str, int]:
         approved = self.service.approved_records()
@@ -144,21 +233,34 @@ class CatalogStagingPresenter:
         return {"imported": imported, "skipped": skipped}
 
     def details_text(self, index: int) -> str:
-        record = self.record_at(index)
+        return self.details_text_by_id(str(self.record_at(index).get("staging_id")))
+
+    def details_text_by_id(self, staging_id: str) -> str:
+        record = self.record_by_id(staging_id)
         item = dict(record.get("catalog_item") or {})
+        source_item = dict(record.get("source_catalog_item") or {})
         identity = dict(item.get("identity") or {})
         offer = dict(item.get("offer") or {})
         metrics = dict(item.get("attributes") or {})
         errors = list(record.get("validation_errors") or [])
         warnings = list(record.get("validation_warnings") or [])
+        readiness = staging_record_readiness(record)
         lines = [
             f"Статус: {_STATUS_LABELS.get(str(record.get('status')), record.get('status'))}",
+            f"Готовность: {_READINESS_LABELS.get(readiness, readiness)}",
             f"Источник: {item.get('source') or '—'}",
             f"Категория: {item.get('category') or '—'}",
+            "Назначение: "
+            f"{_TARGET_LABELS.get(str(record.get('target_category')), record.get('target_category') or '—')} / "
+            f"{_COMPONENT_TYPE_LABELS.get(str(record.get('target_component_type')), record.get('target_component_type') or '—')}",
             f"Цена: {offer.get('price') or 0:g} {offer.get('currency') or 'RUB'}",
             f"Модель: {identity.get('model') or identity.get('mpn') or '—'}",
             f"Метрики: {metrics or 'нет'}",
         ]
+        changes = _manual_change_lines(source_item, record)
+        if changes:
+            lines.append("Исправлено вручную:")
+            lines.extend(f"  - {message}" for message in changes)
         if errors:
             lines.append("Блокирует:")
             lines.extend(f"  - {message}" for message in errors)
@@ -168,4 +270,66 @@ class CatalogStagingPresenter:
         return "\n".join(lines)
 
 
-__all__ = ["CatalogStagingPresenter", "CatalogStagingSummary"]
+def _manual_change_lines(
+    source_item: dict[str, Any],
+    record: dict[str, Any],
+) -> list[str]:
+    item = dict(record.get("catalog_item") or {})
+    changes: list[str] = []
+    labels = {"title": "Название", "category": "Категория"}
+    for field, label in labels.items():
+        if source_item.get(field) != item.get(field):
+            changes.append(f"{label}: {source_item.get(field) or '—'} → {item.get(field) or '—'}")
+
+    source_offer = dict(source_item.get("offer") or {})
+    offer = dict(item.get("offer") or {})
+    for field, label in (("price", "Цена"), ("currency", "Валюта")):
+        if source_offer.get(field) != offer.get(field):
+            changes.append(
+                f"{label}: {source_offer.get(field) or '—'} → {offer.get(field) or '—'}"
+            )
+
+    source_metrics = dict(source_item.get("attributes") or {})
+    metrics = dict(item.get("attributes") or {})
+    for field in catalog_metric_fields():
+        if source_metrics.get(field) != metrics.get(field):
+            changes.append(
+                f"{field}: {source_metrics.get(field, '—')} → {metrics.get(field, '—')}"
+            )
+
+    source_target = target_for_catalog_category(str(source_item.get("category") or ""))
+    source_category = source_target[0] if source_target else ""
+    source_type = source_target[1] if source_target else ""
+    if source_category != record.get("target_category"):
+        changes.append(
+            f"Раздел ТО: {_TARGET_LABELS.get(source_category, source_category or '—')} → "
+            f"{_TARGET_LABELS.get(str(record.get('target_category')), record.get('target_category') or '—')}"
+        )
+    if source_type != record.get("target_component_type"):
+        changes.append(
+            f"Тип: {_COMPONENT_TYPE_LABELS.get(source_type, source_type or '—')} → "
+            f"{_COMPONENT_TYPE_LABELS.get(str(record.get('target_component_type')), record.get('target_component_type') or '—')}"
+        )
+    runtime_inputs = dict(record.get("runtime_inputs") or {})
+    default_quantity = 1.0
+    default_seats = 1.0 if record.get("target_component_type") == "workstation" else 0.0
+    if runtime_inputs.get("quantity") != default_quantity:
+        changes.append(f"Количество: {default_quantity:g} → {runtime_inputs.get('quantity')}")
+    if runtime_inputs.get("client_seats") != default_seats:
+        changes.append(f"Рабочие места: {default_seats:g} → {runtime_inputs.get('client_seats')}")
+    return changes
+
+
+def _format_number(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    return f"{number:g}"
+
+
+__all__ = [
+    "CatalogFilterOption",
+    "CatalogStagingPresenter",
+    "CatalogStagingSummary",
+]

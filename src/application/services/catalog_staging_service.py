@@ -17,7 +17,7 @@ from xml.etree import ElementTree
 
 from infrastructure.storage import JsonFileStorage
 
-CATALOG_STAGING_SCHEMA_VERSION = 1
+CATALOG_STAGING_SCHEMA_VERSION = 2
 CATALOG_SOURCE_SCHEMA_VERSION = 2
 
 STAGING_PENDING = "pending"
@@ -53,6 +53,11 @@ _TARGET_BY_CATEGORY = {
     "access_point": ("network", "network_device"),
     "network_device": ("network", "network_device"),
 }
+_ALLOWED_TARGET_TYPES = {
+    "server": ("server",),
+    "client": ("workstation", "peripheral"),
+    "network": ("network_device",),
+}
 
 
 def supported_catalog_extensions() -> tuple[str, ...]:
@@ -61,6 +66,14 @@ def supported_catalog_extensions() -> tuple[str, ...]:
 
 def target_for_catalog_category(category: str) -> tuple[str, str] | None:
     return _TARGET_BY_CATEGORY.get(str(category or "").strip().lower())
+
+
+def catalog_target_options() -> dict[str, tuple[str, ...]]:
+    return dict(_ALLOWED_TARGET_TYPES)
+
+
+def catalog_metric_fields() -> tuple[str, ...]:
+    return _METRIC_FIELDS
 
 
 def load_catalog_rows(path: str | Path) -> list[dict[str, Any]]:
@@ -142,9 +155,9 @@ def normalize_catalog_item(
         if value
     }
     normalized_metrics = {
-        field: _metric_value(metrics.get(field, item.get(field)))
+        field: _metric_field_value(field, metrics.get(field, item.get(field)))
         for field in _METRIC_FIELDS
-        if _metric_value(metrics.get(field, item.get(field))) is not None
+        if _metric_field_value(field, metrics.get(field, item.get(field))) is not None
     }
     source_product_id = _text(item.get("source_product_id"))
     catalog_item_id = _text(item.get("item_id") or item.get("id"))
@@ -193,10 +206,6 @@ def validate_staging_item(item: Mapping[str, Any]) -> tuple[list[str], list[str]
 
     if not title:
         errors.append("Не заполнено название товара.")
-    if category not in _TARGET_BY_CATEGORY:
-        errors.append(
-            f"Категория '{category or 'не указана'}' пока не преобразуется в готовое устройство ТО."
-        )
     price = _number(offer.get("price"))
     if price is None or price <= 0:
         errors.append("Цена должна быть положительным числом.")
@@ -208,6 +217,10 @@ def validate_staging_item(item: Mapping[str, Any]) -> tuple[list[str], list[str]
         warnings.append("Нет GTIN, MPN или модели для надёжного объединения источников.")
 
     target = _TARGET_BY_CATEGORY.get(category)
+    if target is None:
+        errors.append(
+            f"Категория '{category or 'не указана'}' пока не преобразуется в готовое устройство ТО."
+        )
     component_type = target[1] if target else ""
     if component_type in {"server", "workstation"}:
         for field in ("ram_gb", "cpu_cores", "storage_gb", "max_power_watts"):
@@ -224,6 +237,96 @@ def validate_staging_item(item: Mapping[str, Any]) -> tuple[list[str], list[str]
     return errors, warnings
 
 
+def validate_staging_record(record: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    """Validate the effective item, explicit runtime target and quantity inputs."""
+
+    item = _mapping(record.get("catalog_item"))
+    errors, warnings = validate_staging_item(item)
+    category_error = next(
+        (
+            message
+            for message in errors
+            if message.startswith("Категория '") and "готовое устройство ТО" in message
+        ),
+        None,
+    )
+    target_category = _text(record.get("target_category"))
+    component_type = _text(record.get("target_component_type"))
+    allowed_types = _ALLOWED_TARGET_TYPES.get(target_category, ())
+    if target_category and component_type in allowed_types:
+        if category_error:
+            errors.remove(category_error)
+            warnings.append(
+                "Назначение ТО задано вручную и не совпадает с исходной категорией."
+            )
+    else:
+        if category_error is None:
+            errors.append("Не выбрано допустимое назначение записи в ТО.")
+
+    runtime_inputs = _mapping(record.get("runtime_inputs"))
+    quantity = _number(runtime_inputs.get("quantity"))
+    if quantity is None or quantity <= 0:
+        errors.append("Количество должно быть положительным числом.")
+    elif not float(quantity).is_integer():
+        errors.append("Количество оборудования должно быть целым числом.")
+    if component_type == "workstation":
+        client_seats = _number(runtime_inputs.get("client_seats"))
+        if client_seats is None or client_seats < 0:
+            errors.append("Количество рабочих мест должно быть неотрицательным числом.")
+        elif not float(client_seats).is_integer():
+            errors.append("Количество рабочих мест должно быть целым числом.")
+
+    # Re-evaluate profile warnings against an explicitly corrected target.
+    metrics = _mapping(item.get("attributes"))
+    for field in _METRIC_FIELDS:
+        value = metrics.get(field)
+        if value in (None, ""):
+            continue
+        if field == "ipv6_support":
+            if not isinstance(value, bool):
+                errors.append("IPv6 должен быть указан как да/нет.")
+        elif _number(value) is None:
+            errors.append(f"Метрика {field} должна быть числом.")
+    warnings = [
+        message
+        for message in warnings
+        if not message.startswith("Не заполнена вычислительная метрика")
+        and message not in {
+            "Не заполнена мощность сетевого устройства.",
+            "Не заполнены сетевые порты или скорости.",
+        }
+    ]
+    if component_type in {"server", "workstation"}:
+        for field in ("ram_gb", "cpu_cores", "storage_gb", "max_power_watts"):
+            if metrics.get(field) in (None, ""):
+                warnings.append(f"Не заполнена вычислительная метрика {field}.")
+    if component_type == "network_device":
+        if metrics.get("max_power_watts") in (None, ""):
+            warnings.append("Не заполнена мощность сетевого устройства.")
+        if not any(
+            metrics.get(field) not in (None, "")
+            for field in ("lan_ports", "lan_speed_mbps", "wifi_total_mbps")
+        ):
+            warnings.append("Не заполнены сетевые порты или скорости.")
+    if record.get("source_changed_since_review"):
+        warnings.append(
+            "Источник изменился после импорта; данные ТО не обновлены."
+            if record.get("status") == STAGING_IMPORTED
+            else "Источник изменился; требуется повторное подтверждение."
+        )
+    return _unique(errors), _unique(warnings)
+
+
+def staging_record_readiness(record: Mapping[str, Any]) -> str:
+    if record.get("validation_errors"):
+        return "blocked"
+    if record.get("status") == STAGING_IMPORTED:
+        return "stale" if record.get("source_changed_since_review") else "ga_ready"
+    if record.get("status") == STAGING_APPROVED:
+        return "import_ready"
+    return "review"
+
+
 def catalog_item_to_runtime_row(record: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     """Convert one approved staging record to a runtime technical alternative."""
 
@@ -233,17 +336,18 @@ def catalog_item_to_runtime_row(record: Mapping[str, Any]) -> tuple[str, dict[st
         raise ValueError("Запись содержит блокирующие ошибки.")
 
     item = _mapping(record.get("catalog_item"))
-    category = _text(item.get("category")).lower()
-    if category not in _TARGET_BY_CATEGORY:
-        raise ValueError(f"Категория {category!r} не поддерживается.")
-    target_category, component_type = _TARGET_BY_CATEGORY[category]
+    target_category = _text(record.get("target_category"))
+    component_type = _text(record.get("target_component_type"))
+    if component_type not in _ALLOWED_TARGET_TYPES.get(target_category, ()):
+        raise ValueError("Запись не имеет допустимого назначения в ТО.")
     offer = _mapping(item.get("offer"))
     metrics = _mapping(item.get("attributes"))
+    runtime_inputs = _mapping(record.get("runtime_inputs"))
     warnings = list(record.get("validation_warnings") or [])
 
     row: dict[str, Any] = {
         "name": _text(item.get("title")),
-        "quantity": 1,
+        "quantity": float(runtime_inputs.get("quantity") or 1.0),
         "price": float(offer.get("price") or 0.0),
         "scope": "technical",
         "component_type": component_type,
@@ -256,6 +360,7 @@ def catalog_item_to_runtime_row(record: Mapping[str, Any]) -> tuple[str, dict[st
             "offer": deepcopy(offer),
             "field_provenance": deepcopy(_mapping(item.get("field_provenance"))),
             "staging_id": record.get("staging_id"),
+            "manual_overrides": deepcopy(_mapping(record.get("manual_overrides"))),
         },
     }
     for field in _METRIC_FIELDS:
@@ -264,8 +369,7 @@ def catalog_item_to_runtime_row(record: Mapping[str, Any]) -> tuple[str, dict[st
     if "max_power_watts" in row:
         row["max_power"] = row["max_power_watts"]
     if component_type == "workstation":
-        row["client_seats"] = 1
-        warnings.append("Принято допущение: одна готовая рабочая станция создаёт одно место.")
+        row["client_seats"] = float(runtime_inputs.get("client_seats") or 0.0)
     elif component_type == "peripheral":
         row["client_seats"] = 0
     if warnings:
@@ -289,7 +393,11 @@ class CatalogStagingService:
             return []
         payload = self.storage.read(self.path)
         records = payload.get("records", []) if isinstance(payload, Mapping) else []
-        return [dict(deepcopy(record)) for record in records if isinstance(record, Mapping)]
+        return [
+            _upgrade_staging_record(record)
+            for record in records
+            if isinstance(record, Mapping)
+        ]
 
     def stage_file(self, source_path: str | Path) -> list[dict[str, Any]]:
         source = Path(source_path)
@@ -298,24 +406,9 @@ class CatalogStagingService:
         records: list[dict[str, Any]] = []
         for index, raw in enumerate(rows):
             item = normalize_catalog_item(raw, source_path=source, row_index=index)
-            errors, warnings = validate_staging_item(item)
             staging_id = _staging_id(item)
             old = previous.get(staging_id, {})
-            status = str(old.get("status") or STAGING_PENDING)
-            if errors:
-                status = STAGING_BLOCKED
-            elif status == STAGING_BLOCKED:
-                status = STAGING_PENDING
-            records.append(
-                {
-                    "staging_id": staging_id,
-                    "status": status,
-                    "catalog_item": item,
-                    "validation_errors": errors,
-                    "validation_warnings": warnings,
-                    "imported_at": old.get("imported_at"),
-                }
-            )
+            records.append(_build_staging_record(item, staging_id=staging_id, previous=old))
         self._save(records, source_path=source)
         return self.list_records()
 
@@ -331,6 +424,95 @@ class CatalogStagingService:
             if record.get("status") == STAGING_IMPORTED:
                 raise ValueError("Импортированную запись нельзя вернуть в staging.")
             record["status"] = status
+            self._save(records)
+            return dict(deepcopy(record))
+        raise KeyError(staging_id)
+
+    def set_status_many(self, staging_ids: Iterable[str], status: str) -> dict[str, int]:
+        if status not in {STAGING_PENDING, STAGING_APPROVED, STAGING_REJECTED}:
+            raise ValueError(f"Недопустимый статус staging: {status}")
+        selected = set(staging_ids)
+        records = self.list_records()
+        result = {"updated": 0, "blocked": 0, "skipped": 0}
+        for record in records:
+            if record.get("staging_id") not in selected:
+                continue
+            if record.get("status") == STAGING_IMPORTED:
+                result["skipped"] += 1
+                continue
+            if status == STAGING_APPROVED and record.get("validation_errors"):
+                result["blocked"] += 1
+                continue
+            record["status"] = status
+            result["updated"] += 1
+        self._save(records)
+        return result
+
+    def update_record(
+        self,
+        staging_id: str,
+        values: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Apply user corrections, recalculate validation and require re-approval."""
+
+        records = self.list_records()
+        for record in records:
+            if record.get("staging_id") != staging_id:
+                continue
+            if record.get("status") == STAGING_IMPORTED:
+                raise ValueError("Импортированная запись заблокирована для редактирования.")
+            source_item = deepcopy(_mapping(record.get("source_catalog_item")))
+            item = deepcopy(_mapping(record.get("catalog_item")))
+            item["title"] = _text(values.get("title"))
+            item["category"] = _text(values.get("category")).lower()
+
+            offer = _mapping(item.get("offer"))
+            offer["price"] = _number(values.get("price"))
+            offer["currency"] = _text(values.get("currency") or "RUB").upper()
+            item["offer"] = offer
+
+            attributes = _mapping(item.get("attributes"))
+            metric_values = _mapping(values.get("attributes"))
+            for field in _METRIC_FIELDS:
+                value = _metric_field_value(field, metric_values.get(field))
+                if value is None:
+                    attributes.pop(field, None)
+                else:
+                    attributes[field] = value
+            item["attributes"] = attributes
+
+            target_category = _text(values.get("target_category"))
+            component_type = _text(values.get("target_component_type"))
+            runtime_inputs = {
+                "quantity": _number(values.get("quantity")),
+                "client_seats": _number(values.get("client_seats")),
+            }
+            record.update(
+                {
+                    "catalog_item": item,
+                    "target_category": target_category,
+                    "target_component_type": component_type,
+                    "runtime_inputs": runtime_inputs,
+                    "manual_overrides": _build_manual_overrides(
+                        source_item,
+                        item,
+                        target_category=target_category,
+                        target_component_type=component_type,
+                        runtime_inputs=runtime_inputs,
+                    ),
+                    "manual_updated_at": datetime.now(UTC).isoformat(),
+                }
+            )
+            item_provenance = _mapping(item.get("field_provenance"))
+            item_provenance["manual"] = {
+                "updated_at": record["manual_updated_at"],
+                "fields": sorted(record["manual_overrides"]),
+            }
+            item["field_provenance"] = item_provenance
+            errors, warnings = validate_staging_record(record)
+            record["validation_errors"] = errors
+            record["validation_warnings"] = warnings
+            record["status"] = STAGING_BLOCKED if errors else STAGING_PENDING
             self._save(records)
             return dict(deepcopy(record))
         raise KeyError(staging_id)
@@ -372,6 +554,163 @@ class CatalogStagingService:
                 "records": records,
             },
         )
+
+
+def _upgrade_staging_record(raw: Mapping[str, Any]) -> dict[str, Any]:
+    record = dict(deepcopy(raw))
+    item = _mapping(record.get("catalog_item"))
+    source_item = _mapping(record.get("source_catalog_item")) or deepcopy(item)
+    record["source_catalog_item"] = source_item
+    record["catalog_item"] = item
+    default_target = target_for_catalog_category(_text(item.get("category")))
+    record.setdefault("target_category", default_target[0] if default_target else "")
+    record.setdefault("target_component_type", default_target[1] if default_target else "")
+    record.setdefault(
+        "runtime_inputs",
+        _default_runtime_inputs(_text(record.get("target_component_type"))),
+    )
+    record.setdefault("manual_overrides", {})
+    errors, warnings = validate_staging_record(record)
+    record["validation_errors"] = errors
+    record["validation_warnings"] = warnings
+    if record.get("status") != STAGING_IMPORTED:
+        if errors:
+            record["status"] = STAGING_BLOCKED
+        elif record.get("status") == STAGING_BLOCKED:
+            record["status"] = STAGING_PENDING
+    return record
+
+
+def _build_staging_record(
+    source_item: Mapping[str, Any],
+    *,
+    staging_id: str,
+    previous: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    old = _upgrade_staging_record(previous or {}) if previous else {}
+    overrides = _mapping(old.get("manual_overrides"))
+    item = _apply_manual_overrides(source_item, overrides)
+    default_target = target_for_catalog_category(_text(item.get("category")))
+    target_category = _text(
+        overrides.get("target_category")
+        or (default_target[0] if default_target else "")
+    )
+    target_component_type = _text(
+        overrides.get("target_component_type")
+        or (default_target[1] if default_target else "")
+    )
+    default_inputs = _default_runtime_inputs(target_component_type)
+    runtime_inputs = {
+        **default_inputs,
+        **_mapping(overrides.get("runtime_inputs")),
+    }
+    previous_source = _mapping(old.get("source_catalog_item"))
+    source_changed = bool(previous_source and previous_source != dict(source_item))
+    status = str(old.get("status") or STAGING_PENDING)
+    if source_changed and status == STAGING_APPROVED:
+        status = STAGING_PENDING
+    record = {
+        "staging_id": staging_id,
+        "status": status,
+        "source_catalog_item": dict(deepcopy(source_item)),
+        "catalog_item": item,
+        "target_category": target_category,
+        "target_component_type": target_component_type,
+        "runtime_inputs": runtime_inputs,
+        "manual_overrides": overrides,
+        "manual_updated_at": old.get("manual_updated_at"),
+        "imported_at": old.get("imported_at"),
+        "source_changed_since_review": source_changed,
+    }
+    errors, warnings = validate_staging_record(record)
+    record["validation_errors"] = errors
+    record["validation_warnings"] = warnings
+    if record["status"] != STAGING_IMPORTED:
+        if errors:
+            record["status"] = STAGING_BLOCKED
+        elif record["status"] == STAGING_BLOCKED:
+            record["status"] = STAGING_PENDING
+    return record
+
+
+def _default_runtime_inputs(component_type: str) -> dict[str, float | None]:
+    return {
+        "quantity": 1.0,
+        "client_seats": 1.0 if component_type == "workstation" else 0.0,
+    }
+
+
+def _apply_manual_overrides(
+    source_item: Mapping[str, Any],
+    overrides: Mapping[str, Any],
+) -> dict[str, Any]:
+    item = dict(deepcopy(source_item))
+    for field in ("title", "category"):
+        if field in overrides:
+            item[field] = overrides[field]
+    if "offer" in overrides:
+        item["offer"] = {**_mapping(item.get("offer")), **_mapping(overrides.get("offer"))}
+    if "attributes" in overrides:
+        attributes = _mapping(item.get("attributes"))
+        for field, value in _mapping(overrides.get("attributes")).items():
+            if value is None:
+                attributes.pop(field, None)
+            else:
+                attributes[field] = value
+        item["attributes"] = attributes
+    return item
+
+
+def _build_manual_overrides(
+    source_item: Mapping[str, Any],
+    item: Mapping[str, Any],
+    *,
+    target_category: str,
+    target_component_type: str,
+    runtime_inputs: Mapping[str, Any],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for field in ("title", "category"):
+        if item.get(field) != source_item.get(field):
+            result[field] = item.get(field)
+
+    source_offer = _mapping(source_item.get("offer"))
+    current_offer = _mapping(item.get("offer"))
+    offer_diff = {
+        field: current_offer.get(field)
+        for field in ("price", "currency")
+        if current_offer.get(field) != source_offer.get(field)
+    }
+    if offer_diff:
+        result["offer"] = offer_diff
+
+    source_attributes = _mapping(source_item.get("attributes"))
+    current_attributes = _mapping(item.get("attributes"))
+    attribute_diff = {
+        field: current_attributes.get(field)
+        for field in _METRIC_FIELDS
+        if current_attributes.get(field) != source_attributes.get(field)
+    }
+    if attribute_diff:
+        result["attributes"] = attribute_diff
+
+    default_target = target_for_catalog_category(_text(item.get("category")))
+    default_category = default_target[0] if default_target else ""
+    default_type = default_target[1] if default_target else ""
+    if target_category != default_category:
+        result["target_category"] = target_category
+    if target_component_type != default_type:
+        result["target_component_type"] = target_component_type
+
+    default_inputs = _default_runtime_inputs(target_component_type)
+    input_diff = {
+        field: runtime_inputs.get(field)
+        for field in ("quantity", "client_seats")
+        if runtime_inputs.get(field) != default_inputs.get(field)
+    }
+    if input_diff:
+        result["runtime_inputs"] = input_diff
+    return result
 
 
 def _load_csv_rows(path: Path) -> list[dict[str, Any]]:
@@ -527,6 +866,15 @@ def _metric_value(value: Any) -> Any:
     return number if number is not None else value
 
 
+def _metric_field_value(field: str, value: Any) -> Any:
+    if value in (None, ""):
+        return None
+    if field == "ipv6_support":
+        return _metric_value(value)
+    number = _number(value)
+    return number if number is not None else value
+
+
 def _stable_id(
     source: str,
     source_product_id: str,
@@ -566,10 +914,14 @@ __all__ = [
     "STAGING_IMPORTED",
     "STAGING_PENDING",
     "STAGING_REJECTED",
+    "catalog_metric_fields",
+    "catalog_target_options",
     "catalog_item_to_runtime_row",
     "load_catalog_rows",
     "normalize_catalog_item",
+    "staging_record_readiness",
     "supported_catalog_extensions",
     "target_for_catalog_category",
     "validate_staging_item",
+    "validate_staging_record",
 ]

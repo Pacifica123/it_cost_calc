@@ -58,6 +58,7 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         show_actions: bool = True,
         compact: bool = False,
         table_height: int | None = None,
+        multi_select: bool = False,
     ) -> None:
         if QTableView is None:
             raise RuntimeError("PySide6 is required to create SmartTable")
@@ -74,6 +75,7 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         self._show_actions_when_empty = show_actions_when_empty
         self._show_actions = show_actions
         self._compact = compact
+        self._multi_select = multi_select
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -103,7 +105,11 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         self.table = QTableView(self)
         self.table.setModel(self._model)
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(
+            QTableView.SelectionMode.ExtendedSelection
+            if multi_select
+            else QTableView.SelectionMode.SingleSelection
+        )
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(False)
         self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
@@ -155,14 +161,21 @@ class SmartTable(QWidget):  # type: ignore[misc,valid-type]
         self.refresh_state()
 
     def selected_row_index(self) -> int | None:
+        indexes = self.selected_row_indexes()
+        return indexes[0] if indexes else None
+
+    def selected_row_indexes(self) -> list[int]:
         selection = self.table.selectionModel()
         if selection is None:
-            return None
-        indexes = selection.selectedRows()
-        if not indexes:
-            return None
-        row = indexes[0].row()
-        return row if 0 <= row < self._model.rowCount() else None
+            return []
+        return sorted(
+            index.row()
+            for index in selection.selectedRows()
+            if 0 <= index.row() < self._model.rowCount()
+        )
+
+    def selected_rows(self) -> list[dict[str, Any]]:
+        return [self._model.row_dict(index) for index in self.selected_row_indexes()]
 
     def selected_row(self) -> dict[str, Any] | None:
         row_index = self.selected_row_index()

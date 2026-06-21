@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ui_qt.presenters.app_presenter import QtAppPresenter, QtRuntimePaths
 from ui_qt.presenters.catalog_staging_presenter import (
+    CatalogFilterOption,
     CatalogStagingPresenter,
     CatalogStagingSummary,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "AhpPresenter",
     "CatalogStagingPresenter",
     "CatalogStagingSummary",
+    "CatalogFilterOption",
     "ComponentEditorPresenter",
     "DecisionMethodSummary",
     "EnergyPresenter",
