@@ -71,13 +71,15 @@ python scripts/update_equipment_catalog.py --mode examples
 
 Результат сохраняется в `data/generated/catalog/equipment_catalog.json`.
 
-Для управляемого DNS-сбора установите Chromium для Playwright:
+Для управляемого DNS-сбора browser engine устанавливается автоматически при первом запуске из GUI. При проблемах установку можно повторить вручную тем же Python-интерпретатором:
 
 ```bash
+python -m playwright install firefox
+# либо
 python -m playwright install chromium
 ```
 
-После этого на экране `Каталог` доступна кнопка `Собрать из DNS`. GUI запускает parser отдельным процессом, показывает журнал и загружает успешный catalog v2 в staging. Профиль браузера и HTML-снимки находятся только в `data/generated/`.
+На экране `Каталог` кнопка `Собрать из DNS` запускает parser отдельным процессом, показывает журнал и загружает catalog v2 в staging. Профили браузеров и HTML-снимки находятся только в `data/generated/`.
 
 ## Сборки для запуска без Python
 

@@ -14,6 +14,7 @@ def test_dns_job_spec_runs_unbuffered_cli_in_separate_process(tmp_path: Path) ->
         per_category_limit=7,
         time_limit_seconds=180,
         visible_browser=True,
+        browser_engine="firefox",
         region="Москва",
     )
 
@@ -26,5 +27,7 @@ def test_dns_job_spec_runs_unbuffered_cli_in_separate_process(tmp_path: Path) ->
         "--mode",
     )
     assert "routers,servers" in job.arguments
+    assert job.arguments[job.arguments.index("--browser-engine") + 1] == "firefox"
+    assert str(tmp_path / "data/generated/catalog/dns_browser_profiles/firefox") in job.arguments
     assert "--headless" not in job.arguments
     assert "Москва" in job.arguments

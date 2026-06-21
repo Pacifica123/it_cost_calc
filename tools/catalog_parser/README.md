@@ -51,16 +51,21 @@ python scripts/update_equipment_catalog.py \
 ```bash
 python scripts/update_equipment_catalog.py \
   --mode dns-live \
-  --categories routers,prebuilt_pcs,servers \
+  --categories routers,switches,prebuilt_pcs,servers \
+  --browser-engine firefox \
   --limit 10 \
   --time-limit 300 \
   --snapshot-output data/generated/catalog/dns_runs/manual/snapshot \
-  --profile data/generated/catalog/dns_browser_profile \
+  --profile data/generated/catalog/dns_browser_profiles/firefox \
   --region Москва \
   --output data/generated/catalog/dns_runs/manual/equipment_catalog.json
 ```
 
-По умолчанию Chromium видим. Первый экран содержит паузу для выбора региона/cookies. Каждый товар сохраняется как HTML, после чего каталог строится каноническим `dns-snapshot` importer. Тот же сценарий доступен кнопкой `Собрать из DNS` на экране каталога.
+По умолчанию используется видимый Firefox; в GUI можно выбрать Chromium. Если выбранный Playwright browser engine ещё не установлен, CLI устанавливает его текущим Python-интерпретатором. Первый экран содержит паузу для выбора региона/cookies. Каждый товар сохраняется как HTML, после чего каталог строится каноническим `dns-snapshot` importer. Тот же сценарий доступен кнопкой `Собрать из DNS` на экране каталога.
+
+Роутеры и коммутаторы открываются по прямым URL категорий DNS. Для готовых ПК и серверов остаётся поиск по запросу. Если поздняя категория получает `403/429`, уже собранные карточки сохраняются как частичный результат.
+
+Ответы DNS `403/429` распознаются до парсинга ссылок. Сбор останавливается после первого отказа, а причина и URL сохраняются в `snapshot_manifest.json`; смена селекторов в этой ситуации не поможет.
 
 ## Для чего это нужно
 

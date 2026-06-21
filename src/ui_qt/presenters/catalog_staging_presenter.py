@@ -77,9 +77,11 @@ class DnsCatalogJobSpec:
 
 _DNS_CATEGORY_OPTIONS = (
     ("routers", "Роутеры"),
+    ("switches", "Коммутаторы"),
     ("prebuilt_pcs", "Готовые ПК"),
     ("servers", "Серверы"),
 )
+_DNS_BROWSER_ENGINES = {"firefox", "chromium"}
 
 
 class CatalogStagingPresenter:
@@ -140,6 +142,7 @@ class CatalogStagingPresenter:
         per_category_limit: int,
         time_limit_seconds: int,
         visible_browser: bool,
+        browser_engine: str = "firefox",
         region: str = "",
     ) -> DnsCatalogJobSpec:
         allowed = {value for value, _label in _DNS_CATEGORY_OPTIONS}
@@ -150,13 +153,22 @@ class CatalogStagingPresenter:
             raise ValueError("Лимит карточек должен быть от 1 до 50.")
         if not 30 <= time_limit_seconds <= 1800:
             raise ValueError("Таймаут должен быть от 30 до 1800 секунд.")
+        if browser_engine not in _DNS_BROWSER_ENGINES:
+            raise ValueError("Выберите Firefox или Chromium.")
 
         repo_root = self.app_presenter.paths.repo_root
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         run_root = repo_root / "data" / "generated" / "catalog" / "dns_runs" / timestamp
         output_path = run_root / "equipment_catalog.json"
         snapshot_path = run_root / "snapshot"
-        profile_path = repo_root / "data" / "generated" / "catalog" / "dns_browser_profile"
+        profile_path = (
+            repo_root
+            / "data"
+            / "generated"
+            / "catalog"
+            / "dns_browser_profiles"
+            / browser_engine
+        )
         arguments = [
             "-u",
             str(repo_root / "scripts" / "update_equipment_catalog.py"),
@@ -164,6 +176,8 @@ class CatalogStagingPresenter:
             "dns-live",
             "--categories",
             ",".join(selected),
+            "--browser-engine",
+            browser_engine,
             "--limit",
             str(per_category_limit),
             "--time-limit",

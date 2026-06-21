@@ -10,6 +10,7 @@ try:
     from PySide6.QtGui import QTextCursor
     from PySide6.QtWidgets import (
         QCheckBox,
+        QComboBox,
         QDialog,
         QGridLayout,
         QHBoxLayout,
@@ -27,7 +28,8 @@ except ModuleNotFoundError as exc:
         raise
     QProcess = QTimer = None  # type: ignore[assignment]
     QTextCursor = None  # type: ignore[assignment]
-    QCheckBox = QGridLayout = QHBoxLayout = QLineEdit = QMessageBox = None  # type: ignore[assignment]
+    QCheckBox = QComboBox = QGridLayout = QHBoxLayout = QLineEdit = None  # type: ignore[assignment]
+    QMessageBox = None  # type: ignore[assignment]
     QPlainTextEdit = QProgressBar = QPushButton = QSpinBox = QVBoxLayout = None  # type: ignore[assignment]
     QDialog = QWidget = object  # type: ignore[assignment,misc]
 
@@ -63,8 +65,8 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         layout.setSpacing(10)
         layout.addWidget(
             InfoHint(
-                "Откроется отдельный Chromium. На первой странице можно выбрать регион, принять cookies "
-                "или пройти проверку. Сбор ограничен лимитом и сохраняет исходные HTML.",
+                "Движок установится автоматически при первом запуске. В открытом браузере можно "
+                "выбрать регион, принять cookies или пройти проверку. Исходные HTML сохраняются.",
                 self,
             )
         )
@@ -93,13 +95,19 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self.timeout_spin.setValue(300)
         grid.addWidget(self.timeout_spin, 1, 3)
 
-        grid.addWidget(CompactLabel("Регион цены", self), 2, 0)
+        grid.addWidget(CompactLabel("Движок браузера", self), 2, 0)
+        self.browser_engine = QComboBox(self)
+        self.browser_engine.addItem("Firefox", "firefox")
+        self.browser_engine.addItem("Chromium", "chromium")
+        grid.addWidget(self.browser_engine, 2, 1)
+
+        grid.addWidget(CompactLabel("Регион цены", self), 3, 0)
         self.region_edit = QLineEdit(self)
         self.region_edit.setPlaceholderText("например, Москва")
-        grid.addWidget(self.region_edit, 2, 1)
+        grid.addWidget(self.region_edit, 3, 1)
         self.visible_browser = QCheckBox("Показывать браузер", self)
         self.visible_browser.setChecked(True)
-        grid.addWidget(self.visible_browser, 2, 2, 1, 2)
+        grid.addWidget(self.visible_browser, 3, 2, 1, 2)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         layout.addLayout(grid)
@@ -145,6 +153,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
                 per_category_limit=self.limit_spin.value(),
                 time_limit_seconds=self.timeout_spin.value(),
                 visible_browser=self.visible_browser.isChecked(),
+                browser_engine=str(self.browser_engine.currentData()),
                 region=self.region_edit.text(),
             )
         except ValueError as exc:
@@ -190,7 +199,14 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
             self.load_button.setEnabled(True)
             self.status.setText(f"Каталог готов: {output_path}")
         else:
-            self.status.setText(f"Сбор завершился с ошибкой, код {exit_code}")
+            if exit_code == 3:
+                self.status.setText(
+                    "DNS запретил доступ. Подробности и HTML сохранены в журнале."
+                )
+            elif exit_code == 4:
+                self.status.setText("DNS-сбор не завершён. Проверьте сообщение и путь диагностики в журнале.")
+            else:
+                self.status.setText(f"Сбор завершился с ошибкой, код {exit_code}")
         if self._close_after_stop:
             self._close_after_stop = False
             QDialog.reject(self)
@@ -208,6 +224,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
             checkbox.setEnabled(not running)
         self.limit_spin.setEnabled(not running)
         self.timeout_spin.setEnabled(not running)
+        self.browser_engine.setEnabled(not running)
         self.region_edit.setEnabled(not running)
         self.visible_browser.setEnabled(not running)
 

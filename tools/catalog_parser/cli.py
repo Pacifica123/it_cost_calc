@@ -34,8 +34,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--categories",
-        default="routers,prebuilt_pcs,servers",
+        default="routers,switches,prebuilt_pcs,servers",
         help="DNS-категории через запятую для режима dns-live.",
+    )
+    parser.add_argument(
+        "--browser-engine",
+        choices=["firefox", "chromium"],
+        default="firefox",
+        help="Playwright-движок dns-live; при отсутствии устанавливается автоматически.",
     )
     parser.add_argument("--limit", type=int, default=10, help="Карточек на категорию для dns-live.")
     parser.add_argument(
@@ -45,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Общий таймаут dns-live в секундах.",
     )
     parser.add_argument("--snapshot-output", help="Каталог для HTML-снимка dns-live.")
-    parser.add_argument("--profile", help="Каталог persistent Chromium profile для dns-live.")
+    parser.add_argument("--profile", help="Каталог persistent browser profile для dns-live.")
     parser.add_argument("--region", default="", help="Текстовая метка региона цены для dns-live.")
     parser.add_argument("--headless", action="store_true", help="Запустить dns-live без окна браузера.")
     parser.add_argument(
@@ -73,7 +79,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.mode == "dns-live":
         if not args.snapshot_output or not args.profile:
             parser.error("--snapshot-output and --profile are required for --mode dns-live")
-        from .sources.dns_live import DnsLiveOptions, build_catalog_from_live_dns
+        from .dns_browser import DnsBrowserError
+        from .sources.dns_live import (
+            DnsLiveCollectionError,
+            DnsLiveOptions,
+            build_catalog_from_live_dns,
+        )
 
         categories = tuple(value.strip() for value in args.categories.split(",") if value.strip())
         previous_sigterm = signal.getsignal(signal.SIGTERM)
@@ -88,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
                     snapshot_dir=Path(args.snapshot_output),
                     profile_dir=Path(args.profile),
                     categories=categories,
+                    browser_engine=args.browser_engine,
                     per_category_limit=args.limit,
                     time_limit_seconds=args.time_limit,
                     headless=args.headless,
@@ -99,6 +111,13 @@ def main(argv: list[str] | None = None) -> int:
         except KeyboardInterrupt:
             print("Сбор DNS остановлен пользователем.", flush=True)
             return 130
+        except DnsLiveCollectionError as exc:
+            print(f"Ошибка DNS-сбора: {exc}", flush=True)
+            print(f"Диагностика: {exc.manifest_path}", flush=True)
+            return exc.exit_code
+        except DnsBrowserError as exc:
+            print(f"Ошибка браузера DNS: {exc}", flush=True)
+            return 4
         finally:
             signal.signal(signal.SIGTERM, previous_sigterm)
     else:

@@ -1,13 +1,19 @@
+import io
 import json
+from contextlib import redirect_stdout
 from pathlib import Path
 
 from tools.catalog_parser.sources.dns_live import (
+    DNS_CATALOG_URLS,
+    DnsAccessDeniedError,
     DnsLiveOptions,
     capture_dns_snapshot,
     parse_dns_search_html,
 )
 from tools.catalog_parser.sources.dns_snapshot import build_catalog_from_dns_snapshot
 from tools.catalog_parser.cli import build_parser
+from tools.catalog_parser import cli
+from tools.catalog_parser.sources import dns_live
 
 
 SEARCH_HTML = """
@@ -39,6 +45,14 @@ PRODUCT_HTML = """
 </script></head><body></body></html>
 """
 
+DNS_403_HTML = """
+<!DOCTYPE html><html lang="ru"><head>
+<meta charset="utf-8"><title>HTTP 403</title></head><body>
+<div class="title">403 Error</div><div class="sub-title">Forbidden</div>
+<p>Доступ к сайту www.dns-shop.ru запрещен.</p>
+</body></html>
+"""
+
 
 def test_search_parser_keeps_unique_dns_product_urls() -> None:
     items = parse_dns_search_html(SEARCH_HTML, limit=10)
@@ -58,12 +72,19 @@ def test_capture_creates_replayable_snapshot_and_catalog(tmp_path: Path) -> None
         region="test-region",
     )
 
+    requested_urls: list[str] = []
+
     def fetch(url: str) -> str:
-        return SEARCH_HTML if "/search/" in url else PRODUCT_HTML
+        requested_urls.append(url)
+        return SEARCH_HTML if "/catalog/" in url or "/search/" in url else PRODUCT_HTML
 
     manifest_path = capture_dns_snapshot(options, fetch=fetch, progress=lambda _message: None)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["capture"]["status"] == "completed"
     assert manifest["capture"]["categories"] == ["routers"]
+    assert manifest["capture"]["browser_engine"] == "firefox"
+    assert manifest["capture"]["category_sources"]["routers"]["mode"] == "catalog-url"
+    assert requested_urls[0] == DNS_CATALOG_URLS["routers"]
     assert manifest["region"] == "test-region"
     assert len(manifest["items"]) == 1
     assert (options.snapshot_dir / manifest["items"][0]["file"]).exists()
@@ -74,6 +95,41 @@ def test_capture_creates_replayable_snapshot_and_catalog(tmp_path: Path) -> None
     assert item["category"] == "router"
     assert item["attributes"]["lan_ports"] == 4
     assert item["offer"]["region"] == "test-region"
+
+
+def test_capture_stops_after_first_dns_403_and_writes_failure_manifest(tmp_path: Path) -> None:
+    options = DnsLiveOptions(
+        snapshot_dir=tmp_path / "snapshot",
+        profile_dir=tmp_path / "profile",
+        categories=("routers", "prebuilt_pcs", "servers"),
+        per_category_limit=3,
+        time_limit_seconds=60,
+        request_delay_seconds=0,
+    )
+    requested_urls: list[str] = []
+
+    def fetch(url: str) -> str:
+        requested_urls.append(url)
+        return DNS_403_HTML
+
+    try:
+        capture_dns_snapshot(options, fetch=fetch, progress=lambda _message: None)
+    except DnsAccessDeniedError as exc:
+        assert exc.exit_code == 3
+        assert exc.manifest_path == options.snapshot_dir / "snapshot_manifest.json"
+    else:
+        raise AssertionError("DNS 403 must stop collection")
+
+    assert len(requested_urls) == 1
+    manifest = json.loads(
+        (options.snapshot_dir / "snapshot_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["capture"]["status"] == "failed"
+    assert manifest["capture"]["failure"]["kind"] == "access_denied"
+    assert manifest["capture"]["failure"]["status_code"] == 403
+    assert "текущего подключения" in manifest["capture"]["failure"]["message"]
+    assert (options.snapshot_dir / "search" / "routers.html").exists()
+    assert not (options.snapshot_dir / "search" / "prebuilt_pcs.html").exists()
 
 
 def test_cli_exposes_bounded_dns_live_options() -> None:
@@ -96,3 +152,62 @@ def test_cli_exposes_bounded_dns_live_options() -> None:
     assert args.mode == "dns-live"
     assert args.limit == 5
     assert args.time_limit == 120
+    assert args.browser_engine == "firefox"
+
+
+def test_capture_keeps_partial_result_when_later_category_is_denied(tmp_path: Path) -> None:
+    options = DnsLiveOptions(
+        snapshot_dir=tmp_path / "snapshot",
+        profile_dir=tmp_path / "profile",
+        categories=("routers", "prebuilt_pcs"),
+        per_category_limit=1,
+        time_limit_seconds=60,
+        request_delay_seconds=0,
+    )
+
+    def fetch(url: str) -> str:
+        if url == DNS_CATALOG_URLS["routers"]:
+            return SEARCH_HTML
+        if "/product/" in url:
+            return PRODUCT_HTML
+        return DNS_403_HTML
+
+    manifest_path = capture_dns_snapshot(options, fetch=fetch, progress=lambda _message: None)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["capture"]["status"] == "partial"
+    assert manifest["capture"]["failure"]["status_code"] == 403
+    assert len(manifest["items"]) == 1
+
+
+def test_cli_reports_expected_access_denial_without_traceback(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "snapshot" / "snapshot_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text("{}", encoding="utf-8")
+    original = dns_live.build_catalog_from_live_dns
+
+    def denied(_options, *, progress):
+        raise DnsAccessDeniedError("DNS вернул HTTP 403", manifest_path=manifest_path)
+
+    dns_live.build_catalog_from_live_dns = denied
+    output = io.StringIO()
+    try:
+        with redirect_stdout(output):
+            exit_code = cli.main(
+                [
+                    "--mode",
+                    "dns-live",
+                    "--snapshot-output",
+                    str(tmp_path / "snapshot"),
+                    "--profile",
+                    str(tmp_path / "profile"),
+                    "--output",
+                    str(tmp_path / "catalog.json"),
+                ]
+            )
+    finally:
+        dns_live.build_catalog_from_live_dns = original
+
+    assert exit_code == 3
+    assert "Ошибка DNS-сбора: DNS вернул HTTP 403" in output.getvalue()
+    assert str(manifest_path) in output.getvalue()
+    assert "Traceback" not in output.getvalue()

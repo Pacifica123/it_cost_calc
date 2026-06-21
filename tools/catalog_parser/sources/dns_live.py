@@ -10,22 +10,49 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlencode, urljoin, urlparse
 
-from ..dns_browser import DnsBrowserSession
+from ..dns_browser import DnsBrowserPage, DnsBrowserSession
 from .dns_snapshot import build_catalog_from_dns_snapshot
 
 DNS_BASE_URL = "https://www.dns-shop.ru"
 DNS_LIVE_CATEGORIES = {
     "routers": "Маршрутизаторы",
+    "switches": "Коммутаторы",
     "prebuilt_pcs": "Готовые сборки ПК",
     "servers": "Сервер",
 }
+DNS_CATALOG_URLS = {
+    "routers": "https://www.dns-shop.ru/catalog/17a8aa1c16404e77/wi-fi-routery/",
+    "switches": "https://www.dns-shop.ru/catalog/17a9dc3716404e77/kommutatory/",
+}
+
+
+class DnsLiveCollectionError(RuntimeError):
+    exit_code = 4
+
+    def __init__(self, message: str, *, manifest_path: Path) -> None:
+        super().__init__(message)
+        self.manifest_path = manifest_path
+
+
+class DnsAccessDeniedError(DnsLiveCollectionError):
+    exit_code = 3
+
+
+@dataclass(frozen=True, slots=True)
+class _CapturedPage:
+    requested_url: str
+    final_url: str
+    status_code: int | None
+    title: str
+    html: str
 
 
 @dataclass(frozen=True, slots=True)
 class DnsLiveOptions:
     snapshot_dir: Path
     profile_dir: Path
-    categories: tuple[str, ...] = ("routers", "prebuilt_pcs", "servers")
+    categories: tuple[str, ...] = ("routers", "switches", "prebuilt_pcs", "servers")
+    browser_engine: str = "firefox"
     per_category_limit: int = 10
     time_limit_seconds: int = 300
     headless: bool = False
@@ -43,6 +70,8 @@ class DnsLiveOptions:
             raise ValueError("Лимит карточек на категорию должен быть от 1 до 50")
         if not 30 <= self.time_limit_seconds <= 1800:
             raise ValueError("Общий таймаут должен быть от 30 до 1800 секунд")
+        if self.browser_engine not in {"firefox", "chromium"}:
+            raise ValueError("Движок браузера должен быть firefox или chromium")
 
 
 class _DnsSearchParser(HTMLParser):
@@ -101,10 +130,60 @@ def _snapshot_filename(category: str, index: int, url: str) -> str:
     return f"products/{category}_{index:03d}_{digest}.html"
 
 
+def _captured_page(value: str | DnsBrowserPage, *, requested_url: str) -> _CapturedPage:
+    if isinstance(value, DnsBrowserPage):
+        return _CapturedPage(
+            requested_url=value.requested_url,
+            final_url=value.final_url,
+            status_code=value.status_code,
+            title=value.title,
+            html=value.html,
+        )
+    return _CapturedPage(
+        requested_url=requested_url,
+        final_url=requested_url,
+        status_code=None,
+        title="",
+        html=str(value),
+    )
+
+
+def _access_failure(page: _CapturedPage) -> dict[str, object] | None:
+    normalized = page.html.lower()
+    denied = page.status_code in {401, 403, 429} or any(
+        marker in normalized
+        for marker in (
+            "<title>http 403</title>",
+            "403 error",
+            "forbidden",
+            "доступ к сайту www.dns-shop.ru запрещен",
+            "too many requests",
+        )
+    )
+    if not denied:
+        return None
+    status = page.status_code
+    if status is None:
+        status = 429 if "too many requests" in normalized else 403
+    return {
+        "kind": "access_denied",
+        "status_code": status,
+        "requested_url": page.requested_url,
+        "final_url": page.final_url,
+        "page_title": page.title,
+        "message": (
+            f"DNS вернул HTTP {status} и запретил доступ для текущего подключения. "
+            "Это происходит до выдачи товаров и не исправляется селекторами. "
+            "Проверьте доступ к DNS в обычном браузере без VPN/корпоративного прокси "
+            "или повторите позже; сохранённый HTML оставлен для диагностики."
+        ),
+    }
+
+
 def capture_dns_snapshot(
     options: DnsLiveOptions,
     *,
-    fetch: Callable[[str], str],
+    fetch: Callable[[str], str | DnsBrowserPage],
     progress: Callable[[str], None] = print,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
@@ -121,17 +200,72 @@ def capture_dns_snapshot(
     observed_at = datetime.now(UTC).replace(microsecond=0).isoformat()
     manifest_items: list[dict[str, str]] = []
     warnings: list[str] = []
+    manifest_path = root / "snapshot_manifest.json"
+
+    def write_manifest(
+        *,
+        status: str,
+        failure: dict[str, object] | None = None,
+    ) -> Path:
+        capture: dict[str, object] = {
+            "mode": "user-initiated-playwright",
+            "status": status,
+            "browser_engine": options.browser_engine,
+            "categories": list(options.categories),
+            "per_category_limit": options.per_category_limit,
+            "category_sources": {
+                category: {
+                    "mode": "catalog-url" if category in DNS_CATALOG_URLS else "search-query",
+                    "url": DNS_CATALOG_URLS.get(category)
+                    or f"{DNS_BASE_URL}/search/?{urlencode({'q': DNS_LIVE_CATEGORIES[category]})}",
+                }
+                for category in options.categories
+            },
+            "warnings": warnings,
+        }
+        if failure:
+            capture["failure"] = failure
+        manifest = {
+            "schema_version": 1,
+            "source": "dns",
+            "region": options.region,
+            "observed_at": observed_at,
+            "capture": capture,
+            "items": manifest_items,
+        }
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return manifest_path
 
     for category in options.categories:
         if monotonic() - started >= options.time_limit_seconds:
             warnings.append("Общий таймаут достигнут до обработки всех категорий")
             break
         query = DNS_LIVE_CATEGORIES[category]
-        progress(f"Категория {category}: поиск '{query}'")
-        search_url = f"{DNS_BASE_URL}/search/?{urlencode({'q': query})}"
-        search_html = fetch(search_url)
-        (search_dir / f"{category}.html").write_text(search_html, encoding="utf-8")
-        products = parse_dns_search_html(search_html, limit=options.per_category_limit)
+        source_url = DNS_CATALOG_URLS.get(category)
+        if source_url:
+            progress(f"Категория {category}: открываю каталог '{query}'")
+        else:
+            progress(f"Категория {category}: поиск '{query}'")
+            source_url = f"{DNS_BASE_URL}/search/?{urlencode({'q': query})}"
+        search_page = _captured_page(fetch(source_url), requested_url=source_url)
+        (search_dir / f"{category}.html").write_text(search_page.html, encoding="utf-8")
+        failure = _access_failure(search_page)
+        if failure:
+            warnings.append(f"{category}: DNS access denied, HTTP {failure['status_code']}")
+            status = "partial" if manifest_items else "failed"
+            write_manifest(status=status, failure=failure)
+            progress(str(failure["message"]))
+            progress(f"Диагностика сохранена: {manifest_path}")
+            if manifest_items:
+                progress(
+                    f"Сохраняю частичный результат: собрано карточек {len(manifest_items)}."
+                )
+                return manifest_path
+            raise DnsAccessDeniedError(str(failure["message"]), manifest_path=manifest_path)
+        products = parse_dns_search_html(search_page.html, limit=options.per_category_limit)
         progress(f"Категория {category}: найдено карточек {len(products)}")
         if not products:
             warnings.append(f"{category}: ссылки на товары не найдены")
@@ -143,9 +277,22 @@ def capture_dns_snapshot(
                 break
             url = product["url"]
             progress(f"{category}: карточка {index}/{len(products)}")
-            html = fetch(url)
+            product_page = _captured_page(fetch(url), requested_url=url)
             relative_file = _snapshot_filename(category, index, url)
-            (root / relative_file).write_text(html, encoding="utf-8")
+            (root / relative_file).write_text(product_page.html, encoding="utf-8")
+            failure = _access_failure(product_page)
+            if failure:
+                warnings.append(f"{category}: DNS access denied, HTTP {failure['status_code']}")
+                status = "partial" if manifest_items else "failed"
+                write_manifest(status=status, failure=failure)
+                progress(str(failure["message"]))
+                progress(f"Диагностика сохранена: {manifest_path}")
+                if manifest_items:
+                    progress(
+                        f"Сохраняю частичный результат: собрано карточек {len(manifest_items)}."
+                    )
+                    return manifest_path
+                raise DnsAccessDeniedError(str(failure["message"]), manifest_path=manifest_path)
             manifest_items.append(
                 {
                     "file": relative_file,
@@ -157,25 +304,26 @@ def capture_dns_snapshot(
             if options.request_delay_seconds:
                 sleep(options.request_delay_seconds)
 
-    manifest = {
-        "schema_version": 1,
-        "source": "dns",
-        "region": options.region,
-        "observed_at": observed_at,
-        "capture": {
-            "mode": "user-initiated-playwright",
-            "categories": list(options.categories),
-            "per_category_limit": options.per_category_limit,
-            "warnings": warnings,
-        },
-        "items": manifest_items,
-    }
-    manifest_path = root / "snapshot_manifest.json"
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    no_products_failure = None
+    if not manifest_items:
+        no_products_failure = {
+            "kind": "no_products",
+            "status_code": None,
+            "requested_url": None,
+            "final_url": None,
+            "page_title": None,
+            "message": "DNS ответил, но ссылки на карточки товаров не найдены.",
+        }
+    write_manifest(
+        status="completed" if manifest_items else "failed",
+        failure=no_products_failure,
+    )
     progress(f"HTML-снимок сохранён: {manifest_path}")
     if not manifest_items:
-        raise RuntimeError(
-            "DNS не вернул карточки товаров. Проверьте регион/challenge в браузере и сохранённые search HTML."
+        raise DnsLiveCollectionError(
+            "DNS ответил без HTTP-запрета, но карточки товаров не найдены. "
+            "Проверьте сохранённые search HTML: это может быть challenge или изменение разметки.",
+            manifest_path=manifest_path,
         )
     return manifest_path
 
@@ -188,6 +336,7 @@ def build_catalog_from_live_dns(
     options.validate()
     with DnsBrowserSession(
         profile_dir=options.profile_dir,
+        engine=options.browser_engine,
         headless=options.headless,
         first_page_wait_seconds=options.first_page_wait_seconds,
         progress=progress,

@@ -15,6 +15,7 @@ from .dns_technical_metrics import merge_technical_metrics_with_attributes, pars
 
 DNS_CATEGORY_MAP = {
     "routers": "router",
+    "switches": "switch",
     "prebuilt_pcs": "prebuilt_pc",
     "servers": "server",
     "components": "component",

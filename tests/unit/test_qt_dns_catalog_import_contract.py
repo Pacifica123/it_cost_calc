@@ -14,3 +14,6 @@ def test_dns_catalog_gui_uses_separate_cancellable_process() -> None:
     assert "Загрузить в staging" in dialog_source
     assert "Собрать из DNS" in screen_source
     assert "dialog.catalog_path" in screen_source
+    assert "DNS запретил доступ. Подробности" in dialog_source
+    assert "QComboBox" in dialog_source
+    assert "установится автоматически" in dialog_source
