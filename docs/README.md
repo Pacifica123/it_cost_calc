@@ -44,6 +44,7 @@
 - `architecture/layers.md` — описание слоёв приложения;
 - `architecture/repository_layout.md` — логика структуры репозитория;
 - `architecture/catalog_boundary.md` — граница между приложением, каталогом и инструментом парсинга.
+- `architecture/catalog_staging_import.md` — schema v2, staging-проверка JSON/CSV/XLSX и явный импорт альтернатив ТО;
 - `architecture/dns_network_parser_best_effort.md` — best-effort извлечение сетевых характеристик роутеров из названий DNS-Shop с warnings/confidence и приоритетом ручных specs;
 
 ### Продукт

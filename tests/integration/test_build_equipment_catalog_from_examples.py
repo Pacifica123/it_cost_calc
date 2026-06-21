@@ -10,6 +10,7 @@ def test_build_equipment_catalog_from_examples(tmp_path: Path) -> None:
     exit_code = main(["--mode", "examples", "--output", str(output_path)])
     assert exit_code == 0
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["stats"]["items_total"] > 0
     assert "cpu" in payload["stats"]["by_category"]
+    assert payload["items"][0]["offer"]["currency"] == "RUB"

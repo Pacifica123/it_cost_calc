@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 _SCREEN_MODULES = {
+    "CatalogStagingScreen": "ui_qt.screens.catalog_staging",
     "ComponentEditorScreen": "ui_qt.screens.component_editor",
     "EnergyScreen": "ui_qt.screens.energy",
     "ExportScreen": "ui_qt.screens.export",

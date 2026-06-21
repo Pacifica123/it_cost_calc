@@ -41,6 +41,9 @@ def test_normalize_dns_snapshot_maps_categories_and_fields() -> None:
     assert router.category == "router"
     assert cpu.category == "cpu"
     assert cpu.attributes["socket"] == "AM5"
+    assert router.offer["price"] == 3799
+    assert router.offer["currency"] == "RUB"
+    assert router.review["status"] == "pending"
 
 
 
@@ -60,5 +63,6 @@ def test_deduplicate_and_build_catalog_payload() -> None:
         generated_by="unit-test",
     )
     assert payload["stats"]["items_total"] == 2
+    assert payload["schema_version"] == 2
     assert payload["stats"]["by_category"]["cpu"] == 1
     assert payload["sources"][0]["items_after_dedup"] == 2

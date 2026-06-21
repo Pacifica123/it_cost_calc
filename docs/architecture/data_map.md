@@ -52,6 +52,7 @@ flowchart LR
 ### 3. Каталог оборудования
 - `data/examples/catalog/normalized_dns_catalog.json` — пример нормализованного каталога;
 - `data/generated/catalog/equipment_catalog.json` — рабочий каталог, формируемый инструментом обновления.
+- `data/generated/catalog/catalog_staging.json` — проверяемые пользователем строки до импорта в runtime ТО.
 
 ## Таблица артефактов
 
@@ -65,6 +66,7 @@ flowchart LR
 | Runtime-сущности | `data/generated/runtime_entities.json` | приложение | GUI, сервисы, экспорт |
 | CSV-отчёт | `data/generated/` или пользовательский путь | сценарий экспорта | пользователь |
 | Каталог оборудования | `data/generated/catalog/equipment_catalog.json` | `tools/catalog_parser` | основное приложение, тесты |
+| Staging каталога | `data/generated/catalog/catalog_staging.json` | экран «Каталог» | пользователь, импорт ТО |
 | Пример каталога | `data/examples/catalog/normalized_dns_catalog.json` | подготовленный пример | тесты, документация |
 | DecisionReport JSON | `data/generated/decision_report.json` | `DecisionReportService` + exporter | пользователь, разработчик, будущая автоматизация отчёта |
 | DecisionReport Markdown | `data/generated/decision_report.md` | `DecisionReportService` + exporter | защита, пояснение выбора |

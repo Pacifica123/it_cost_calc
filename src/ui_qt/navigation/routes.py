@@ -43,6 +43,16 @@ ROOT_ROUTES: tuple[RootRoute, ...] = (
         ),
     ),
     RootRoute(
+        route_id="catalog",
+        label="Каталог",
+        title="Каталог оборудования",
+        status="Импорт и проверка",
+        details=(
+            "Внешние JSON, CSV и XLSX сначала проходят staging-проверку. "
+            "Только подтверждённые готовые устройства переносятся в варианты ТО."
+        ),
+    ),
+    RootRoute(
         route_id="components",
         label="Компоненты",
         title="Редактор компонентов",

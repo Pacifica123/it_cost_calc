@@ -9,6 +9,7 @@ _EXPORTS = {
     "AnalysisScopeProfileService": "application.services.analysis_scope_profile_service",
     "AnalysisScopeProfile": "application.services.analysis_scope_profile_service",
     "CandidateConfigurationService": "application.services.candidate_configuration_service",
+    "CatalogStagingService": "application.services.catalog_staging_service",
     "CostAggregationService": "application.services.cost_aggregation_service",
     "CostSummaryService": "application.services.cost_summary_service",
     "DecisionReportService": "application.services.decision_report_service",

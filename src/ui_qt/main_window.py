@@ -12,6 +12,7 @@ from ui_qt.navigation import DEFAULT_ROOT_ROUTE_ID, ROOT_ROUTES, require_root_ro
 from ui_qt.navigation.root_menu import RootMenu
 from ui_qt.presenters import QtAppPresenter, QtSettingsPresenter, QtUiSettings
 from ui_qt.screens import (
+    CatalogStagingScreen,
     ComponentEditorScreen,
     EnergyScreen,
     ExportScreen,
@@ -109,6 +110,10 @@ class QtMainWindow(QMainWindow):
             elif route.route_id == "hardware":
                 self._screen_factories[route.route_id] = (
                     lambda: TechnicalWorkspaceScreen(self.presenter)
+                )
+            elif route.route_id == "catalog":
+                self._screen_factories[route.route_id] = (
+                    lambda: CatalogStagingScreen(self.presenter)
                 )
             elif route.route_id == "components":
                 self._screen_factories[route.route_id] = (
