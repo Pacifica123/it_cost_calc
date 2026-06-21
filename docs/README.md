@@ -46,6 +46,7 @@
 - `architecture/catalog_boundary.md` — граница между приложением, каталогом и инструментом парсинга.
 - `architecture/catalog_staging_import.md` — schema v2, staging-проверка JSON/CSV/XLSX и явный импорт альтернатив ТО;
 - `architecture/dns_network_parser_best_effort.md` — best-effort извлечение сетевых характеристик роутеров из названий DNS-Shop с warnings/confidence и приоритетом ручных specs;
+- `architecture/dns_snapshot_import.md` — контракт воспроизводимого офлайн-импорта сохранённых DNS HTML/JSON-LD в catalog v2;
 
 ### Продукт
 - `product/vision.md` — продуктовая идея и траектория развития.
@@ -115,14 +116,15 @@
 30. `architecture/module_map.md`
 31. `architecture/equipment_metrics_profile_implementation.md`
 32. `architecture/dns_network_parser_best_effort.md`
-33. `architecture/data_map.md`
-34. `research/decision_criteria_unification_plan.md`
-35. `research/equipment_metrics_and_catalog_parsing_plan.md`
-36. `research/genetic_algorithm.md`
-37. `research/ideas/genetic_algorithm_plain_manifest.md`
-38. `research/ideas/future_independent_ga_ahp_assessment.md`
-39. `research/ideas/future_hybrid_ga_ahp_score.md`
-40. `demo/ga_ahp_defense_guide.md`
-41. `demo/demo_data_contract.md`
-42. `demo/solution_component_editor_defense_guide.md`
-43. `traceability.md`
+33. `architecture/dns_snapshot_import.md`
+34. `architecture/data_map.md`
+35. `research/decision_criteria_unification_plan.md`
+36. `research/equipment_metrics_and_catalog_parsing_plan.md`
+37. `research/genetic_algorithm.md`
+38. `research/ideas/genetic_algorithm_plain_manifest.md`
+39. `research/ideas/future_independent_ga_ahp_assessment.md`
+40. `research/ideas/future_hybrid_ga_ahp_score.md`
+41. `demo/ga_ahp_defense_guide.md`
+42. `demo/demo_data_contract.md`
+43. `demo/solution_component_editor_defense_guide.md`
+44. `traceability.md`

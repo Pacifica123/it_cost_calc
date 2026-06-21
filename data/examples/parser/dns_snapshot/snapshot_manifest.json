@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "source": "dns",
+  "region": "example-region",
+  "observed_at": "2026-06-21T12:00:00Z",
+  "items": [
+    {
+      "file": "router.html",
+      "category": "routers",
+      "url": "https://www.dns-shop.ru/product/example-router/"
+    },
+    {
+      "file": "workstation.html",
+      "category": "prebuilt_pcs",
+      "url": "https://www.dns-shop.ru/product/example-workstation/"
+    }
+  ]
+}

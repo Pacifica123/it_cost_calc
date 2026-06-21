@@ -110,12 +110,17 @@ def merge_parsed_metrics_with_specs(
     """
 
     merged = dict(specs)
-    parsed_metrics = dict(parse_result.parsed_metrics)
-    parse_warnings = list(parse_result.parse_warnings)
+    existing_parsed_metrics = dict(merged.get("parsed_metrics") or {})
+    parsed_metrics = {
+        **existing_parsed_metrics,
+        **dict(parse_result.parsed_metrics),
+    }
+    parse_warnings = list(merged.get("parse_warnings") or []) + list(parse_result.parse_warnings)
 
-    for key, value in parsed_metrics.items():
+    for key, value in parse_result.parsed_metrics.items():
         if key in merged and merged[key] not in (None, ""):
-            parse_warnings.append(f"manual field '{key}' has priority over parsed value")
+            if key not in existing_parsed_metrics:
+                parse_warnings.append(f"manual field '{key}' has priority over parsed value")
             continue
         merged[key] = value
 
@@ -123,8 +128,12 @@ def merge_parsed_metrics_with_specs(
         {
             "parsed_metrics": parsed_metrics,
             "parse_warnings": parse_warnings,
-            "confidence": parse_result.confidence,
-            "parse_source": "dns-title-best-effort",
+            "confidence": max(float(merged.get("confidence") or 0.0), parse_result.confidence),
+            "parse_source": (
+                "dns-product-specs+title-best-effort"
+                if existing_parsed_metrics
+                else "dns-title-best-effort"
+            ),
         }
     )
     return merged

@@ -18,9 +18,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mode",
-        choices=["examples", "legacy-dns-live"],
+        choices=["examples", "dns-snapshot", "legacy-dns-live"],
         default="examples",
         help="Режим построения каталога. По умолчанию используется нормализация уже имеющихся example-снимков.",
+    )
+    parser.add_argument(
+        "--input",
+        help="Каталог локального DNS-снимка. Обязателен для режима dns-snapshot.",
     )
     parser.add_argument(
         "--output",
@@ -31,11 +35,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     output_path = Path(args.output)
 
     if args.mode == "examples":
         payload = build_catalog_from_example_snapshots()
+    elif args.mode == "dns-snapshot":
+        if not args.input:
+            parser.error("--input is required for --mode dns-snapshot")
+        from .sources.dns_snapshot import build_catalog_from_dns_snapshot
+
+        payload = build_catalog_from_dns_snapshot(Path(args.input))
     else:
         from .sources.dns_live import build_catalog_from_live_dns
 

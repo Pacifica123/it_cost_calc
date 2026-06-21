@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from .catalog_schema import CatalogItem, CatalogSourceInfo
 from .dns_network_metrics import merge_parsed_metrics_with_specs, parse_dns_network_title
+from .dns_technical_metrics import merge_technical_metrics_with_attributes, parse_dns_technical_specs
 
 DNS_CATEGORY_MAP = {
     "routers": "router",
@@ -72,11 +73,18 @@ def _normalize_dns_item(raw: dict[str, Any], *, bucket: str, snapshot_name: str)
     if not isinstance(price_rub, int):
         price_rub = None
     attributes = dict(raw.get("specs") or {})
+    technical_result = parse_dns_technical_specs(attributes)
+    if technical_result.parsed_metrics:
+        attributes = merge_technical_metrics_with_attributes(attributes, technical_result)
     if normalized_category == "router":
         parse_result = parse_dns_network_title(title)
         attributes = merge_parsed_metrics_with_specs(attributes, parse_result)
-    observed_at = datetime.now(UTC).isoformat()
-    source_product_id = _source_product_id(url)
+    attributes["parse_warnings"] = list(raw.get("parse_warnings") or []) + list(
+        attributes.get("parse_warnings") or []
+    )
+    observed_at = str(raw.get("observed_at") or datetime.now(UTC).isoformat())
+    source_product_id = str(raw.get("source_product_id") or "").strip() or _source_product_id(url)
+    currency = str(raw.get("currency") or "RUB").upper()
     identity = {
         key: value
         for key, value in {
@@ -95,24 +103,32 @@ def _normalize_dns_item(raw: dict[str, Any], *, bucket: str, snapshot_name: str)
         source="dns",
         source_category=source_category,
         price_rub=price_rub,
-        currency="RUB",
+        currency=currency,
         availability=str(raw.get("availability") or "unknown"),
         url=url,
         attributes=attributes,
-        raw_snapshot=snapshot_name,
+        raw_snapshot=str(raw.get("raw_snapshot") or snapshot_name),
         source_product_id=source_product_id,
         identity=identity,
         offer={
             "price": price_rub,
-            "currency": "RUB",
+            "currency": currency,
             "availability": str(raw.get("availability") or "unknown"),
             "url": url,
             "region": str(raw.get("region") or ""),
             "observed_at": observed_at,
         },
         field_provenance={
-            "title": {"source": "dns", "method": "snapshot", "confidence": 1.0},
-            "price": {"source": "dns", "method": "snapshot", "confidence": 1.0},
+            "title": {
+                "source": "dns",
+                "method": str(raw.get("parse_method") or "snapshot"),
+                "confidence": 1.0 if title != "Без названия" else 0.0,
+            },
+            "price": {
+                "source": "dns",
+                "method": str(raw.get("parse_method") or "snapshot"),
+                "confidence": 1.0 if price_rub is not None else 0.0,
+            },
             "attributes": {
                 "source": "dns",
                 "method": str(attributes.get("parse_source") or "snapshot-specs"),

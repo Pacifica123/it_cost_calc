@@ -41,6 +41,12 @@
 
 Для прозрачности вместе с распознанными полями сохраняются `parsed_metrics`, `parse_warnings`, `confidence` и `parse_source`. Если ручные `specs` уже содержат такое же поле, ручное значение не перезаписывается.
 
+## Воспроизводимый офлайн-импорт HTML
+
+Канонический CLI также принимает каталог сохранённых DNS-карточек по manifest v1. Из HTML сначала читается структурированный JSON-LD Product/Offer, а при его отсутствии применяется ограниченный fallback. Это даёт проверяемый способ наполнения каталога без браузерной автоматизации и сетевого парсинга в runtime.
+
+Табличные характеристики нормализуются в метрики рабочей станции и сети. Исходные пары ключ/значение, warnings и provenance сохраняются для проверки в staging. Подробный контракт описан в `../architecture/dns_snapshot_import.md`.
+
 ## Практический вывод
 
 Парсер следует рассматривать как:
@@ -75,6 +81,7 @@ runtime теперь содержит безопасный экран импор
 ### Сырые снимки
 - `data/examples/parser/dns_data_playwright.json`
 - `data/examples/parser/dns_routers.json`
+- `data/examples/parser/dns_snapshot/`
 
 ### Нормализованный пример каталога
 - `data/examples/catalog/normalized_dns_catalog.json`
@@ -90,6 +97,8 @@ runtime теперь содержит безопасный экран импор
 - `tools/catalog_parser/cli.py`
 - `tools/catalog_parser/sources/dns_examples.py`
 - `tools/catalog_parser/sources/dns_live.py`
+- `tools/catalog_parser/sources/dns_snapshot.py`
+- `tools/catalog_parser/dns_technical_metrics.py`
 
 ### Историческая/legacy-зона
 - `tools/catalog_parser/legacy/dns_parser_legacy.py`
