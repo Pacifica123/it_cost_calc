@@ -120,6 +120,11 @@ def normalize_catalog_item(
     attributes = _mapping_or_json(item.get("attributes"))
     parsed_metrics = _mapping(attributes.get("parsed_metrics"))
     metrics = {**parsed_metrics, **attributes}
+    parser_metadata = {
+        key: deepcopy(attributes[key])
+        for key in ("parsed_metrics", "parse_warnings", "confidence", "parse_source")
+        if key in attributes
+    }
 
     title = _text(_first(item, "title", "name", "product_name", "наименование"))
     category = _text(_first(item, "category", "type", "product_type", "категория")).lower()
@@ -188,6 +193,8 @@ def normalize_catalog_item(
         },
         "attributes": normalized_metrics,
         "field_provenance": _mapping(item.get("field_provenance")),
+        "review": _mapping(item.get("review")),
+        "parser_metadata": parser_metadata,
         "source_schema_version": int(
             item.get("_catalog_schema_version") or item.get("schema_version") or 1
         ),
@@ -203,6 +210,8 @@ def validate_staging_item(item: Mapping[str, Any]) -> tuple[list[str], list[str]
     offer = _mapping(item.get("offer"))
     identity = _mapping(item.get("identity"))
     metrics = _mapping(item.get("attributes"))
+    review = _mapping(item.get("review"))
+    parser_metadata = _mapping(item.get("parser_metadata"))
 
     if not title:
         errors.append("Не заполнено название товара.")
@@ -215,6 +224,11 @@ def validate_staging_item(item: Mapping[str, Any]) -> tuple[list[str], list[str]
         warnings.append("Не указано время получения цены.")
     if not any(identity.get(key) for key in ("gtin", "mpn", "model")):
         warnings.append("Нет GTIN, MPN или модели для надёжного объединения источников.")
+    for warning in list(review.get("warnings") or []) + list(
+        parser_metadata.get("parse_warnings") or []
+    ):
+        if warning:
+            warnings.append(f"Диагностика источника: {warning}")
 
     target = _TARGET_BY_CATEGORY.get(category)
     if target is None:
@@ -359,6 +373,8 @@ def catalog_item_to_runtime_row(record: Mapping[str, Any]) -> tuple[str, dict[st
             "identity": deepcopy(_mapping(item.get("identity"))),
             "offer": deepcopy(offer),
             "field_provenance": deepcopy(_mapping(item.get("field_provenance"))),
+            "review": deepcopy(_mapping(item.get("review"))),
+            "parser_metadata": deepcopy(_mapping(item.get("parser_metadata"))),
             "staging_id": record.get("staging_id"),
             "manual_overrides": deepcopy(_mapping(record.get("manual_overrides"))),
         },

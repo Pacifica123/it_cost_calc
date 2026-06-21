@@ -20,6 +20,28 @@ from application.services.solution_component_normalization_service import (
 from domain import DecisionReport, to_plain_data
 from shared.constants import LEGACY_INFRASTRUCTURE_SANDBOX_PREFIX, SOLUTION_COMPONENT_ENTITY
 
+_CATALOG_METRIC_FIELDS = (
+    "ram_gb",
+    "cpu_cores",
+    "storage_gb",
+    "max_power_watts",
+    "lan_ports",
+    "lan_speed_mbps",
+    "wifi_total_mbps",
+    "ipv6_support",
+)
+_CATALOG_REQUIRED_METRICS = {
+    "server": ("ram_gb", "cpu_cores", "storage_gb", "max_power_watts"),
+    "workstation": ("ram_gb", "cpu_cores", "storage_gb", "max_power_watts"),
+    "network_device": (
+        "max_power_watts",
+        "lan_ports",
+        "lan_speed_mbps",
+        "wifi_total_mbps",
+        "ipv6_support",
+    ),
+}
+
 
 class DecisionReportService:
     """Builds a single explainable decision artifact from runtime and analyses."""
@@ -88,11 +110,16 @@ class DecisionReportService:
             candidates=candidates,
             analysis_results=analysis_results,
         )
+        catalog_data_quality = self._catalog_data_quality(
+            components=components,
+            candidates=candidates,
+        )
         warnings = self._warnings(
             components=components,
             candidates=candidates,
             analysis_results=analysis_results,
             npv_interpretation=npv_interpretation,
+            catalog_data_quality=catalog_data_quality,
         )
         risk_payload = self._risks(risks, warnings=warnings)
         winner_explanation = self._winner_explanation(
@@ -112,6 +139,7 @@ class DecisionReportService:
             constraints=constraints,
             candidate_configurations=candidates,
             solution_component_report=solution_component_report,
+            catalog_data_quality=catalog_data_quality,
             analysis_results=analysis_results,
             npv_interpretation=npv_interpretation,
             winner_explanation=winner_explanation,
@@ -248,6 +276,128 @@ class DecisionReportService:
                 "Markdown разделяет валидные и исключённые компоненты для защиты вывода.",
                 "CSV кандидатов сохраняет совместимость; отдельный CSV компонентов не смешивает финансовые поля и метрики.",
             ],
+        }
+
+    def _catalog_data_quality(
+        self,
+        *,
+        components: Sequence[Mapping[str, Any]],
+        candidates: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Summarize catalog provenance and metric completeness for the report."""
+
+        catalog_components: list[Mapping[str, Any]] = []
+        catalog_components.extend(component for component in components if isinstance(component, Mapping))
+        for candidate in candidates:
+            if not isinstance(candidate, Mapping):
+                continue
+            catalog_components.extend(
+                component
+                for component in candidate.get("components", []) or []
+                if isinstance(component, Mapping)
+            )
+
+        rows: dict[str, dict[str, Any]] = {}
+        for index, component in enumerate(catalog_components):
+            metadata = component.get("catalog_metadata")
+            if not isinstance(metadata, Mapping):
+                metadata = {}
+            catalog_item_id = str(component.get("catalog_item_id") or "").strip()
+            if component.get("origin") != "catalog" and not catalog_item_id and not metadata:
+                continue
+            key = catalog_item_id or str(metadata.get("source_product_id") or "").strip()
+            key = key or f"catalog-component:{index}:{component.get('name', '')}"
+            row = self._catalog_quality_row(component, metadata=metadata, key=key)
+            previous = rows.get(key)
+            if previous is None:
+                rows[key] = row
+                continue
+            previous["metrics"].update(row["metrics"])
+            previous["metric_warnings"] = self._unique_text(
+                previous["metric_warnings"] + row["metric_warnings"]
+            )
+            previous["missing_metrics"] = [
+                field for field in previous["required_metrics"] if field not in previous["metrics"]
+            ]
+            previous["status"] = "complete" if not previous["missing_metrics"] else "incomplete"
+
+        items = list(rows.values())
+        incomplete = [item for item in items if item["status"] == "incomplete"]
+        with_warnings = [item for item in items if item["metric_warnings"]]
+        with_manual_overrides = [item for item in items if item["manual_override_fields"]]
+        warnings: list[str] = []
+        if incomplete:
+            warnings.append(
+                f"У {len(incomplete)} из {len(items)} каталожных компонентов неполные технические метрики."
+            )
+        if with_warnings:
+            warnings.append(
+                f"У {len(with_warnings)} из {len(items)} каталожных компонентов есть предупреждения источника или метрик."
+            )
+        return {
+            "schema_version": 1,
+            "summary": {
+                "catalog_components_total": len(items),
+                "complete_metrics": len(items) - len(incomplete),
+                "incomplete_metrics": len(incomplete),
+                "with_warnings": len(with_warnings),
+                "with_manual_overrides": len(with_manual_overrides),
+            },
+            "components": items,
+            "warnings": warnings,
+        }
+
+    def _catalog_quality_row(
+        self,
+        component: Mapping[str, Any],
+        *,
+        metadata: Mapping[str, Any],
+        key: str,
+    ) -> dict[str, Any]:
+        parser_metadata = metadata.get("parser_metadata")
+        if not isinstance(parser_metadata, Mapping):
+            parser_metadata = {}
+        review = metadata.get("review")
+        if not isinstance(review, Mapping):
+            review = {}
+        manual_overrides = metadata.get("manual_overrides")
+        if not isinstance(manual_overrides, Mapping):
+            manual_overrides = {}
+        offer = metadata.get("offer")
+        if not isinstance(offer, Mapping):
+            offer = {}
+
+        metrics = {
+            field: deepcopy(component[field])
+            for field in _CATALOG_METRIC_FIELDS
+            if field in component and component[field] not in (None, "")
+        }
+        component_type = str(component.get("component_type") or "")
+        required_metrics = list(_CATALOG_REQUIRED_METRICS.get(component_type, ()))
+        warnings = [
+            str(warning)
+            for warning in list(component.get("metric_warnings") or [])
+            + list(parser_metadata.get("parse_warnings") or [])
+            + list(review.get("warnings") or [])
+            if warning
+        ]
+        missing_metrics = [field for field in required_metrics if field not in metrics]
+        return {
+            "catalog_item_id": str(component.get("catalog_item_id") or key),
+            "name": str(component.get("name") or component.get("title") or key),
+            "component_type": component_type or None,
+            "source": metadata.get("source"),
+            "source_product_id": metadata.get("source_product_id"),
+            "observed_at": offer.get("observed_at"),
+            "parse_source": parser_metadata.get("parse_source"),
+            "confidence": parser_metadata.get("confidence"),
+            "field_provenance": deepcopy(metadata.get("field_provenance") or {}),
+            "manual_override_fields": sorted(str(field) for field in manual_overrides),
+            "metrics": metrics,
+            "required_metrics": required_metrics,
+            "missing_metrics": missing_metrics,
+            "metric_warnings": self._unique_text(warnings),
+            "status": "complete" if not missing_metrics else "incomplete",
         }
 
     def _solution_component_report_row(
@@ -560,6 +710,7 @@ class DecisionReportService:
         candidates: Sequence[Mapping[str, Any]],
         analysis_results: Mapping[str, Any],
         npv_interpretation: Mapping[str, Any],
+        catalog_data_quality: Mapping[str, Any],
     ) -> list[str]:
         warnings: list[str] = []
         if not candidates:
@@ -583,6 +734,8 @@ class DecisionReportService:
             for warning in component.get("blocking_errors", []) or []:
                 warnings.append(str(warning))
         for warning in npv_interpretation.get("warnings", []) or []:
+            warnings.append(str(warning))
+        for warning in catalog_data_quality.get("warnings", []) or []:
             warnings.append(str(warning))
         return list(dict.fromkeys(warnings))
 

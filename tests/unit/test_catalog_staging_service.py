@@ -307,6 +307,39 @@ def test_numeric_metric_one_is_not_converted_to_boolean(tmp_path: Path):
     assert record["catalog_item"]["attributes"]["lan_ports"] is not True
 
 
+def test_parser_diagnostics_survive_staging_and_runtime_conversion(tmp_path: Path):
+    payload = _catalog_payload()
+    payload["items"][0]["attributes"].update(
+        {
+            "parse_source": "dns-product-specs",
+            "confidence": 0.81,
+            "parse_warnings": ["source warning"],
+            "parsed_metrics": {"lan_ports": 4},
+        }
+    )
+    payload["items"][0]["review"] = {
+        "status": "pending",
+        "warnings": ["source warning"],
+    }
+    payload["items"][0]["field_provenance"] = {
+        "attributes": {"method": "dns-product-specs", "confidence": 0.81}
+    }
+    source = tmp_path / "catalog.json"
+    source.write_text(json.dumps(payload), encoding="utf-8")
+
+    service = CatalogStagingService(tmp_path / "staging.json")
+    record = service.stage_file(source)[0]
+    assert record["catalog_item"]["parser_metadata"]["confidence"] == 0.81
+    assert record["catalog_item"]["review"]["status"] == "pending"
+    assert record["validation_warnings"].count("Диагностика источника: source warning") == 1
+
+    approved = service.set_status(record["staging_id"], STAGING_APPROVED)
+    _, runtime_row = catalog_item_to_runtime_row(approved)
+    assert runtime_row["catalog_metadata"]["parser_metadata"]["parse_source"] == "dns-product-specs"
+    assert runtime_row["catalog_metadata"]["field_provenance"]["attributes"]["confidence"] == 0.81
+    assert "Диагностика источника: source warning" in runtime_row["metric_warnings"]
+
+
 def test_presenter_filters_rows_and_shows_manual_diff(tmp_path: Path):
     source = tmp_path / "catalog.json"
     source.write_text(json.dumps(_catalog_payload()), encoding="utf-8")

@@ -22,12 +22,14 @@ def build_decision_report_json_payload(report: Mapping[str, Any]) -> dict[str, A
     """
     metadata = _mapping(report.get("metadata"))
     solution_component_report = _solution_component_report(report)
+    catalog_data_quality = _mapping(report.get("catalog_data_quality"))
     return to_plain_data(
         {
             "schema_version": metadata.get("schema_version", DECISION_REPORT_SCHEMA_VERSION),
             "report_type": metadata.get("report_type", "it_solution_decision_report"),
             "report": dict(report),
             "solution_components": solution_component_report,
+            "catalog_data_quality": dict(catalog_data_quality),
         }
     )
 
@@ -43,6 +45,8 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
     analysis_results = _mapping(report.get("analysis_results"))
     candidates = _sequence(report.get("candidate_configurations"))
     components_report = _solution_component_report(report)
+    catalog_quality = _mapping(report.get("catalog_data_quality"))
+    catalog_components = _sequence(catalog_quality.get("components"))
     valid_components = _sequence(components_report.get("valid_components"))
     excluded_components = _sequence(components_report.get("excluded_components"))
     warnings = [str(item) for item in _sequence(report.get("warnings"))]
@@ -104,6 +108,22 @@ def build_decision_report_markdown(report: Mapping[str, Any]) -> str:
         )
     else:
         lines.append("Черновики и исключённые компоненты не обнаружены.")
+
+    lines.extend(["", "### 4.3. Качество данных каталога"])
+    if catalog_components:
+        lines.extend(_catalog_quality_table(catalog_components[:12]))
+        summary = _mapping(catalog_quality.get("summary"))
+        lines.append(
+            "\nКаталожных компонентов: {total}; полные метрики: {complete}; "
+            "неполные: {incomplete}; с предупреждениями: {warnings}.".format(
+                total=summary.get("catalog_components_total", len(catalog_components)),
+                complete=summary.get("complete_metrics", 0),
+                incomplete=summary.get("incomplete_metrics", 0),
+                warnings=summary.get("with_warnings", 0),
+            )
+        )
+    else:
+        lines.append("Компоненты, импортированные из каталога, в отчёт не переданы.")
 
     lines.extend(["", "## 5. Пул альтернатив"])
     if candidates:
@@ -170,6 +190,20 @@ def build_decision_report_csv_rows(report: Mapping[str, Any]) -> list[dict[str, 
         tco = _mapping(totals.get("tco"))
         metrics = _mapping(candidate.get("metrics"))
         metadata = _mapping(candidate.get("metadata"))
+        technical_metrics = {
+            key: totals[key]
+            for key in (
+                "total_ram_gb",
+                "total_cpu_cores",
+                "total_storage_gb",
+                "total_power_watts",
+                "lan_ports",
+                "lan_speed_mbps",
+                "wifi_total_mbps",
+                "ipv6_support_count",
+            )
+            if key in totals
+        }
         rows.append(
             {
                 "id": candidate.get("id"),
@@ -186,6 +220,14 @@ def build_decision_report_csv_rows(report: Mapping[str, Any]) -> list[dict[str, 
                 ),
                 "ga_score": metrics.get("ga_score"),
                 "people": metrics.get("people"),
+                "technical_metrics": json.dumps(
+                    technical_metrics,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                "metric_warnings": "; ".join(
+                    str(warning) for warning in _sequence(totals.get("metric_warnings"))
+                ),
             }
         )
     return rows
@@ -265,6 +307,8 @@ def export_decision_report_csv(report: Mapping[str, Any], filename: str | Path) 
         "total_ownership_cost",
         "ga_score",
         "people",
+        "technical_metrics",
+        "metric_warnings",
     ]
     with path.open("w", encoding="utf-8-sig", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -442,6 +486,34 @@ def _candidate_table(candidates: Sequence[Any]) -> list[str]:
                 source=_md(candidate.get("source")),
                 pool=_md(metadata.get("candidate_pool_source") or "—"),
                 tco=_money(tco.get("total_ownership_cost", totals.get("total_ownership_cost"))),
+            )
+        )
+    return lines
+
+
+def _catalog_quality_table(components: Sequence[Any]) -> list[str]:
+    lines = [
+        "| Компонент | Тип | Источник | Метрики | Не заполнено | Диагностика |",
+        "|---|---|---|---|---|---|",
+    ]
+    for component in components:
+        if not isinstance(component, Mapping):
+            continue
+        metrics = _mapping(component.get("metrics"))
+        missing = _sequence(component.get("missing_metrics"))
+        warnings = _sequence(component.get("metric_warnings"))
+        source = component.get("source") or "—"
+        parse_source = component.get("parse_source")
+        if parse_source:
+            source = f"{source} / {parse_source}"
+        lines.append(
+            "| {name} | {ctype} | {source} | {metrics} | {missing} | {warnings} |".format(
+                name=_md(component.get("name")),
+                ctype=_md(component.get("component_type") or "—"),
+                source=_md(source),
+                metrics=_md(_metrics_text(metrics)),
+                missing=_md(", ".join(str(field) for field in missing) or "—"),
+                warnings=_md("; ".join(str(warning) for warning in warnings[:2]) or "—"),
             )
         )
     return lines

@@ -207,3 +207,17 @@ Best-effort часть этапа E4 реализована отдельным d
 - `data/examples/parser/dns_routers.json` содержит demo-роутеры для проверки.
 
 Парсер остаётся вспомогательным инструментом каталога, а не частью runtime GUI.
+
+
+## Статус реализации этапа E5
+
+Экспорт технических метрик и их качества реализован отдельным devctl-патчем:
+
+- staging сохраняет `review`, parser warnings/confidence/source и `field_provenance`;
+- runtime-строки каталога переносят эти сведения в `catalog_metadata`;
+- `DecisionReport` содержит блок `catalog_data_quality` с заполненными и отсутствующими метриками;
+- неполные данные и parser warnings попадают в общие warnings/risks отчёта;
+- JSON сохраняет полный provenance, Markdown показывает таблицу качества, CSV кандидатов содержит агрегированные `technical_metrics` и `metric_warnings`;
+- `scripts/check_catalog_decision_report.py` проверяет путь от DNS HTML-снимка до трёх форматов экспорта.
+
+Таким образом, этапы E1–E5 закрыты: parser остаётся помощником, а неопределённость данных видна пользователю до итогового обоснования выбора.

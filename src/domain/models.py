@@ -481,6 +481,7 @@ class DecisionReport:
     constraints: list[dict[str, Any]] = field(default_factory=list)
     candidate_configurations: list[dict[str, Any]] = field(default_factory=list)
     solution_component_report: dict[str, Any] = field(default_factory=dict)
+    catalog_data_quality: dict[str, Any] = field(default_factory=dict)
     analysis_results: dict[str, Any] = field(default_factory=dict)
     npv_interpretation: dict[str, Any] = field(default_factory=dict)
     winner_explanation: dict[str, Any] = field(default_factory=dict)
@@ -516,6 +517,10 @@ class DecisionReport:
             solution_component_report={
                 str(key): deepcopy(value)
                 for key, value in dict(payload.get("solution_component_report", {})).items()
+            },
+            catalog_data_quality={
+                str(key): deepcopy(value)
+                for key, value in dict(payload.get("catalog_data_quality", {})).items()
             },
             analysis_results={
                 str(key): deepcopy(value)
