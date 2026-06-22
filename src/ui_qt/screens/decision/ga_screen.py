@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
 from ui_qt.models import CandidateTableModel, RowTableModel
-from ui_qt.presenters import GaInput, GaPresenter, QtAppPresenter, format_money
+from ui_qt.dialogs import ConfigurationDetailsDialog
+from ui_qt.presenters import (
+    ConfigurationDetailsPresenter,
+    GaInput,
+    GaPresenter,
+    QtAppPresenter,
+    format_money,
+)
 from ui_qt.widgets import CollapsibleSection, CompactLabel, SmartTable
 
 try:
@@ -36,6 +44,7 @@ _BEST_HEADERS = {
     "quantity": "Кол.",
     "cost": "Стоимость",
 }
+_LOGGER = logging.getLogger(__name__)
 
 
 class GaScreen(QWidget):  # type: ignore[misc,valid-type]
@@ -53,6 +62,10 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
             raise RuntimeError("PySide6 is required to create GaScreen")
         super().__init__(parent)
         self.presenter = GaPresenter(app_presenter, scope=scope)
+        self.details_presenter = ConfigurationDetailsPresenter(
+            self.presenter.app_presenter,
+            scope=scope,
+        )
         self._on_pool_changed = on_pool_changed
         self._summary_labels: dict[str, CompactLabel] = {}
         self._build_ui()
@@ -70,6 +83,10 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
 
         self.result_hint = CompactLabel("Кандидатов пока нет", self, object_name="pageStatus")
         layout.addWidget(self.result_hint, 0)
+        self.error_label = CompactLabel("", self, object_name="pageStatus")
+        self.error_label.setWordWrap(True)
+        self.error_label.setVisible(False)
+        layout.addWidget(self.error_label, 0)
 
         self.candidate_model = CandidateTableModel([])
         self.candidate_table = SmartTable(
@@ -78,6 +95,7 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
             empty_title="Нет кандидатов",
             empty_status="Запустите GA",
             show_actions=False,
+            on_edit=self._show_configuration,
             compact=True,
             table_height=160,
         )
@@ -288,15 +306,25 @@ class GaScreen(QWidget):  # type: ignore[misc,valid-type]
         self._run_ga()
 
     def _run_ga(self) -> None:
+        message = ""
         try:
-            self.presenter.run(self._values())
-            self.pool_label.setText("GA готов")
+            result = self.presenter.run(self._values())
+            if result.get("status") != "ok":
+                message = self.presenter.user_error_message(result)
         except Exception as exc:  # pragma: no cover - GUI status fallback
-            self.pool_label.setText("Ошибка GA")
-            self.pool_label.setToolTip(str(exc))
+            _LOGGER.exception("GA run failed for scope %s", self.presenter.scope)
+            message = self.presenter.user_error_message(exc)
         self.refresh_data()
+        self.error_label.setText(message)
+        self.error_label.setToolTip(message)
+        self.error_label.setVisible(bool(message))
         if self._on_pool_changed is not None:
             self._on_pool_changed()
+
+    def _show_configuration(self, _row_index: int, row: dict[str, Any]) -> None:
+        details = self.details_presenter.details(str(row.get("candidate_id") or ""))
+        if details is not None:
+            ConfigurationDetailsDialog(details, self).exec()
 
     def _mark_pool_ready(self) -> None:
         self.pool_label.setText("Пул передан")

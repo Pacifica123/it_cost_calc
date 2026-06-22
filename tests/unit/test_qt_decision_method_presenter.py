@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from shared.constants import ANALYSIS_SCOPE_TECHNICAL
-from ui_qt.presenters import AhpPresenter, ParetoPresenter, QtAppPresenter
+from ui_qt.presenters import (
+    AhpPresenter,
+    ConfigurationDetailsPresenter,
+    ParetoPresenter,
+    QtAppPresenter,
+)
 
 
 def _presenter(tmp_path: Path) -> QtAppPresenter:
@@ -99,3 +104,36 @@ def test_qt_decision_presenters_return_compact_rows(tmp_path: Path):
     assert ahp.ranking_rows()[0]["name"]
     assert pareto.summary().ranked_count == 2
     assert pareto.nondominated_rows()
+    assert ahp.ranking_rows()[0]["candidate_id"]
+    assert pareto.ranking_rows()[0]["candidate_id"]
+
+
+def test_configuration_details_uses_shared_pool_candidate(tmp_path: Path):
+    app = _presenter(tmp_path)
+    candidate = _candidate("GA-1", rank=1, score=0.9, ram=16, power=80, cost=125)
+    candidate["components"] = [
+        {
+            "source_category": "server",
+            "name": "Server A",
+            "quantity": 2,
+            "price": 50,
+        }
+    ]
+    app.scoped_candidate_pool_service.replace(
+        ANALYSIS_SCOPE_TECHNICAL,
+        [candidate],
+        source_label="test GA",
+        source_method="ga",
+    )
+
+    details = ConfigurationDetailsPresenter(
+        app,
+        scope=ANALYSIS_SCOPE_TECHNICAL,
+    ).details("GA-1")
+
+    assert details is not None
+    assert details.name == "GA-1"
+    assert details.component_count == 1
+    assert details.components[0]["category"] == "Серверы"
+    assert details.components[0]["quantity"] == "2"
+    assert details.components[0]["cost"] == "100.00 ₽"

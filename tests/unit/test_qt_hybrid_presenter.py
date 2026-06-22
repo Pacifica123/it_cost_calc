@@ -80,6 +80,7 @@ def test_qt_hybrid_combines_current_pool_after_ahp_and_pareto(tmp_path: Path):
     assert result["lambda"] == 0.4
     assert result["metadata"]["analysis_scope"] == ANALYSIS_SCOPE_TECHNICAL
     assert len(presenter.ranking_rows()) == 2
+    assert presenter.ranking_rows()[0]["candidate_id"]
     assert presenter.summary().ranked_count == 2
     assert app.get_hybrid_result(ANALYSIS_SCOPE_TECHNICAL)["status"] == "ok"
 

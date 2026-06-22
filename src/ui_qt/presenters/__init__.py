@@ -8,6 +8,10 @@ from ui_qt.presenters.catalog_staging_presenter import (
     DnsCatalogJobSpec,
 )
 from ui_qt.presenters.component_editor_presenter import ComponentEditorPresenter
+from ui_qt.presenters.configuration_details_presenter import (
+    ConfigurationDetails,
+    ConfigurationDetailsPresenter,
+)
 from ui_qt.presenters.energy_presenter import EnergyPresenter, EnergyProfileInput, EnergySummary
 from ui_qt.presenters.export_presenter import ExportMode, ExportPresenter, ExportSummary
 from ui_qt.presenters.decision_method_presenter import (
@@ -35,6 +39,8 @@ __all__ = [
     "CatalogFilterOption",
     "DnsCatalogJobSpec",
     "ComponentEditorPresenter",
+    "ConfigurationDetails",
+    "ConfigurationDetailsPresenter",
     "DecisionMethodSummary",
     "EnergyPresenter",
     "ExportMode",

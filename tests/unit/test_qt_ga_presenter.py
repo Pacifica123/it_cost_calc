@@ -137,6 +137,35 @@ def test_ga_screen_source_keeps_primary_action_outside_parameter_grid():
     assert "max_units_input" in source
 
 
+def test_ga_presenter_explains_failures_in_user_language(tmp_path: Path):
+    presenter = GaPresenter(_app(tmp_path), scope="technical")
+
+    assert presenter.user_error_message(
+        {"status": "error", "error": "GA не запущен: список item-ов пуст."}
+    ) == "Нет подходящих данных. Проверьте заполнение каталога."
+    assert presenter.user_error_message(
+        {"status": "error", "error": "GA не запущен: не найдено ни одного допустимого решения."}
+    ) == "Нет подходящей конфигурации. Ослабьте бюджет или ограничения."
+    assert "Runtime" not in presenter.user_error_message(
+        RuntimeError("Runtime entities source is not configured")
+    )
+
+
+def test_ga_screen_shows_inline_error_and_opens_candidate_details():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "ui_qt"
+        / "screens"
+        / "decision"
+        / "ga_screen.py"
+    ).read_text(encoding="utf-8")
+
+    assert "self.error_label.setVisible(bool(message))" in source
+    assert "on_edit=self._show_configuration" in source
+    assert "ConfigurationDetailsDialog(details, self).exec()" in source
+
+
 def test_ga_screen_source_uses_separate_parameter_section():
     source = (
         Path(__file__).resolve().parents[2]

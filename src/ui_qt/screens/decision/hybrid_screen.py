@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
+from ui_qt.dialogs import ConfigurationDetailsDialog
 from ui_qt.models import RowTableModel
-from ui_qt.presenters import HybridPresenter, QtAppPresenter, format_money
+from ui_qt.presenters import (
+    ConfigurationDetailsPresenter,
+    HybridPresenter,
+    QtAppPresenter,
+    format_money,
+)
 from ui_qt.widgets import CollapsibleSection, CompactLabel, SmartTable
 
 try:
@@ -53,6 +60,10 @@ class HybridScreen(QWidget):  # type: ignore[misc,valid-type]
             raise RuntimeError("PySide6 is required to create HybridScreen")
         super().__init__(parent)
         self.presenter = HybridPresenter(app_presenter, scope=scope)
+        self.details_presenter = ConfigurationDetailsPresenter(
+            self.presenter.app_presenter,
+            scope=scope,
+        )
         self._on_result_changed = on_result_changed
         self._summary_labels: dict[str, CompactLabel] = {}
         self._finance_labels: dict[str, CompactLabel] = {}
@@ -74,6 +85,7 @@ class HybridScreen(QWidget):  # type: ignore[misc,valid-type]
             empty_title="Нет Hybrid",
             empty_status="Запустите итог",
             show_actions=False,
+            on_edit=self._show_configuration,
             compact=True,
             table_height=180,
         )
@@ -209,3 +221,8 @@ class HybridScreen(QWidget):  # type: ignore[misc,valid-type]
         self.refresh_data()
         if self._on_result_changed is not None:
             self._on_result_changed()
+
+    def _show_configuration(self, _row_index: int, row: dict[str, Any]) -> None:
+        details = self.details_presenter.details(str(row.get("candidate_id") or ""))
+        if details is not None:
+            ConfigurationDetailsDialog(details, self).exec()

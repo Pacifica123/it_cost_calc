@@ -121,6 +121,22 @@ class GaPresenter:
         )
         return result
 
+    def user_error_message(self, error: Exception | Mapping[str, Any]) -> str:
+        if isinstance(error, Mapping):
+            raw = str(error.get("error") or error.get("reason") or "")
+        else:
+            raw = str(error)
+        text = raw.lower()
+        if "список item-ов пуст" in text or "items" in text and "empty" in text:
+            return "Нет подходящих данных. Проверьте заполнение каталога."
+        if "допустимого решения" in text or "feasible" in text:
+            return "Нет подходящей конфигурации. Ослабьте бюджет или ограничения."
+        if "runtime entities source" in text:
+            return "Исходные данные недоступны. Перезапустите приложение."
+        if "budget" in text or "бюджет" in text:
+            return "Бюджет не позволяет собрать конфигурацию. Увеличьте его."
+        return "Расчёт не выполнен. Проверьте данные и ограничения."
+
     def candidate_rows(self) -> list[dict[str, Any]]:
         result = self.app_presenter.get_ga_result(self.scope)
         rows: list[dict[str, Any]] = []
@@ -131,10 +147,12 @@ class GaPresenter:
             if not isinstance(solution, Mapping):
                 continue
             totals = solution.get("totals", {}) if isinstance(solution.get("totals"), Mapping) else {}
+            rank = int(solution.get("rank") or index)
             rows.append(
                 {
-                    "rank": int(solution.get("rank") or index),
-                    "name": f"GA-кандидат {index}",
+                    "candidate_id": str(solution.get("id") or f"GA-{rank}"),
+                    "rank": rank,
+                    "name": str(solution.get("name") or f"GA-кандидат {rank}"),
                     "score": self._format_score(solution.get("score")),
                     "total_cost": format_money(totals.get("capital_cost", 0.0)),
                     "source": "GA",

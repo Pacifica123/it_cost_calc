@@ -58,6 +58,7 @@ class AhpPresenter:
             totals = row.get("totals", {}) if isinstance(row.get("totals"), Mapping) else {}
             rows.append(
                 {
+                    "candidate_id": str(row.get("id") or ""),
                     "rank": row.get("rank"),
                     "name": row.get("name"),
                     "score": self._format_score(row.get("score")),
@@ -164,6 +165,7 @@ class ParetoPresenter:
                 continue
             rows.append(
                 {
+                    "candidate_id": str(row.get("id") or ""),
                     "rank": index,
                     "name": row.get("name", row.get("id", "—")),
                     "score": self._format_score(row.get("weighted_sum")),
@@ -297,6 +299,7 @@ class HybridPresenter:
             totals = row.get("totals", {}) if isinstance(row.get("totals"), Mapping) else {}
             rows.append(
                 {
+                    "candidate_id": str(row.get("id") or ""),
                     "rank": row.get("rank"),
                     "name": row.get("name", row.get("id", "—")),
                     "hybrid": self._format_score(row.get("hybrid_score")),
