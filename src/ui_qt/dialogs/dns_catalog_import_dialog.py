@@ -13,6 +13,7 @@ try:
         QCheckBox,
         QComboBox,
         QDialog,
+        QFileDialog,
         QGridLayout,
         QHBoxLayout,
         QLineEdit,
@@ -29,7 +30,7 @@ except ModuleNotFoundError as exc:
         raise
     QProcess = QProcessEnvironment = QTimer = QUrl = None  # type: ignore[assignment]
     QDesktopServices = QTextCursor = None  # type: ignore[assignment]
-    QCheckBox = QComboBox = QGridLayout = QHBoxLayout = QLineEdit = None  # type: ignore[assignment]
+    QCheckBox = QComboBox = QFileDialog = QGridLayout = QHBoxLayout = QLineEdit = None  # type: ignore[assignment]
     QMessageBox = None  # type: ignore[assignment]
     QPlainTextEdit = QProgressBar = QPushButton = QSpinBox = QVBoxLayout = None  # type: ignore[assignment]
     QDialog = QWidget = object  # type: ignore[assignment,misc]
@@ -131,11 +132,15 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         layout.addWidget(self.log, 1)
 
         secondary_actions = QHBoxLayout()
+        self.capture_button = QPushButton("Импорт HAR / HTML", self)
+        self.capture_button.setProperty("role", "primary")
+        self.capture_button.clicked.connect(self.import_browser_capture)
         self.browser_button = QPushButton("Открыть категорию в обычном браузере", self)
         self.browser_button.clicked.connect(self.open_category_in_browser)
         self.diagnostics_button = QPushButton("Открыть папку диагностики", self)
         self.diagnostics_button.setEnabled(False)
         self.diagnostics_button.clicked.connect(self.open_diagnostics_folder)
+        secondary_actions.addWidget(self.capture_button)
         secondary_actions.addWidget(self.browser_button)
         secondary_actions.addWidget(self.diagnostics_button)
         secondary_actions.addStretch(1)
@@ -177,6 +182,28 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         except ValueError as exc:
             QMessageBox.warning(self, "Параметры DNS", str(exc))
             return
+        self._start_job()
+
+    def import_browser_capture(self) -> None:
+        path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Импорт capture из обычного браузера",
+            str(self.presenter.app_presenter.paths.repo_root),
+            "DNS capture (*.har *.html *.htm)",
+        )
+        if not path:
+            return
+        try:
+            self._job = self.presenter.build_dns_capture_job(
+                path,
+                region=self.region_edit.text(),
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "DNS capture", str(exc))
+            return
+        self._start_job()
+
+    def _start_job(self) -> None:
         self.catalog_path = None
         self.load_button.setEnabled(False)
         self.diagnostics_button.setEnabled(False)
@@ -228,6 +255,8 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
                 )
             elif exit_code == 4:
                 self.status.setText("DNS-сбор не завершён. Проверьте сообщение и путь диагностики в журнале.")
+            elif exit_code == 5:
+                self.status.setText("Локальный DNS capture не удалось импортировать. Проверьте журнал.")
             else:
                 self.status.setText(f"Сбор завершился с ошибкой, код {exit_code}")
         if self._close_after_stop:
@@ -251,6 +280,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self.region_edit.setEnabled(not running)
         self.visible_browser.setEnabled(not running)
         self.browser_button.setEnabled(not running)
+        self.capture_button.setEnabled(not running)
 
     def open_category_in_browser(self) -> None:
         category = next(

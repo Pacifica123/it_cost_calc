@@ -22,3 +22,5 @@ def test_dns_catalog_gui_uses_separate_cancellable_process() -> None:
     assert "Открыть категорию в обычном браузере" in dialog_source
     assert "Открыть папку диагностики" in dialog_source
     assert "QDesktopServices.openUrl" in dialog_source
+    assert "Импорт HAR / HTML" in dialog_source
+    assert "build_dns_capture_job" in dialog_source

@@ -85,8 +85,8 @@ _DNS_BROWSER_ENGINES = {"firefox", "chromium"}
 _DNS_BROWSER_URLS = {
     "routers": "https://www.dns-shop.ru/catalog/17a8aa1c16404e77/wi-fi-routery/",
     "switches": "https://www.dns-shop.ru/catalog/17a9dc3716404e77/kommutatory/",
-    "prebuilt_pcs": "https://www.dns-shop.ru/search/?q=Готовые+сборки+ПК",
-    "servers": "https://www.dns-shop.ru/search/?q=Сервер",
+    "prebuilt_pcs": "https://www.dns-shop.ru/catalog/17a8932c16404e77/personalnye-komputery/",
+    "servers": "https://www.dns-shop.ru/catalog/17a8939816404e77/servery/",
 }
 
 
@@ -213,6 +213,35 @@ class CatalogStagingPresenter:
             working_directory=repo_root,
             output_path=output_path,
             snapshot_path=snapshot_path,
+        )
+
+    def build_dns_capture_job(self, path: str | Path, *, region: str = "") -> DnsCatalogJobSpec:
+        capture_path = Path(path).resolve()
+        suffix = capture_path.suffix.lower()
+        if not capture_path.is_file() or suffix not in {".har", ".html", ".htm"}:
+            raise ValueError("Выберите HAR или сохранённый HTML-файл DNS.")
+        repo_root = self.app_presenter.paths.repo_root
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = repo_root / "data" / "generated" / "catalog" / "dns_imports" / timestamp
+        output_path = run_root / "equipment_catalog.json"
+        mode = "dns-har" if suffix == ".har" else "dns-html"
+        return DnsCatalogJobSpec(
+            program=sys.executable,
+            arguments=(
+                "-u",
+                str(repo_root / "scripts" / "update_equipment_catalog.py"),
+                "--mode",
+                mode,
+                "--input",
+                str(capture_path),
+                "--region",
+                str(region).strip(),
+                "--output",
+                str(output_path),
+            ),
+            working_directory=repo_root,
+            output_path=output_path,
+            snapshot_path=run_root / "capture",
         )
 
     def table_rows(self, status_filter: str = "all") -> list[dict[str, Any]]:

@@ -31,3 +31,14 @@ def test_parse_dns_technical_specs_normalizes_units() -> None:
 def test_nominal_psu_power_is_not_treated_as_device_consumption() -> None:
     result = parse_dns_technical_specs({"Мощность блока питания": "750 Вт"})
     assert "max_power_watts" not in result.parsed_metrics
+
+
+def test_storage_configuration_deduplicates_short_and_detailed_value() -> None:
+    result = parse_dns_technical_specs(
+        {
+            "SSD": "1 ТБ M.2 PCIe",
+            "Конфигурация твердотельных накопителей (SSD)": "1 ТБ M.2 PCIe",
+            "Накопители SSD": "1TB M.2 NVMe Example",
+        }
+    )
+    assert result.parsed_metrics["storage_gb"] == 1024

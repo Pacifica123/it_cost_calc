@@ -19,13 +19,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mode",
-        choices=["examples", "dns-snapshot", "dns-live", "legacy-dns-live"],
+        choices=[
+            "examples",
+            "dns-snapshot",
+            "dns-har",
+            "dns-html",
+            "dns-live",
+            "legacy-dns-live",
+        ],
         default="examples",
         help="Режим построения каталога. По умолчанию используется нормализация уже имеющихся example-снимков.",
     )
     parser.add_argument(
         "--input",
-        help="Каталог локального DNS-снимка. Обязателен для режима dns-snapshot.",
+        help="Каталог dns-snapshot либо локальный HAR/HTML для соответствующего режима.",
     )
     parser.add_argument(
         "--output",
@@ -76,6 +83,23 @@ def main(argv: list[str] | None = None) -> int:
         from .sources.dns_snapshot import build_catalog_from_dns_snapshot
 
         payload = build_catalog_from_dns_snapshot(Path(args.input))
+    elif args.mode in {"dns-har", "dns-html"}:
+        if not args.input:
+            parser.error(f"--input is required for --mode {args.mode}")
+        from .sources.dns_capture import (
+            DnsCaptureError,
+            build_catalog_from_dns_har,
+            build_catalog_from_dns_html,
+        )
+
+        try:
+            if args.mode == "dns-har":
+                payload = build_catalog_from_dns_har(Path(args.input), region=args.region)
+            else:
+                payload = build_catalog_from_dns_html(Path(args.input), region=args.region)
+        except DnsCaptureError as exc:
+            print(f"Ошибка локального DNS-import: {exc}", flush=True)
+            return 5
     elif args.mode == "dns-live":
         if not args.snapshot_output or not args.profile:
             parser.error("--snapshot-output and --profile are required for --mode dns-live")

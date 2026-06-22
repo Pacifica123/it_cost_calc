@@ -23,6 +23,8 @@ DNS_LIVE_CATEGORIES = {
 DNS_CATALOG_URLS = {
     "routers": "https://www.dns-shop.ru/catalog/17a8aa1c16404e77/wi-fi-routery/",
     "switches": "https://www.dns-shop.ru/catalog/17a9dc3716404e77/kommutatory/",
+    "prebuilt_pcs": "https://www.dns-shop.ru/catalog/17a8932c16404e77/personalnye-komputery/",
+    "servers": "https://www.dns-shop.ru/catalog/17a8939816404e77/servery/",
 }
 
 

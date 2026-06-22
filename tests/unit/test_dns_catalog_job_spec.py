@@ -34,3 +34,11 @@ def test_dns_job_spec_runs_unbuffered_cli_in_separate_process(tmp_path: Path) ->
     assert presenter.dns_browser_url("routers") == (
         "https://www.dns-shop.ru/catalog/17a8aa1c16404e77/wi-fi-routery/"
     )
+
+    capture_path = tmp_path / "browser.har"
+    capture_path.write_text("{}", encoding="utf-8")
+    capture_job = presenter.build_dns_capture_job(capture_path, region="Кемерово")
+    assert "dns-har" in capture_job.arguments
+    assert str(capture_path) in capture_job.arguments
+    assert "Кемерово" in capture_job.arguments
+    assert capture_job.output_path.name == "equipment_catalog.json"

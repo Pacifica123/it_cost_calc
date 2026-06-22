@@ -67,6 +67,7 @@ def parse_dns_technical_specs(specs: dict[str, Any]) -> DnsTechnicalParseResult:
 
     result = DnsTechnicalParseResult()
     storage_parts: list[int] = []
+    storage_seen: set[tuple[str, str]] = set()
 
     for raw_key, raw_value in specs.items():
         key = _normalized(raw_key)
@@ -87,11 +88,18 @@ def parse_dns_technical_specs(specs: dict[str, Any]) -> DnsTechnicalParseResult:
         storage_key = any(
             marker in key
             for marker in ("объем ssd", "объем hdd", "объем накопител", "storage capacity")
+        ) or key in {"ssd", "hdd"} or (
+            "конфигурация" in key
+            and "накопител" in key
+            and ("ssd" in key or "hdd" in key)
         )
         if storage_key:
             capacity = _capacity_gb(raw_value)
-            if capacity is not None:
+            storage_kind = "ssd" if "ssd" in key else "hdd" if "hdd" in key else "storage"
+            storage_identity = (storage_kind, value)
+            if capacity is not None and storage_identity not in storage_seen:
                 storage_parts.append(capacity)
+                storage_seen.add(storage_identity)
 
         explicit_consumption = (
             "потребляем" in key and "мощ" in key
