@@ -31,3 +31,6 @@ def test_dns_job_spec_runs_unbuffered_cli_in_separate_process(tmp_path: Path) ->
     assert str(tmp_path / "data/generated/catalog/dns_browser_profiles/firefox") in job.arguments
     assert "--headless" not in job.arguments
     assert "Москва" in job.arguments
+    assert presenter.dns_browser_url("routers") == (
+        "https://www.dns-shop.ru/catalog/17a8aa1c16404e77/wi-fi-routery/"
+    )

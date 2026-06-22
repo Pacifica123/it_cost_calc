@@ -150,33 +150,73 @@ def _captured_page(value: str | DnsBrowserPage, *, requested_url: str) -> _Captu
 
 def _access_failure(page: _CapturedPage) -> dict[str, object] | None:
     normalized = page.html.lower()
-    denied = page.status_code in {401, 403, 429} or any(
-        marker in normalized
-        for marker in (
-            "<title>http 403</title>",
-            "403 error",
-            "forbidden",
-            "доступ к сайту www.dns-shop.ru запрещен",
-            "too many requests",
-        )
+    html_status = next(
+        (
+            status
+            for status, markers in (
+                (
+                    403,
+                    (
+                        "<title>http 403</title>",
+                        "403 error",
+                        "forbidden",
+                        "доступ к сайту www.dns-shop.ru запрещен",
+                    ),
+                ),
+                (429, ("too many requests", "<title>http 429</title>")),
+                (401, ("<title>http 401</title>",)),
+            )
+            if any(marker in normalized for marker in markers)
+        ),
+        None,
     )
+    qrator_challenge = any(
+        marker in normalized
+        for marker in ("/__qrator/qauth_", "qauth_handle_validate_success")
+    )
+    qrator_hard_block = "guru meditation" in normalized and html_status == 403
+    denied = page.status_code in {401, 403, 429} or html_status is not None or qrator_challenge
     if not denied:
         return None
-    status = page.status_code
-    if status is None:
-        status = 429 if "too many requests" in normalized else 403
+    status = html_status or page.status_code
+    if qrator_challenge:
+        stage = "challenge_not_completed"
+    elif status == 429:
+        stage = "rate_limited"
+    elif html_status == 403:
+        stage = "hard_block"
+    else:
+        stage = "access_denied"
+    if stage == "hard_block":
+        message = (
+            "DNS вернул окончательную страницу HTTP 403 для автоматизированной сессии. "
+            "Ожидание защитной проверки уже завершилось; смена Playwright-движка или селекторов "
+            "не устранит этот отказ. Откройте DNS в обычном браузере либо используйте заранее "
+            "сохранённый офлайн-снимок."
+        )
+    elif stage == "challenge_not_completed":
+        message = (
+            "Защитная JavaScript-проверка DNS не завершилась после ожидания и повторной загрузки. "
+            "Сессия сохранена для диагностики; можно повторить позже или открыть DNS в обычном браузере."
+        )
+    elif stage == "rate_limited":
+        message = "DNS ограничил частоту запросов (HTTP 429). Повторите сбор позже."
+    else:
+        message = (
+            f"DNS вернул HTTP {status} и запретил доступ для текущего подключения. "
+            "Проверьте доступ в обычном браузере; сохранённый HTML оставлен для диагностики."
+        )
     return {
         "kind": "access_denied",
         "status_code": status,
+        "response_status_code": page.status_code,
+        "html_status_code": html_status,
+        "stage": stage,
+        "protection_provider": "qrator" if qrator_challenge or qrator_hard_block else None,
         "requested_url": page.requested_url,
         "final_url": page.final_url,
         "page_title": page.title,
-        "message": (
-            f"DNS вернул HTTP {status} и запретил доступ для текущего подключения. "
-            "Это происходит до выдачи товаров и не исправляется селекторами. "
-            "Проверьте доступ к DNS в обычном браузере без VPN/корпоративного прокси "
-            "или повторите позже; сохранённый HTML оставлен для диагностики."
-        ),
+        "message": message,
     }
 
 

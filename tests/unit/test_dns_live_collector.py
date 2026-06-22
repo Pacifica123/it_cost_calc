@@ -3,6 +3,7 @@ import json
 from contextlib import redirect_stdout
 from pathlib import Path
 
+from tools.catalog_parser.dns_browser import DnsBrowserPage
 from tools.catalog_parser.sources.dns_live import (
     DNS_BASE_URL,
     DNS_CATALOG_URLS,
@@ -128,7 +129,8 @@ def test_capture_stops_after_first_dns_403_and_writes_failure_manifest(tmp_path:
     assert manifest["capture"]["status"] == "failed"
     assert manifest["capture"]["failure"]["kind"] == "access_denied"
     assert manifest["capture"]["failure"]["status_code"] == 403
-    assert "текущего подключения" in manifest["capture"]["failure"]["message"]
+    assert manifest["capture"]["failure"]["stage"] == "hard_block"
+    assert "окончательную страницу HTTP 403" in manifest["capture"]["failure"]["message"]
     assert (options.snapshot_dir / "search" / "routers.html").exists()
     assert not (options.snapshot_dir / "search" / "prebuilt_pcs.html").exists()
 
@@ -178,6 +180,43 @@ def test_capture_keeps_partial_result_when_later_category_is_denied(tmp_path: Pa
     assert manifest["capture"]["status"] == "partial"
     assert manifest["capture"]["failure"]["status_code"] == 403
     assert len(manifest["items"]) == 1
+
+
+def test_html_403_takes_precedence_over_transport_401(tmp_path: Path) -> None:
+    options = DnsLiveOptions(
+        snapshot_dir=tmp_path / "snapshot",
+        profile_dir=tmp_path / "profile",
+        categories=("routers",),
+        per_category_limit=1,
+        time_limit_seconds=60,
+        request_delay_seconds=0,
+    )
+
+    def fetch(url: str) -> DnsBrowserPage:
+        return DnsBrowserPage(
+            requested_url=url,
+            final_url=url,
+            status_code=401,
+            title="HTTP 403",
+            html=DNS_403_HTML.replace("</body>", "<p>Guru meditation</p></body>"),
+        )
+
+    try:
+        capture_dns_snapshot(options, fetch=fetch, progress=lambda _message: None)
+    except DnsAccessDeniedError:
+        pass
+    else:
+        raise AssertionError("DNS hard block must stop collection")
+
+    manifest = json.loads(
+        (options.snapshot_dir / "snapshot_manifest.json").read_text(encoding="utf-8")
+    )
+    failure = manifest["capture"]["failure"]
+    assert failure["status_code"] == 403
+    assert failure["response_status_code"] == 401
+    assert failure["html_status_code"] == 403
+    assert failure["stage"] == "hard_block"
+    assert failure["protection_provider"] == "qrator"
 
 
 def test_cli_reports_expected_access_denial_without_traceback(tmp_path: Path) -> None:

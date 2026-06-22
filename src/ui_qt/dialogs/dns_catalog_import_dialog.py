@@ -7,8 +7,8 @@ from ui_qt.presenters.catalog_staging_presenter import CatalogStagingPresenter
 from ui_qt.widgets import CompactLabel, InfoHint
 
 try:
-    from PySide6.QtCore import QProcess, QProcessEnvironment, QTimer
-    from PySide6.QtGui import QTextCursor
+    from PySide6.QtCore import QProcess, QProcessEnvironment, QTimer, QUrl
+    from PySide6.QtGui import QDesktopServices, QTextCursor
     from PySide6.QtWidgets import (
         QCheckBox,
         QComboBox,
@@ -27,8 +27,8 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "PySide6":
         raise
-    QProcess = QProcessEnvironment = QTimer = None  # type: ignore[assignment]
-    QTextCursor = None  # type: ignore[assignment]
+    QProcess = QProcessEnvironment = QTimer = QUrl = None  # type: ignore[assignment]
+    QDesktopServices = QTextCursor = None  # type: ignore[assignment]
     QCheckBox = QComboBox = QGridLayout = QHBoxLayout = QLineEdit = None  # type: ignore[assignment]
     QMessageBox = None  # type: ignore[assignment]
     QPlainTextEdit = QProgressBar = QPushButton = QSpinBox = QVBoxLayout = None  # type: ignore[assignment]
@@ -72,8 +72,8 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         layout.setSpacing(10)
         layout.addWidget(
             InfoHint(
-                "Движок установится автоматически при первом запуске. В открытом браузере можно "
-                "выбрать регион, принять cookies или пройти проверку. Исходные HTML сохраняются.",
+                "Движок установится автоматически. DNS может отклонить автоматизированную сессию "
+                "даже после проверки; тогда используйте обычный браузер. Исходные HTML сохраняются.",
                 self,
             )
         )
@@ -130,6 +130,17 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self.log.setPlaceholderText("Здесь появится журнал сбора.")
         layout.addWidget(self.log, 1)
 
+        secondary_actions = QHBoxLayout()
+        self.browser_button = QPushButton("Открыть категорию в обычном браузере", self)
+        self.browser_button.clicked.connect(self.open_category_in_browser)
+        self.diagnostics_button = QPushButton("Открыть папку диагностики", self)
+        self.diagnostics_button.setEnabled(False)
+        self.diagnostics_button.clicked.connect(self.open_diagnostics_folder)
+        secondary_actions.addWidget(self.browser_button)
+        secondary_actions.addWidget(self.diagnostics_button)
+        secondary_actions.addStretch(1)
+        layout.addLayout(secondary_actions)
+
         buttons = QHBoxLayout()
         self.start_button = QPushButton("Начать сбор", self)
         self.start_button.setProperty("role", "primary")
@@ -168,6 +179,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
             return
         self.catalog_path = None
         self.load_button.setEnabled(False)
+        self.diagnostics_button.setEnabled(False)
         self.log.clear()
         self._output_decoder.reset()
         self._set_controls_running(True)
@@ -203,6 +215,8 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self.progress.setRange(0, 1)
         self.progress.setValue(1 if exit_code == 0 else 0)
         output_path = self._job.output_path if self._job is not None else None
+        if self._job is not None and self._job.snapshot_path.parent.exists():
+            self.diagnostics_button.setEnabled(True)
         if exit_code == 0 and output_path is not None and output_path.exists():
             self.catalog_path = output_path
             self.load_button.setEnabled(True)
@@ -210,7 +224,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         else:
             if exit_code == 3:
                 self.status.setText(
-                    "DNS запретил доступ. Подробности и HTML сохранены в журнале."
+                    "DNS отклонил автоматизированную сессию. Смена движка может не помочь."
                 )
             elif exit_code == 4:
                 self.status.setText("DNS-сбор не завершён. Проверьте сообщение и путь диагностики в журнале.")
@@ -236,6 +250,26 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self.browser_engine.setEnabled(not running)
         self.region_edit.setEnabled(not running)
         self.visible_browser.setEnabled(not running)
+        self.browser_button.setEnabled(not running)
+
+    def open_category_in_browser(self) -> None:
+        category = next(
+            (value for value, checkbox in self._category_checks.items() if checkbox.isChecked()),
+            None,
+        )
+        if category is None:
+            QMessageBox.warning(self, "Категория DNS", "Выберите хотя бы одну категорию.")
+            return
+        QDesktopServices.openUrl(QUrl(self.presenter.dns_browser_url(category)))
+
+    def open_diagnostics_folder(self) -> None:
+        if self._job is None:
+            return
+        run_path = self._job.snapshot_path.parent
+        if not run_path.exists():
+            QMessageBox.warning(self, "Диагностика DNS", "Папка запуска ещё не создана.")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(run_path)))
 
     def reject(self) -> None:
         if self._process.state() != QProcess.ProcessState.NotRunning:

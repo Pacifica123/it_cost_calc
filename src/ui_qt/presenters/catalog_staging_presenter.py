@@ -82,6 +82,12 @@ _DNS_CATEGORY_OPTIONS = (
     ("servers", "Серверы"),
 )
 _DNS_BROWSER_ENGINES = {"firefox", "chromium"}
+_DNS_BROWSER_URLS = {
+    "routers": "https://www.dns-shop.ru/catalog/17a8aa1c16404e77/wi-fi-routery/",
+    "switches": "https://www.dns-shop.ru/catalog/17a9dc3716404e77/kommutatory/",
+    "prebuilt_pcs": "https://www.dns-shop.ru/search/?q=Готовые+сборки+ПК",
+    "servers": "https://www.dns-shop.ru/search/?q=Сервер",
+}
 
 
 class CatalogStagingPresenter:
@@ -134,6 +140,12 @@ class CatalogStagingPresenter:
 
     def dns_category_options(self) -> tuple[tuple[str, str], ...]:
         return _DNS_CATEGORY_OPTIONS
+
+    def dns_browser_url(self, category: str) -> str:
+        try:
+            return _DNS_BROWSER_URLS[category]
+        except KeyError as exc:
+            raise ValueError("Неизвестная DNS-категория.") from exc
 
     def build_dns_job(
         self,

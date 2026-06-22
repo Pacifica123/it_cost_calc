@@ -14,8 +14,11 @@ def test_dns_catalog_gui_uses_separate_cancellable_process() -> None:
     assert "Загрузить в staging" in dialog_source
     assert "Собрать из DNS" in screen_source
     assert "dialog.catalog_path" in screen_source
-    assert "DNS запретил доступ. Подробности" in dialog_source
+    assert "DNS отклонил автоматизированную сессию" in dialog_source
     assert "QComboBox" in dialog_source
     assert "установится автоматически" in dialog_source
     assert 'process_environment.insert("PYTHONUTF8", "1")' in dialog_source
     assert "getincrementaldecoder" in dialog_source
+    assert "Открыть категорию в обычном браузере" in dialog_source
+    assert "Открыть папку диагностики" in dialog_source
+    assert "QDesktopServices.openUrl" in dialog_source

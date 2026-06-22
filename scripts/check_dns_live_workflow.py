@@ -102,6 +102,7 @@ def main() -> int:
         )
         assert calls == 1
         assert denied_manifest["capture"]["failure"]["status_code"] == 403
+        assert denied_manifest["capture"]["failure"]["stage"] == "hard_block"
 
         browser_executable = root / "fake-chromium"
         install_commands: list[list[str]] = []
