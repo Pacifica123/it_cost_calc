@@ -17,3 +17,5 @@ def test_dns_catalog_gui_uses_separate_cancellable_process() -> None:
     assert "DNS запретил доступ. Подробности" in dialog_source
     assert "QComboBox" in dialog_source
     assert "установится автоматически" in dialog_source
+    assert 'process_environment.insert("PYTHONUTF8", "1")' in dialog_source
+    assert "getincrementaldecoder" in dialog_source

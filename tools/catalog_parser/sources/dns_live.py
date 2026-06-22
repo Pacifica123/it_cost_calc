@@ -341,6 +341,8 @@ def build_catalog_from_live_dns(
         first_page_wait_seconds=options.first_page_wait_seconds,
         progress=progress,
     ) as browser:
+        progress("Подготавливаю DNS-сессию через главную страницу.")
+        browser.fetch(f"{DNS_BASE_URL}/")
         capture_dns_snapshot(options, fetch=browser.fetch, progress=progress)
     payload = build_catalog_from_dns_snapshot(options.snapshot_dir)
     payload["generated_by"] = "tools.catalog_parser.sources.dns_live"

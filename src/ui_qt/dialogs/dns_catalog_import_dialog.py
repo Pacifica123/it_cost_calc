@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import codecs
 from pathlib import Path
 
 from ui_qt.presenters.catalog_staging_presenter import CatalogStagingPresenter
 from ui_qt.widgets import CompactLabel, InfoHint
 
 try:
-    from PySide6.QtCore import QProcess, QTimer
+    from PySide6.QtCore import QProcess, QProcessEnvironment, QTimer
     from PySide6.QtGui import QTextCursor
     from PySide6.QtWidgets import (
         QCheckBox,
@@ -26,7 +27,7 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "PySide6":
         raise
-    QProcess = QTimer = None  # type: ignore[assignment]
+    QProcess = QProcessEnvironment = QTimer = None  # type: ignore[assignment]
     QTextCursor = None  # type: ignore[assignment]
     QCheckBox = QComboBox = QGridLayout = QHBoxLayout = QLineEdit = None  # type: ignore[assignment]
     QMessageBox = None  # type: ignore[assignment]
@@ -49,14 +50,20 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self.catalog_path: Path | None = None
         self._job = None
         self._close_after_stop = False
+        self._output_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self._process = QProcess(self)
         self._process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        process_environment = QProcessEnvironment.systemEnvironment()
+        process_environment.insert("PYTHONUTF8", "1")
+        process_environment.insert("PYTHONIOENCODING", "utf-8")
+        self._process.setProcessEnvironment(process_environment)
         self._process.readyReadStandardOutput.connect(self._read_output)
         self._process.started.connect(self._process_started)
         self._process.finished.connect(self._process_finished)
         self._process.errorOccurred.connect(self._process_error)
         self.setWindowTitle("Сбор каталога DNS")
-        self.resize(760, 620)
+        self.resize(860, 640)
+        self.setMinimumSize(720, 560)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -162,6 +169,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self.catalog_path = None
         self.load_button.setEnabled(False)
         self.log.clear()
+        self._output_decoder.reset()
         self._set_controls_running(True)
         self._process.setWorkingDirectory(str(self._job.working_directory))
         self._process.start(self._job.program, list(self._job.arguments))
@@ -181,15 +189,16 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self.progress.setRange(0, 0)
         self.status.setText("Сбор выполняется")
 
-    def _read_output(self) -> None:
-        text = bytes(self._process.readAllStandardOutput()).decode("utf-8", errors="replace")
+    def _read_output(self, *, final: bool = False) -> None:
+        output = bytes(self._process.readAllStandardOutput())
+        text = self._output_decoder.decode(output, final=final)
         if text:
             self.log.moveCursor(QTextCursor.MoveOperation.End)
             self.log.insertPlainText(text)
             self.log.ensureCursorVisible()
 
     def _process_finished(self, exit_code: int, _exit_status) -> None:
-        self._read_output()
+        self._read_output(final=True)
         self._set_controls_running(False)
         self.progress.setRange(0, 1)
         self.progress.setValue(1 if exit_code == 0 else 0)

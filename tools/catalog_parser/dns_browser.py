@@ -7,6 +7,11 @@ import sys
 from typing import Callable
 
 PLAYWRIGHT_BROWSER_ENGINES = ("firefox", "chromium")
+_DNS_CHALLENGE_MARKERS = (
+    "/__qrator/qauth_",
+    "qauth_handle_validate_success",
+)
+_DNS_CHALLENGE_WAIT_SECONDS = 20.0
 
 
 class DnsBrowserError(RuntimeError):
@@ -136,7 +141,20 @@ class DnsBrowserSession:
         response = self._page.goto(url, wait_until="domcontentloaded")
         self._page.wait_for_timeout(1500)
         status_code = response.status if response is not None else None
-        if (
+        html = self._page.content()
+        challenge = any(marker in html.lower() for marker in _DNS_CHALLENGE_MARKERS)
+        if challenge:
+            wait_seconds = max(self.first_page_wait_seconds, _DNS_CHALLENGE_WAIT_SECONDS)
+            self.progress(
+                "DNS показал защитную проверку. Жду её завершения в открытом браузере."
+            )
+            self._page.wait_for_timeout(round(wait_seconds * 1000))
+            self.progress("Повторно открываю страницу после защитной проверки DNS.")
+            response = self._page.reload(wait_until="domcontentloaded")
+            self._page.wait_for_timeout(2000)
+            status_code = response.status if response is not None else None
+            html = self._page.content()
+        elif (
             self._first_page
             and self.first_page_wait_seconds
             and status_code not in {401, 403, 429}
@@ -151,7 +169,7 @@ class DnsBrowserSession:
             final_url=self._page.url,
             status_code=status_code,
             title=self._page.title(),
-            html=self._page.content(),
+            html=html,
         )
 
     def __exit__(self, _exc_type, _exc, _traceback) -> None:

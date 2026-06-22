@@ -4,6 +4,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 from tools.catalog_parser.sources.dns_live import (
+    DNS_BASE_URL,
     DNS_CATALOG_URLS,
     DnsAccessDeniedError,
     DnsLiveOptions,
@@ -211,3 +212,44 @@ def test_cli_reports_expected_access_denial_without_traceback(tmp_path: Path) ->
     assert "Ошибка DNS-сбора: DNS вернул HTTP 403" in output.getvalue()
     assert str(manifest_path) in output.getvalue()
     assert "Traceback" not in output.getvalue()
+
+
+def test_live_catalog_warms_up_dns_homepage_before_capture(tmp_path: Path) -> None:
+    options = DnsLiveOptions(
+        snapshot_dir=tmp_path / "snapshot",
+        profile_dir=tmp_path / "profile",
+        categories=("routers",),
+        per_category_limit=1,
+        time_limit_seconds=60,
+        request_delay_seconds=0,
+    )
+    events: list[str] = []
+
+    class FakeBrowser:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def fetch(self, url: str) -> str:
+            events.append(url)
+            if url == DNS_BASE_URL + "/":
+                return "<html><body>home</body></html>"
+            if "/catalog/" in url:
+                return SEARCH_HTML
+            return PRODUCT_HTML
+
+        def __exit__(self, _exc_type, _exc, _traceback) -> None:
+            pass
+
+    original_session = dns_live.DnsBrowserSession
+    dns_live.DnsBrowserSession = FakeBrowser
+    try:
+        payload = dns_live.build_catalog_from_live_dns(options, progress=lambda _message: None)
+    finally:
+        dns_live.DnsBrowserSession = original_session
+
+    assert events[0] == DNS_BASE_URL + "/"
+    assert events[1] == DNS_CATALOG_URLS["routers"]
+    assert payload["stats"]["items_total"] == 1
