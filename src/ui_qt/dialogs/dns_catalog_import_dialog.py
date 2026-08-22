@@ -43,10 +43,16 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self,
         presenter: CatalogStagingPresenter,
         parent: QWidget | None = None,  # type: ignore[valid-type]
+        *,
+        source: str = "dns",
     ) -> None:
         if QProcess is None:
             raise RuntimeError("PySide6 is required to create DnsCatalogImportDialog")
         super().__init__(parent)
+        if source not in {"dns", "yandex_market"}:
+            raise ValueError(f"Unsupported catalog source: {source}")
+        self.source = source
+        self.source_title = "DNS" if source == "dns" else "Яндекс Маркет"
         self.presenter = presenter
         self.catalog_path: Path | None = None
         self._job = None
@@ -62,7 +68,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self._process.started.connect(self._process_started)
         self._process.finished.connect(self._process_finished)
         self._process.errorOccurred.connect(self._process_error)
-        self.setWindowTitle("Сбор каталога DNS")
+        self.setWindowTitle(f"Сбор каталога {self.source_title}")
         self.resize(860, 640)
         self.setMinimumSize(720, 560)
         self._build_ui()
@@ -71,19 +77,28 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
-        layout.addWidget(
-            InfoHint(
+        if self.source == "dns":
+            hint = (
                 "Движок установится автоматически. DNS может отклонить автоматизированную сессию "
-                "даже после проверки; тогда используйте обычный браузер. Исходные HTML сохраняются.",
-                self,
+                "даже после проверки; тогда используйте обычный браузер. Исходные HTML сохраняются."
             )
-        )
+        else:
+            hint = (
+                "Сбор читает только публично отображаемые карточки Яндекс Маркета через видимый "
+                "браузер. HTML сохраняется для повторяемого офлайн-разбора; HAR/HTML доступен как fallback."
+            )
+        layout.addWidget(InfoHint(hint, self))
 
         grid = QGridLayout()
         grid.addWidget(CompactLabel("Категории", self), 0, 0)
         category_row = QHBoxLayout()
         self._category_checks: dict[str, QCheckBox] = {}
-        for value, label in self.presenter.dns_category_options():
+        category_options = (
+            self.presenter.dns_category_options()
+            if self.source == "dns"
+            else self.presenter.yandex_market_category_options()
+        )
+        for value, label in category_options:
             checkbox = QCheckBox(label, self)
             checkbox.setChecked(True)
             self._category_checks[value] = checkbox
@@ -171,7 +186,12 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
             value for value, checkbox in self._category_checks.items() if checkbox.isChecked()
         ]
         try:
-            self._job = self.presenter.build_dns_job(
+            builder = (
+                self.presenter.build_dns_job
+                if self.source == "dns"
+                else self.presenter.build_yandex_market_job
+            )
+            self._job = builder(
                 categories=categories,
                 per_category_limit=self.limit_spin.value(),
                 time_limit_seconds=self.timeout_spin.value(),
@@ -180,7 +200,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
                 region=self.region_edit.text(),
             )
         except ValueError as exc:
-            QMessageBox.warning(self, "Параметры DNS", str(exc))
+            QMessageBox.warning(self, f"Параметры {self.source_title}", str(exc))
             return
         self._start_job()
 
@@ -189,17 +209,19 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
             self,
             "Импорт capture из обычного браузера",
             str(self.presenter.app_presenter.paths.repo_root),
-            "DNS capture (*.har *.html *.htm)",
+            f"{self.source_title} capture (*.har *.html *.htm)",
         )
         if not path:
             return
         try:
-            self._job = self.presenter.build_dns_capture_job(
-                path,
-                region=self.region_edit.text(),
+            builder = (
+                self.presenter.build_dns_capture_job
+                if self.source == "dns"
+                else self.presenter.build_yandex_market_capture_job
             )
+            self._job = builder(path, region=self.region_edit.text())
         except ValueError as exc:
-            QMessageBox.warning(self, "DNS capture", str(exc))
+            QMessageBox.warning(self, f"{self.source_title} capture", str(exc))
             return
         self._start_job()
 
@@ -250,13 +272,22 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
             self.status.setText(f"Каталог готов: {output_path}")
         else:
             if exit_code == 3:
-                self.status.setText(
-                    "DNS отклонил автоматизированную сессию. Смена движка может не помочь."
-                )
+                if self.source == "dns":
+                    self.status.setText(
+                        "DNS отклонил автоматизированную сессию. Смена движка может не помочь."
+                    )
+                else:
+                    self.status.setText(
+                        "Яндекс Маркет отклонил сессию или потребовал CAPTCHA. Проверьте журнал."
+                    )
             elif exit_code == 4:
-                self.status.setText("DNS-сбор не завершён. Проверьте сообщение и путь диагностики в журнале.")
+                self.status.setText(
+                    f"Сбор {self.source_title} не завершён. Проверьте сообщение и диагностику в журнале."
+                )
             elif exit_code == 5:
-                self.status.setText("Локальный DNS capture не удалось импортировать. Проверьте журнал.")
+                self.status.setText(
+                    f"Локальный capture {self.source_title} не удалось импортировать. Проверьте журнал."
+                )
             else:
                 self.status.setText(f"Сбор завершился с ошибкой, код {exit_code}")
         if self._close_after_stop:
@@ -288,16 +319,29 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
             None,
         )
         if category is None:
-            QMessageBox.warning(self, "Категория DNS", "Выберите хотя бы одну категорию.")
+            QMessageBox.warning(
+                self,
+                f"Категория {self.source_title}",
+                "Выберите хотя бы одну категорию.",
+            )
             return
-        QDesktopServices.openUrl(QUrl(self.presenter.dns_browser_url(category)))
+        url = (
+            self.presenter.dns_browser_url(category)
+            if self.source == "dns"
+            else self.presenter.yandex_market_browser_url(category)
+        )
+        QDesktopServices.openUrl(QUrl(url))
 
     def open_diagnostics_folder(self) -> None:
         if self._job is None:
             return
         run_path = self._job.snapshot_path.parent
         if not run_path.exists():
-            QMessageBox.warning(self, "Диагностика DNS", "Папка запуска ещё не создана.")
+            QMessageBox.warning(
+                self,
+                f"Диагностика {self.source_title}",
+                "Папка запуска ещё не создана.",
+            )
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(run_path)))
 

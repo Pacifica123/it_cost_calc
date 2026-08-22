@@ -6,6 +6,7 @@ from ui_qt.presenters.catalog_staging_presenter import (
     CatalogStagingPresenter,
     CatalogStagingSummary,
     DnsCatalogJobSpec,
+    YandexMarketCatalogJobSpec,
 )
 from ui_qt.presenters.component_editor_presenter import ComponentEditorPresenter
 from ui_qt.presenters.configuration_details_presenter import (
@@ -38,6 +39,7 @@ __all__ = [
     "CatalogStagingSummary",
     "CatalogFilterOption",
     "DnsCatalogJobSpec",
+    "YandexMarketCatalogJobSpec",
     "ComponentEditorPresenter",
     "ConfigurationDetails",
     "ConfigurationDetailsPresenter",

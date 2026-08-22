@@ -48,6 +48,7 @@
 - `architecture/dns_network_parser_best_effort.md` — best-effort извлечение сетевых характеристик роутеров из названий DNS-Shop с warnings/confidence и приоритетом ручных specs;
 - `architecture/dns_snapshot_import.md` — контракт воспроизводимого офлайн-импорта сохранённых DNS HTML/JSON-LD в catalog v2;
 - `architecture/dns_live_catalog_gui.md` — управляемый запуск DNS-сбора из Qt через отдельный процесс, snapshots, отмена и staging;
+- `architecture/yandex_market_catalog_parser.md` — исследовательский Playwright/HAR/HTML-сбор публичных карточек Яндекс Маркета в catalog v2;
 
 ### Продукт
 - `product/vision.md` — продуктовая идея и траектория развития.

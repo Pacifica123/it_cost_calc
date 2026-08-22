@@ -81,6 +81,25 @@ python scripts/update_equipment_catalog.py \
 
 Ответы DNS `403/429` распознаются до парсинга ссылок. Сбор останавливается после первого отказа, а причина и URL сохраняются в `snapshot_manifest.json`; смена селекторов в этой ситуации не поможет.
 
+### Исследовать каталог Яндекс Маркета
+
+```bash
+python scripts/update_equipment_catalog.py \
+  --mode yandex-market-live \
+  --categories routers,switches,prebuilt_pcs,servers \
+  --browser-engine firefox \
+  --limit 10 \
+  --time-limit 300 \
+  --snapshot-output data/generated/catalog/yandex_market_runs/manual/snapshot \
+  --profile data/generated/catalog/yandex_market_browser_profiles/firefox \
+  --region Москва \
+  --output data/generated/catalog/yandex_market_runs/manual/equipment_catalog.json
+```
+
+Режимы `yandex-market-snapshot`, `yandex-market-har` и `yandex-market-html` обеспечивают повторный офлайн-разбор. Общедоступный API каталога не используется: seller API относится к кабинету продавца, а новые ключи старого Content API не выдаются. Подробности, ограничения и критерий теста: `docs/architecture/yandex_market_catalog_parser.md`.
+
+В GUI тот же сценарий запускается кнопкой `Собрать из Яндекс Маркета`. Live-сбор сохраняет публичные category/card HTML, распознаёт CAPTCHA/HTTP-ограничения и оставляет частичный результат. HAR importer не переносит headers, cookies, POST data, изображения или отзывы.
+
 ## Для чего это нужно
 
 Полученный каталог можно открыть на экране **«Каталог»**. GUI не занимается

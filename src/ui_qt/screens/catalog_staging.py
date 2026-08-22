@@ -5,6 +5,9 @@ from typing import Any
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import CatalogStagingPresenter, QtAppPresenter
 from ui_qt.dialogs.dns_catalog_import_dialog import DnsCatalogImportDialog
+from ui_qt.dialogs.yandex_market_catalog_import_dialog import (
+    YandexMarketCatalogImportDialog,
+)
 from ui_qt.widgets import CompactLabel, InfoHint, SmartTable
 
 try:
@@ -311,6 +314,8 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         open_button.clicked.connect(self.open_catalog)
         dns_button = QPushButton("Собрать из DNS", self)
         dns_button.clicked.connect(self.collect_dns_catalog)
+        market_button = QPushButton("Собрать из Яндекс Маркета", self)
+        market_button.clicked.connect(self.collect_yandex_market_catalog)
         approve_button = QPushButton("Подтвердить", self)
         approve_button.clicked.connect(self.approve_selected)
         reject_button = QPushButton("Отклонить", self)
@@ -323,6 +328,7 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
 
         actions.addWidget(open_button, 0)
         actions.addWidget(dns_button, 0)
+        actions.addWidget(market_button, 0)
         actions.addStretch(1)
         actions.addWidget(reject_button, 0)
         actions.addWidget(edit_button, 0)
@@ -390,6 +396,21 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         self.filter_combo.setCurrentIndex(0)
         self.details.setPlainText(
             "Каталог DNS собран и загружен. Проверьте warnings и подтвердите нужные позиции."
+        )
+        self.refresh_data()
+
+    def collect_yandex_market_catalog(self) -> None:
+        dialog = YandexMarketCatalogImportDialog(self.presenter, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.catalog_path is None:
+            return
+        try:
+            self.presenter.stage_file(dialog.catalog_path)
+        except Exception as exc:
+            QMessageBox.warning(self, "Ошибка каталога Яндекс Маркета", str(exc))
+            return
+        self.filter_combo.setCurrentIndex(0)
+        self.details.setPlainText(
+            "Каталог Яндекс Маркета собран и загружен. Проверьте warnings, цену и характеристики."
         )
         self.refresh_data()
 

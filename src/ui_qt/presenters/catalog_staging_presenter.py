@@ -75,6 +75,15 @@ class DnsCatalogJobSpec:
     snapshot_path: Path
 
 
+@dataclass(frozen=True)
+class YandexMarketCatalogJobSpec:
+    program: str
+    arguments: tuple[str, ...]
+    working_directory: Path
+    output_path: Path
+    snapshot_path: Path
+
+
 _DNS_CATEGORY_OPTIONS = (
     ("routers", "Роутеры"),
     ("switches", "Коммутаторы"),
@@ -87,6 +96,18 @@ _DNS_BROWSER_URLS = {
     "switches": "https://www.dns-shop.ru/catalog/17a9dc3716404e77/kommutatory/",
     "prebuilt_pcs": "https://www.dns-shop.ru/catalog/17a8932c16404e77/personalnye-komputery/",
     "servers": "https://www.dns-shop.ru/catalog/17a8939816404e77/servery/",
+}
+_YANDEX_MARKET_CATEGORY_OPTIONS = (
+    ("routers", "Роутеры"),
+    ("switches", "Коммутаторы"),
+    ("prebuilt_pcs", "Готовые ПК"),
+    ("servers", "Серверы"),
+)
+_YANDEX_MARKET_BROWSER_URLS = {
+    "routers": "https://market.yandex.ru/category/routery",
+    "switches": "https://market.yandex.ru/category/kommutatory",
+    "prebuilt_pcs": "https://market.yandex.ru/category/gotovyye-kompyutery",
+    "servers": "https://market.yandex.ru/category/servernyye-kompyutery",
 }
 
 
@@ -226,6 +247,119 @@ class CatalogStagingPresenter:
         output_path = run_root / "equipment_catalog.json"
         mode = "dns-har" if suffix == ".har" else "dns-html"
         return DnsCatalogJobSpec(
+            program=sys.executable,
+            arguments=(
+                "-u",
+                str(repo_root / "scripts" / "update_equipment_catalog.py"),
+                "--mode",
+                mode,
+                "--input",
+                str(capture_path),
+                "--region",
+                str(region).strip(),
+                "--output",
+                str(output_path),
+            ),
+            working_directory=repo_root,
+            output_path=output_path,
+            snapshot_path=run_root / "capture",
+        )
+
+    def yandex_market_category_options(self) -> tuple[tuple[str, str], ...]:
+        return _YANDEX_MARKET_CATEGORY_OPTIONS
+
+    def yandex_market_browser_url(self, category: str) -> str:
+        try:
+            return _YANDEX_MARKET_BROWSER_URLS[category]
+        except KeyError as exc:
+            raise ValueError("Неизвестная категория Яндекс Маркета.") from exc
+
+    def build_yandex_market_job(
+        self,
+        *,
+        categories: list[str],
+        per_category_limit: int,
+        time_limit_seconds: int,
+        visible_browser: bool,
+        browser_engine: str = "firefox",
+        region: str = "",
+    ) -> YandexMarketCatalogJobSpec:
+        allowed = {value for value, _label in _YANDEX_MARKET_CATEGORY_OPTIONS}
+        selected = tuple(dict.fromkeys(str(value) for value in categories))
+        if not selected or any(value not in allowed for value in selected):
+            raise ValueError("Выберите хотя бы одну поддерживаемую категорию Яндекс Маркета.")
+        if not 1 <= per_category_limit <= 50:
+            raise ValueError("Лимит карточек должен быть от 1 до 50.")
+        if not 30 <= time_limit_seconds <= 1800:
+            raise ValueError("Таймаут должен быть от 30 до 1800 секунд.")
+        if browser_engine not in _DNS_BROWSER_ENGINES:
+            raise ValueError("Выберите Firefox или Chromium.")
+
+        repo_root = self.app_presenter.paths.repo_root
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = repo_root / "data" / "generated" / "catalog" / "yandex_market_runs" / timestamp
+        output_path = run_root / "equipment_catalog.json"
+        snapshot_path = run_root / "snapshot"
+        profile_path = (
+            repo_root
+            / "data"
+            / "generated"
+            / "catalog"
+            / "yandex_market_browser_profiles"
+            / browser_engine
+        )
+        arguments = [
+            "-u",
+            str(repo_root / "scripts" / "update_equipment_catalog.py"),
+            "--mode",
+            "yandex-market-live",
+            "--categories",
+            ",".join(selected),
+            "--browser-engine",
+            browser_engine,
+            "--limit",
+            str(per_category_limit),
+            "--time-limit",
+            str(time_limit_seconds),
+            "--browser-wait",
+            "8",
+            "--snapshot-output",
+            str(snapshot_path),
+            "--profile",
+            str(profile_path),
+            "--region",
+            str(region).strip(),
+            "--output",
+            str(output_path),
+        ]
+        if not visible_browser:
+            arguments.append("--headless")
+        return YandexMarketCatalogJobSpec(
+            program=sys.executable,
+            arguments=tuple(arguments),
+            working_directory=repo_root,
+            output_path=output_path,
+            snapshot_path=snapshot_path,
+        )
+
+    def build_yandex_market_capture_job(
+        self,
+        path: str | Path,
+        *,
+        region: str = "",
+    ) -> YandexMarketCatalogJobSpec:
+        capture_path = Path(path).resolve()
+        suffix = capture_path.suffix.lower()
+        if not capture_path.is_file() or suffix not in {".har", ".html", ".htm"}:
+            raise ValueError("Выберите HAR или сохранённый HTML-файл Яндекс Маркета.")
+        repo_root = self.app_presenter.paths.repo_root
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = (
+            repo_root / "data" / "generated" / "catalog" / "yandex_market_imports" / timestamp
+        )
+        output_path = run_root / "equipment_catalog.json"
+        mode = "yandex-market-har" if suffix == ".har" else "yandex-market-html"
+        return YandexMarketCatalogJobSpec(
             program=sys.executable,
             arguments=(
                 "-u",

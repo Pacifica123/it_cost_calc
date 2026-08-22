@@ -66,7 +66,13 @@ def _first_text(raw: dict[str, Any], specs: dict[str, Any], *keys: str) -> str |
 
 
 
-def _normalize_dns_item(raw: dict[str, Any], *, bucket: str, snapshot_name: str) -> CatalogItem:
+def _normalize_source_item(
+    raw: dict[str, Any],
+    *,
+    bucket: str,
+    snapshot_name: str,
+    source: str,
+) -> CatalogItem:
     source_category = raw.get("type") or bucket
     normalized_category = DNS_CATEGORY_MAP.get(source_category, DNS_CATEGORY_MAP.get(bucket, "component"))
     title = str(raw.get("title") or "Без названия").strip()
@@ -102,7 +108,7 @@ def _normalize_dns_item(raw: dict[str, Any], *, bucket: str, snapshot_name: str)
         item_id=make_item_id(title, url),
         title=title,
         category=normalized_category,
-        source="dns",
+        source=source,
         source_category=source_category,
         price_rub=price_rub,
         currency=currency,
@@ -122,17 +128,17 @@ def _normalize_dns_item(raw: dict[str, Any], *, bucket: str, snapshot_name: str)
         },
         field_provenance={
             "title": {
-                "source": "dns",
+                "source": source,
                 "method": str(raw.get("parse_method") or "snapshot"),
                 "confidence": 1.0 if title != "Без названия" else 0.0,
             },
             "price": {
-                "source": "dns",
+                "source": source,
                 "method": str(raw.get("parse_method") or "snapshot"),
                 "confidence": 1.0 if price_rub is not None else 0.0,
             },
             "attributes": {
-                "source": "dns",
+                "source": source,
                 "method": str(attributes.get("parse_source") or "snapshot-specs"),
                 "confidence": float(attributes.get("confidence", 1.0) or 0.0),
             },
@@ -155,7 +161,37 @@ def normalize_dns_snapshot(snapshot: dict[str, Any], *, snapshot_name: str) -> l
         for raw_item in bucket_value:
             if not isinstance(raw_item, dict):
                 continue
-            items.append(_normalize_dns_item(raw_item, bucket=bucket_name, snapshot_name=snapshot_name))
+            items.append(
+                _normalize_source_item(
+                    raw_item,
+                    bucket=bucket_name,
+                    snapshot_name=snapshot_name,
+                    source="dns",
+                )
+            )
+    return items
+
+
+def normalize_yandex_market_snapshot(
+    snapshot: dict[str, Any], *, snapshot_name: str
+) -> list[CatalogItem]:
+    """Normalize Yandex Market rows without pretending they came from DNS."""
+
+    items: list[CatalogItem] = []
+    for bucket_name, bucket_value in snapshot.items():
+        if not isinstance(bucket_value, list):
+            continue
+        for raw_item in bucket_value:
+            if not isinstance(raw_item, dict):
+                continue
+            items.append(
+                _normalize_source_item(
+                    raw_item,
+                    bucket=bucket_name,
+                    snapshot_name=snapshot_name,
+                    source="yandex_market",
+                )
+            )
     return items
 
 

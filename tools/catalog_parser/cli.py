@@ -25,6 +25,10 @@ def build_parser() -> argparse.ArgumentParser:
             "dns-har",
             "dns-html",
             "dns-live",
+            "yandex-market-snapshot",
+            "yandex-market-har",
+            "yandex-market-html",
+            "yandex-market-live",
             "legacy-dns-live",
         ],
         default="examples",
@@ -32,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--input",
-        help="Каталог dns-snapshot либо локальный HAR/HTML для соответствующего режима.",
+        help="Каталог snapshot либо локальный HAR/HTML для соответствующего режима.",
     )
     parser.add_argument(
         "--output",
@@ -42,25 +46,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--categories",
         default="routers,switches,prebuilt_pcs,servers",
-        help="DNS-категории через запятую для режима dns-live.",
+        help="Категории через запятую для browser-live режима.",
     )
     parser.add_argument(
         "--browser-engine",
         choices=["firefox", "chromium"],
         default="firefox",
-        help="Playwright-движок dns-live; при отсутствии устанавливается автоматически.",
+        help="Playwright-движок browser-live; при отсутствии устанавливается автоматически.",
     )
-    parser.add_argument("--limit", type=int, default=10, help="Карточек на категорию для dns-live.")
+    parser.add_argument("--limit", type=int, default=10, help="Карточек на категорию для browser-live.")
     parser.add_argument(
         "--time-limit",
         type=int,
         default=300,
-        help="Общий таймаут dns-live в секундах.",
+        help="Общий таймаут browser-live в секундах.",
     )
-    parser.add_argument("--snapshot-output", help="Каталог для HTML-снимка dns-live.")
-    parser.add_argument("--profile", help="Каталог persistent browser profile для dns-live.")
-    parser.add_argument("--region", default="", help="Текстовая метка региона цены для dns-live.")
-    parser.add_argument("--headless", action="store_true", help="Запустить dns-live без окна браузера.")
+    parser.add_argument("--snapshot-output", help="Каталог для HTML-снимка browser-live.")
+    parser.add_argument("--profile", help="Каталог persistent browser profile для browser-live.")
+    parser.add_argument("--region", default="", help="Текстовая метка региона цены.")
+    parser.add_argument("--headless", action="store_true", help="Запустить browser-live без окна браузера.")
     parser.add_argument(
         "--browser-wait",
         type=float,
@@ -141,6 +145,75 @@ def main(argv: list[str] | None = None) -> int:
             return exc.exit_code
         except DnsBrowserError as exc:
             print(f"Ошибка браузера DNS: {exc}", flush=True)
+            return 4
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm)
+    elif args.mode == "yandex-market-snapshot":
+        if not args.input:
+            parser.error("--input is required for --mode yandex-market-snapshot")
+        from .sources.yandex_market_snapshot import build_catalog_from_yandex_market_snapshot
+
+        payload = build_catalog_from_yandex_market_snapshot(Path(args.input))
+    elif args.mode in {"yandex-market-har", "yandex-market-html"}:
+        if not args.input:
+            parser.error(f"--input is required for --mode {args.mode}")
+        from .sources.yandex_market_capture import (
+            YandexMarketCaptureError,
+            build_catalog_from_yandex_market_har,
+            build_catalog_from_yandex_market_html,
+        )
+
+        try:
+            if args.mode == "yandex-market-har":
+                payload = build_catalog_from_yandex_market_har(Path(args.input), region=args.region)
+            else:
+                payload = build_catalog_from_yandex_market_html(Path(args.input), region=args.region)
+        except YandexMarketCaptureError as exc:
+            print(f"Ошибка локального импорта Яндекс Маркета: {exc}", flush=True)
+            return 5
+    elif args.mode == "yandex-market-live":
+        if not args.snapshot_output or not args.profile:
+            parser.error(
+                "--snapshot-output and --profile are required for --mode yandex-market-live"
+            )
+        from .market_browser import YandexMarketBrowserError
+        from .sources.yandex_market_live import (
+            YandexMarketLiveCollectionError,
+            YandexMarketLiveOptions,
+            build_catalog_from_live_yandex_market,
+        )
+
+        categories = tuple(value.strip() for value in args.categories.split(",") if value.strip())
+        previous_sigterm = signal.getsignal(signal.SIGTERM)
+
+        def cancel_market_collection(_signum, _frame) -> None:
+            raise KeyboardInterrupt
+
+        signal.signal(signal.SIGTERM, cancel_market_collection)
+        try:
+            payload = build_catalog_from_live_yandex_market(
+                YandexMarketLiveOptions(
+                    snapshot_dir=Path(args.snapshot_output),
+                    profile_dir=Path(args.profile),
+                    categories=categories,
+                    browser_engine=args.browser_engine,
+                    per_category_limit=args.limit,
+                    time_limit_seconds=args.time_limit,
+                    headless=args.headless,
+                    first_page_wait_seconds=args.browser_wait,
+                    region=args.region,
+                ),
+                progress=lambda message: print(message, flush=True),
+            )
+        except KeyboardInterrupt:
+            print("Сбор Яндекс Маркета остановлен пользователем.", flush=True)
+            return 130
+        except YandexMarketLiveCollectionError as exc:
+            print(f"Ошибка сбора Яндекс Маркета: {exc}", flush=True)
+            print(f"Диагностика: {exc.manifest_path}", flush=True)
+            return exc.exit_code
+        except YandexMarketBrowserError as exc:
+            print(f"Ошибка браузера Яндекс Маркета: {exc}", flush=True)
             return 4
         finally:
             signal.signal(signal.SIGTERM, previous_sigterm)
