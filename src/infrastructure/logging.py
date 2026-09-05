@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from typing import Final
 
+from shared.runtime import writable_runtime_root
+
 DEFAULT_LOG_FILE_NAME: Final[str] = "it_cost_calc.log"
 DEFAULT_LOG_FORMAT: Final[str] = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 DEFAULT_DATE_FORMAT: Final[str] = "%Y-%m-%d %H:%M:%S"
@@ -29,7 +31,7 @@ def normalize_log_level(level: int | str | None) -> int:
 def resolve_repo_root(repo_root: str | Path | None = None) -> Path:
     if repo_root is not None:
         return Path(repo_root).resolve()
-    return Path(__file__).resolve().parents[2]
+    return writable_runtime_root()
 
 
 def resolve_log_directory(

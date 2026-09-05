@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-import sys
 from typing import Any
 
 from application.services.catalog_staging_service import (
@@ -20,6 +19,7 @@ from application.services.catalog_staging_service import (
     target_for_catalog_category,
 )
 from shared.constants import TECHNICAL_CAPITAL_CATEGORIES
+from shared.runtime import catalog_parser_process
 from ui_qt.presenters.app_presenter import QtAppPresenter
 
 _STATUS_LABELS = {
@@ -190,6 +190,7 @@ class CatalogStagingPresenter:
             raise ValueError("Выберите Firefox или Chromium.")
 
         repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         run_root = repo_root / "data" / "generated" / "catalog" / "dns_runs" / timestamp
         output_path = run_root / "equipment_catalog.json"
@@ -203,8 +204,7 @@ class CatalogStagingPresenter:
             / browser_engine
         )
         arguments = [
-            "-u",
-            str(repo_root / "scripts" / "update_equipment_catalog.py"),
+            *command_prefix,
             "--mode",
             "dns-live",
             "--categories",
@@ -229,7 +229,7 @@ class CatalogStagingPresenter:
         if not visible_browser:
             arguments.append("--headless")
         return DnsCatalogJobSpec(
-            program=sys.executable,
+            program=program,
             arguments=tuple(arguments),
             working_directory=repo_root,
             output_path=output_path,
@@ -242,15 +242,15 @@ class CatalogStagingPresenter:
         if not capture_path.is_file() or suffix not in {".har", ".html", ".htm"}:
             raise ValueError("Выберите HAR или сохранённый HTML-файл DNS.")
         repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         run_root = repo_root / "data" / "generated" / "catalog" / "dns_imports" / timestamp
         output_path = run_root / "equipment_catalog.json"
         mode = "dns-har" if suffix == ".har" else "dns-html"
         return DnsCatalogJobSpec(
-            program=sys.executable,
+            program=program,
             arguments=(
-                "-u",
-                str(repo_root / "scripts" / "update_equipment_catalog.py"),
+                *command_prefix,
                 "--mode",
                 mode,
                 "--input",
@@ -296,6 +296,7 @@ class CatalogStagingPresenter:
             raise ValueError("Выберите Firefox или Chromium.")
 
         repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         run_root = repo_root / "data" / "generated" / "catalog" / "yandex_market_runs" / timestamp
         output_path = run_root / "equipment_catalog.json"
@@ -309,8 +310,7 @@ class CatalogStagingPresenter:
             / browser_engine
         )
         arguments = [
-            "-u",
-            str(repo_root / "scripts" / "update_equipment_catalog.py"),
+            *command_prefix,
             "--mode",
             "yandex-market-live",
             "--categories",
@@ -335,7 +335,7 @@ class CatalogStagingPresenter:
         if not visible_browser:
             arguments.append("--headless")
         return YandexMarketCatalogJobSpec(
-            program=sys.executable,
+            program=program,
             arguments=tuple(arguments),
             working_directory=repo_root,
             output_path=output_path,
@@ -353,6 +353,7 @@ class CatalogStagingPresenter:
         if not capture_path.is_file() or suffix not in {".har", ".html", ".htm"}:
             raise ValueError("Выберите HAR или сохранённый HTML-файл Яндекс Маркета.")
         repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         run_root = (
             repo_root / "data" / "generated" / "catalog" / "yandex_market_imports" / timestamp
@@ -360,10 +361,9 @@ class CatalogStagingPresenter:
         output_path = run_root / "equipment_catalog.json"
         mode = "yandex-market-har" if suffix == ".har" else "yandex-market-html"
         return YandexMarketCatalogJobSpec(
-            program=sys.executable,
+            program=program,
             arguments=(
-                "-u",
-                str(repo_root / "scripts" / "update_equipment_catalog.py"),
+                *command_prefix,
                 "--mode",
                 mode,
                 "--input",

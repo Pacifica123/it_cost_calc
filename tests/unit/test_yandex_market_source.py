@@ -126,6 +126,45 @@ def test_live_capture_creates_replayable_market_snapshot(tmp_path: Path) -> None
     assert item["offer"]["region"] == "Москва"
 
 
+def test_snapshot_skips_generic_market_shell_instead_of_creating_placeholder(
+    tmp_path: Path,
+) -> None:
+    snapshot_dir = tmp_path / "snapshot"
+    products_dir = snapshot_dir / "products"
+    products_dir.mkdir(parents=True)
+    shell_file = products_dir / "routers_001.html"
+    shell_file.write_text(
+        "<html><head><title>Яндекс Маркет</title></head><body>Каталог</body></html>",
+        encoding="utf-8",
+    )
+    (snapshot_dir / "snapshot_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "source": "yandex_market",
+                "observed_at": "2026-09-05T00:00:00Z",
+                "items": [
+                    {
+                        "file": "products/routers_001.html",
+                        "category": "routers",
+                        "url": PRODUCT_URL,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    catalog = build_catalog_from_yandex_market_snapshot(snapshot_dir)
+
+    assert catalog["stats"]["items_total"] == 0
+    assert catalog["items"] == []
+    assert any(
+        "skipped low-quality product page" in warning
+        for warning in catalog["sources"][0]["warnings"]
+    )
+
+
 def test_live_capture_classifies_market_captcha(tmp_path: Path) -> None:
     options = YandexMarketLiveOptions(
         snapshot_dir=tmp_path / "snapshot",

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import NpvInput, NpvPresenter, QtAppPresenter
-from ui_qt.presenters.npv_presenter import format_cash_flows, parse_cash_flows
+from ui_qt.presenters.npv_presenter import (
+    fit_cash_flows_to_horizon,
+    format_cash_flows,
+    parse_cash_flows,
+)
 from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint
 from ui_qt.widgets.npv_chart import NpvChart
 
 try:
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QDoubleValidator, QIntValidator
     from PySide6.QtWidgets import (
         QFrame,
@@ -25,7 +29,7 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "PySide6":
         raise
-    Qt = None  # type: ignore[assignment]
+    Qt = QTimer = None  # type: ignore[assignment]
     QDoubleValidator = QIntValidator = None  # type: ignore[assignment]
     QFrame = QGridLayout = QHBoxLayout = QHeaderView = QLineEdit = QPushButton = None  # type: ignore[assignment]
     QScrollArea = QStackedLayout = QTableView = QVBoxLayout = None  # type: ignore[assignment]
@@ -44,10 +48,14 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
             raise RuntimeError("PySide6 is required to create NpvScreen")
         super().__init__(parent)
         self.presenter = NpvPresenter(app_presenter)
+        self._basis_loaded = False
+        self._flows_generated = True
+        self._regenerate_flows_on_recalc = False
         self.cash_flow_model = RowTableModel(columns=self._columns(), headers=self._headers())
         self.basis_model = RowTableModel(columns=("name", "value"), headers={"name": "Источник", "value": "Сумма"})
         self._summary_labels: dict[str, CompactLabel] = {}
         self._build_ui()
+        self._setup_auto_recalculation()
         self._load_defaults()
         self._sync_summary()
 
@@ -196,8 +204,8 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
             "Потоки",
             content,
             self,
-            tooltip="Введите денежные потоки по годам через запятую.",
-            expanded=False,
+            tooltip="Введите денежные потоки по годам через запятую. Изменения пересчитываются автоматически.",
+            expanded=True,
         )
 
     def _build_basis_section(self) -> CollapsibleSection:
@@ -278,6 +286,65 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         grid.addWidget(CompactLabel(label, self), row, column)
         grid.addWidget(widget, row, column + 1)
 
+    def _setup_auto_recalculation(self) -> None:
+        if QTimer is None:
+            return
+        self._recalc_timer = QTimer(self)
+        self._recalc_timer.setSingleShot(True)
+        self._recalc_timer.setInterval(300)
+        self._recalc_timer.timeout.connect(self._run_auto_recalculation)
+
+        self.investment_input.textEdited.connect(self._mark_manual_financial_input)
+        self.cash_flows_input.textEdited.connect(self._mark_manual_cash_flows)
+        self.rate_input.textEdited.connect(self._schedule_recalculation)
+        self.horizon_input.textEdited.connect(self._schedule_generated_flow_recalculation)
+        self.effect_input.textEdited.connect(self._schedule_generated_flow_recalculation)
+
+    def _mark_manual_financial_input(self, _text: str) -> None:
+        self.presenter.clear_basis()
+        self._basis_loaded = False
+        self._flows_generated = False
+        self._schedule_recalculation()
+
+    def _mark_manual_cash_flows(self, _text: str) -> None:
+        self.presenter.clear_basis()
+        self._basis_loaded = False
+        self._flows_generated = False
+        self._schedule_recalculation()
+
+    def _schedule_generated_flow_recalculation(self, _text: str) -> None:
+        self._regenerate_flows_on_recalc = True
+        self._schedule_recalculation()
+
+    def _schedule_recalculation(self, _text: str = "") -> None:
+        if hasattr(self, "_recalc_timer"):
+            self._recalc_timer.start()
+
+    def _run_auto_recalculation(self) -> None:
+        if self._regenerate_flows_on_recalc and self._flows_generated:
+            horizon = self._int_value(self.horizon_input.text(), default=5)
+            effect = self._float_value(self.effect_input.text(), default=0.0)
+            rate = self._float_value(self.rate_input.text(), default=0.1)
+            if self._basis_loaded:
+                try:
+                    values = self.presenter.prepare_from_costs(
+                        horizon_years=horizon,
+                        annual_effect=effect,
+                        discount_rate=rate,
+                    )
+                except Exception as exc:  # pragma: no cover - GUI status fallback
+                    self.status_label.setText("Ошибка TCO")
+                    self.setToolTip(str(exc))
+                    self._regenerate_flows_on_recalc = False
+                    return
+                self._apply_input(values)
+            else:
+                self.cash_flows_input.setText(
+                    format_cash_flows([effect] * horizon)
+                )
+        self._regenerate_flows_on_recalc = False
+        self.calculate()
+
     def _sync_detail_state(self) -> None:
         self.basis_stack.setCurrentWidget(
             self.basis_empty if self.basis_model.is_empty() else self.basis_table,
@@ -287,6 +354,9 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         )
 
     def _load_defaults(self) -> None:
+        self.presenter.clear_basis()
+        self._basis_loaded = False
+        self._flows_generated = True
         values = self.presenter.default_input()
         self._apply_input(values)
         self.status_label.setText("Нет расчёта")
@@ -308,6 +378,8 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
             self.setToolTip(str(exc))
             return
         self._apply_input(values)
+        self._basis_loaded = True
+        self._flows_generated = True
         self.basis_model.replace_rows(self.presenter.basis_rows())
         self._sync_detail_state()
         self._sync_chart()
@@ -318,6 +390,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
     def calculate(self) -> None:
         try:
             values = self._read_input()
+            self.cash_flows_input.setText(format_cash_flows(values.cash_flows))
             report = self.presenter.calculate(values)
         except Exception as exc:  # pragma: no cover - GUI status fallback
             self.status_label.setText("Ошибка")
@@ -343,12 +416,17 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
     def _read_input(self) -> NpvInput:
         horizon = self._int_value(self.horizon_input.text(), default=5)
         annual_effect = self._float_value(self.effect_input.text(), default=0.0)
+        cash_flows = parse_cash_flows(
+            self.cash_flows_input.text(),
+            fallback_years=horizon,
+            fallback_value=annual_effect,
+        )
         return NpvInput(
             investment=self._float_value(self.investment_input.text(), default=0.0),
             discount_rate=self._float_value(self.rate_input.text(), default=0.1),
-            cash_flows=parse_cash_flows(
-                self.cash_flows_input.text(),
-                fallback_years=horizon,
+            cash_flows=fit_cash_flows_to_horizon(
+                cash_flows,
+                horizon_years=horizon,
                 fallback_value=annual_effect,
             ),
             annual_effect=annual_effect,

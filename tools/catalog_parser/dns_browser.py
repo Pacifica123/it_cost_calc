@@ -6,6 +6,8 @@ import subprocess
 import sys
 from typing import Callable
 
+from shared.runtime import playwright_install_command
+
 PLAYWRIGHT_BROWSER_ENGINES = ("firefox", "chromium")
 _DNS_CHALLENGE_MARKERS = (
     "/__qrator/qauth_",
@@ -59,7 +61,7 @@ def ensure_playwright_browser(
         progress(f"Движок {engine} найден: {executable}")
         return executable
 
-    command = [sys.executable, "-m", "playwright", "install", engine]
+    command = playwright_install_command(engine)
     progress(f"Движок {engine} не найден. Запускаю автоматическую установку.")
     progress(f"Команда установки: {' '.join(command)}")
     if installer is None:

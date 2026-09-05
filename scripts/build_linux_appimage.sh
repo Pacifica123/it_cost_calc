@@ -65,6 +65,7 @@ done
   --add-data "$(add_data_arg "$ROOT/data" "data")" \
   --add-data "$(add_data_arg "$ROOT/src/ui_qt/design" "ui_qt/design")" \
   --collect-data matplotlib \
+  --collect-all playwright \
   --hidden-import matplotlib.backends.backend_qtagg \
   "${PROJECT_HIDDEN_IMPORT_ARGS[@]}" \
   "$ROOT/scripts/run_app.py"

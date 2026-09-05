@@ -2,7 +2,11 @@ from pathlib import Path
 
 from shared.constants import ANALYSIS_SCOPE_TECHNICAL
 from ui_qt.presenters import NpvInput, NpvPresenter, QtAppPresenter
-from ui_qt.presenters.npv_presenter import format_cash_flows, parse_cash_flows
+from ui_qt.presenters.npv_presenter import (
+    fit_cash_flows_to_horizon,
+    format_cash_flows,
+    parse_cash_flows,
+)
 
 
 def _app(tmp_path: Path) -> QtAppPresenter:
@@ -122,3 +126,25 @@ def test_cash_flow_parse_and_format_helpers():
     assert parse_cash_flows("10; 20,30") == (10.0, 20.0, 30.0)
     assert parse_cash_flows("", fallback_years=2, fallback_value=7) == (7.0, 7.0)
     assert format_cash_flows([1, 2.5]) == "1.00, 2.50"
+
+
+def test_cash_flows_are_fitted_to_requested_horizon():
+    assert fit_cash_flows_to_horizon((10, 20, 30), horizon_years=2, fallback_value=7) == (10.0, 20.0)
+    assert fit_cash_flows_to_horizon((10,), horizon_years=3, fallback_value=7) == (10.0, 7.0, 7.0)
+
+
+def test_manual_recalculation_refreshes_discount_rate_in_financial_basis(tmp_path: Path):
+    presenter = NpvPresenter(_app(tmp_path))
+    presenter._financial_basis = {"discount_rate": 0.1, "horizon_years": 5, "cost_sources": {}}
+
+    report = presenter.calculate(
+        NpvInput(
+            investment=100,
+            discount_rate=0.2,
+            cash_flows=(60, 60),
+            horizon_years=2,
+        )
+    )
+
+    assert report["financial_basis"]["discount_rate"] == 0.2
+    assert report["financial_basis"]["horizon_years"] == 2

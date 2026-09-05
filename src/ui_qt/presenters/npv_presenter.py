@@ -72,11 +72,15 @@ class NpvPresenter:
 
     def calculate(self, values: NpvInput | Mapping[str, Any]) -> dict[str, Any]:
         npv_input = self._ensure_input(values)
+        financial_basis = deepcopy(self._financial_basis) if self._financial_basis else None
+        if financial_basis is not None:
+            financial_basis["discount_rate"] = npv_input.discount_rate
+            financial_basis["horizon_years"] = len(npv_input.cash_flows)
         report = self.app_presenter.build_npv_report(
             investment=npv_input.investment,
             discount_rate=npv_input.discount_rate,
             cash_flows=list(npv_input.cash_flows),
-            financial_basis=self._financial_basis,
+            financial_basis=financial_basis,
         )
         report["discount_rate"] = npv_input.discount_rate
         self._last_report = deepcopy(report)
@@ -214,6 +218,21 @@ def parse_cash_flows(text: str, *, fallback_years: int = 5, fallback_value: floa
     years = max(int(fallback_years), 1)
     return tuple(float(fallback_value) for _ in range(years))
 
+
+
+def fit_cash_flows_to_horizon(
+    values: Sequence[float],
+    *,
+    horizon_years: int,
+    fallback_value: float = 0.0,
+) -> tuple[float, ...]:
+    """Trim or extend cash flows so the horizon field has real effect."""
+
+    horizon = max(int(horizon_years), 1)
+    normalized = [float(value) for value in values[:horizon]]
+    if len(normalized) < horizon:
+        normalized.extend(float(fallback_value) for _ in range(horizon - len(normalized)))
+    return tuple(normalized)
 
 def format_cash_flows(values: Sequence[float]) -> str:
     return ", ".join(f"{float(value):.2f}" for value in values)

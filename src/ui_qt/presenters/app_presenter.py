@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
-import os
-import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -39,6 +36,7 @@ from infrastructure.exporters.decision_report_exporter import (
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
 from infrastructure.storage import JsonFileStorage
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL, TECHNICAL_CAPITAL_CATEGORIES
+from shared.runtime import open_directory, resource_root, writable_runtime_root
 
 
 @dataclass(frozen=True)
@@ -46,6 +44,7 @@ class QtRuntimePaths:
     """Filesystem paths used by the Qt adapter layer."""
 
     repo_root: Path
+    resource_root: Path
     runtime_entities_path: Path
     demo_dataset_path: Path
     demo_profiles_path: Path
@@ -59,17 +58,22 @@ class QtRuntimePaths:
         demo_dataset_path: str | Path | None = None,
         demo_profiles_path: str | Path | None = None,
     ) -> "QtRuntimePaths":
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[3]
-        root = root.resolve()
-        data_root = root / "data"
+        root = Path(repo_root).resolve() if repo_root is not None else writable_runtime_root()
+        resources_root = Path(repo_root).resolve() if repo_root is not None else resource_root()
+        generated_data_root = root / "data"
+        bundled_data_root = resources_root / "data"
         return cls(
             repo_root=root,
+            resource_root=resources_root,
             runtime_entities_path=Path(
-                runtime_entities_path or data_root / "generated" / "runtime_entities.json"
+                runtime_entities_path
+                or generated_data_root / "generated" / "runtime_entities.json"
             ),
-            demo_dataset_path=Path(demo_dataset_path or data_root / "fixtures" / "demo_dataset.json"),
+            demo_dataset_path=Path(
+                demo_dataset_path or bundled_data_root / "fixtures" / "demo_dataset.json"
+            ),
             demo_profiles_path=Path(
-                demo_profiles_path or data_root / "fixtures" / "demo_profiles.json"
+                demo_profiles_path or bundled_data_root / "fixtures" / "demo_profiles.json"
             ),
         )
 
@@ -232,7 +236,7 @@ class QtAppPresenter:
                 continue
             profile_path = Path(str(profile.get("path")))
             if not profile_path.is_absolute():
-                profile_path = self.paths.repo_root / profile_path
+                profile_path = self.paths.resource_root / profile_path
             return self.load_demo_dataset(profile_path)
         available = ", ".join(profile["id"] for profile in self.list_demo_profiles())
         raise ValueError(f"Неизвестный demo-профиль: {requested_id}. Доступно: {available}")
@@ -954,15 +958,9 @@ class QtAppPresenter:
     def open_generated_reports_folder(self) -> Path:
         export_root = self.generated_reports_dir()
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(export_root)  # type: ignore[attr-defined]
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", str(export_root)])
-            else:
-                subprocess.Popen(["xdg-open", str(export_root)])
+            return open_directory(export_root)
         except Exception as exc:  # noqa: BLE001 - GUI needs a readable message.
             raise RuntimeError(f"Не удалось открыть папку: {export_root}") from exc
-        return export_root
 
 
     def _scoped_decision_report_inputs(self) -> dict[str, Any]:

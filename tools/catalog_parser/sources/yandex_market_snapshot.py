@@ -384,6 +384,44 @@ def parse_yandex_market_product_html(
     return item, warnings
 
 
+_GENERIC_MARKET_TITLES = {
+    "маркет",
+    "яндекс маркет",
+    "яндекс маркет для бизнеса",
+    "маркет для бизнеса",
+}
+
+
+def yandex_market_product_quality_warnings(item: dict[str, Any]) -> list[str]:
+    """Return reasons why a parsed page does not look like a product card.
+
+    A browser can successfully load a generic Market shell, redirect or
+    protection page with HTTP 200.  The HTML parser is intentionally tolerant,
+    so the live pipeline needs a small quality gate before such pages are
+    promoted into catalog items.
+    """
+
+    title = " ".join(str(item.get("title") or "").split())
+    normalized_title = title.lower().replace("ё", "е").strip(" -—|·")
+    warnings: list[str] = []
+    if not title or normalized_title in _GENERIC_MARKET_TITLES:
+        warnings.append("page does not contain a meaningful product title")
+
+    has_product_payload = any(
+        (
+            item.get("price_int") is not None,
+            bool(item.get("specs")),
+            bool(item.get("brand")),
+            bool(item.get("model")),
+            bool(item.get("mpn")),
+            bool(item.get("gtin")),
+        )
+    )
+    if not has_product_payload:
+        warnings.append("page does not contain price, characteristics, or product identity")
+    return warnings
+
+
 def _safe_snapshot_file(root: Path, relative_name: Any) -> Path:
     relative = PurePosixPath(str(relative_name or ""))
     if not relative.name or relative.is_absolute() or ".." in relative.parts:
@@ -417,6 +455,13 @@ def build_catalog_from_yandex_market_snapshot(snapshot_dir: Path) -> dict[str, A
             source_path.read_text(encoding="utf-8"),
             page_url=str(entry.get("url") or ""),
         )
+        quality_warnings = yandex_market_product_quality_warnings(item)
+        if quality_warnings:
+            warnings.extend(
+                f"{entry.get('file')}: skipped low-quality product page: {warning}"
+                for warning in quality_warnings
+            )
+            continue
         item.update(
             {
                 "url": entry.get("url") or item.get("url"),

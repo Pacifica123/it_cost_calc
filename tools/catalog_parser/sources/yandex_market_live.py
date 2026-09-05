@@ -351,6 +351,13 @@ def build_catalog_from_live_yandex_market(
         browser.fetch(f"{YANDEX_MARKET_BASE_URL}/")
         capture_yandex_market_snapshot(options, fetch=browser.fetch, progress=progress)
     payload = build_catalog_from_yandex_market_snapshot(options.snapshot_dir)
+    if int((payload.get("stats") or {}).get("items_total") or 0) <= 0:
+        raise YandexMarketLiveCollectionError(
+            "Яндекс Маркет сохранил HTML-карточки, но в них не найдено пригодных "
+            "данных товара (название + цена/характеристики). Проверьте snapshot: "
+            "возможны защитная страница, редирект или изменение разметки.",
+            manifest_path=Path(options.snapshot_dir) / "snapshot_manifest.json",
+        )
     payload["generated_by"] = "tools.catalog_parser.sources.yandex_market_live"
     manifest = json.loads(
         (Path(options.snapshot_dir) / "snapshot_manifest.json").read_text(encoding="utf-8")
