@@ -6,6 +6,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from application.services.catalog_browser_capture_service import (
+    BrowserCaptureResult,
+    capture_browser_content,
+    capture_browser_file,
+)
+from application.services.catalog_commercial_quote_service import (
+    CommercialQuoteImportSummary,
+    import_commercial_quote,
+)
 from application.services.catalog_source_registry import (
     CatalogSourceRegistry,
     normalize_catalog_source,
@@ -89,6 +98,17 @@ class IcecatEnrichmentJobSpec:
     staging_path: Path
     manifest_path: Path
     staging_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ProcurementBenchmarkJobSpec:
+    program: str
+    arguments: tuple[str, ...]
+    working_directory: Path
+    staging_path: Path
+    manifest_path: Path
+    staging_ids: tuple[str, ...]
+    source_location: str
 
 
 @dataclass(frozen=True)
@@ -278,6 +298,111 @@ class CatalogStagingPresenter:
             manifest_path=manifest_path,
             staging_ids=selected,
         )
+
+    def build_procurement_benchmark_job(
+        self,
+        source_location: str,
+        staging_ids: list[str] | tuple[str, ...],
+        *,
+        region: str = "",
+        max_records: int = 20000,
+    ) -> ProcurementBenchmarkJobSpec:
+        location = str(source_location or "").strip()
+        if not location:
+            raise ValueError("Выберите XML/ZIP/JSON/CSV ЕИС или задайте URL.")
+        selected = tuple(
+            dict.fromkeys(str(value).strip() for value in staging_ids if str(value).strip())
+        )
+        repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = repo_root / "data" / "generated" / "catalog" / "eis_runs" / timestamp
+        manifest_path = run_root / "benchmark_manifest.json"
+        arguments = [
+            *command_prefix,
+            "--mode",
+            "eis-benchmark",
+            "--input",
+            location,
+            "--staging-path",
+            str(self.service.path),
+            "--region",
+            str(region or "").strip(),
+            "--eis-max-records",
+            str(max(1, int(max_records))),
+            "--eis-manifest",
+            str(manifest_path),
+        ]
+        if selected:
+            arguments.extend(("--staging-ids", ",".join(selected)))
+        return ProcurementBenchmarkJobSpec(
+            program=program,
+            arguments=tuple(arguments),
+            working_directory=repo_root,
+            staging_path=self.service.path,
+            manifest_path=manifest_path,
+            staging_ids=selected,
+            source_location=location,
+        )
+
+    def stage_commercial_quote(
+        self,
+        path: str | Path,
+        *,
+        supplier_name: str,
+        quote_number: str = "",
+        quote_date: str = "",
+        region: str = "",
+        assume_available: bool = True,
+    ) -> CommercialQuoteImportSummary:
+        return import_commercial_quote(
+            self.service,
+            path,
+            supplier_name=supplier_name,
+            quote_number=quote_number,
+            quote_date=quote_date,
+            region=region,
+            assume_available=assume_available,
+        )
+
+    def stage_browser_capture(
+        self,
+        *,
+        content: str | None = None,
+        path: str | Path | None = None,
+        source_url: str = "",
+        region: str = "",
+        category_override: str = "",
+    ) -> BrowserCaptureResult:
+        if path:
+            captured = capture_browser_file(
+                path,
+                source_url=source_url,
+                region=region,
+                category_override=category_override,
+            )
+        else:
+            captured = capture_browser_content(
+                str(content or ""),
+                source_url=source_url,
+                region=region,
+                category_override=category_override,
+            )
+        repo_root = self.app_presenter.paths.repo_root
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
+        run_root = repo_root / "data" / "generated" / "catalog" / "browser_captures" / timestamp
+        run_root.mkdir(parents=True, exist_ok=True)
+        output_path = run_root / "capture.json"
+        output_path.write_text(
+            json.dumps(
+                {"schema_version": 2, "items": [captured.item]},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        self.service.stage_file(output_path, source_context=captured.source_context)
+        return captured
 
     def stage_feed_job(self, job: CatalogFeedJobSpec) -> list[dict[str, Any]]:
         if not job.output_path.is_file():
@@ -728,6 +853,7 @@ class CatalogStagingPresenter:
             "category": str(item.get("category") or ""),
             "price": _format_number(offer.get("price")),
             "currency": str(offer.get("currency") or "RUB"),
+            "identity": dict(item.get("identity") or {}),
             "target_category": str(record.get("target_category") or ""),
             "target_component_type": str(record.get("target_component_type") or ""),
             "quantity": _format_number(runtime_inputs.get("quantity")),
@@ -813,6 +939,18 @@ class CatalogStagingPresenter:
             ),
             f"Метрики: {metrics or 'нет'}",
         ]
+        benchmark = dict(item.get("procurement_benchmark") or {})
+        if benchmark:
+            lines.append(
+                "ЕИС benchmark: "
+                f"median {float(benchmark.get('median_rub') or 0):g} ₽; "
+                f"P25–P75 {_format_number(benchmark.get('p25_rub'))}–"
+                f"{_format_number(benchmark.get('p75_rub'))} ₽; "
+                f"n={int(benchmark.get('observation_count') or 0)}; "
+                f"match={benchmark.get('match_level') or '—'}"
+            )
+            if benchmark.get("needs_refresh"):
+                lines.append("ЕИС benchmark: требуется обновление после refresh источника.")
         changes = _manual_change_lines(source_item, record)
         if changes:
             lines.append("Исправлено вручную:")
@@ -843,6 +981,14 @@ def _manual_change_lines(
         if source_offer.get(field) != offer.get(field):
             changes.append(
                 f"{label}: {source_offer.get(field) or '—'} → {offer.get(field) or '—'}"
+            )
+
+    source_identity = dict(source_item.get("identity") or {})
+    identity = dict(item.get("identity") or {})
+    for field, label in (("brand", "Бренд"), ("model", "Модель"), ("mpn", "MPN"), ("gtin", "GTIN")):
+        if source_identity.get(field) != identity.get(field):
+            changes.append(
+                f"{label}: {source_identity.get(field) or '—'} → {identity.get(field) or '—'}"
             )
 
     source_metrics = dict(source_item.get("attributes") or {})

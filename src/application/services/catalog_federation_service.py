@@ -25,6 +25,7 @@ _PRICE_KIND_PRIORITY = {
     "estimated_price": 10,
 }
 _AVAILABLE_VALUES = {
+    "quoted",
     "1",
     "true",
     "yes",
@@ -139,8 +140,11 @@ def observation_keys(item: Mapping[str, Any]) -> set[str]:
 def select_effective_offer(offers: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Choose one backward-compatible effective offer.
 
-    Policy: usable RUB price -> available stock -> newest observation ->
-    higher-trust price kind -> lower price as a deterministic final tie-breaker.
+    Policy: usable RUB price -> available stock -> higher-trust price kind ->
+    newest observation -> lower price as a deterministic final tie-breaker.
+
+    P5 intentionally puts a real commercial quote ahead of a fresher retail
+    observation: freshness remains the tie-breaker inside the same trust class.
     """
 
     candidates = [
@@ -152,12 +156,12 @@ def select_effective_offer(offers: Iterable[Mapping[str, Any]]) -> dict[str, Any
     if not candidates:
         return {}
 
-    def rank(offer: Mapping[str, Any]) -> tuple[int, float, int, float, str]:
+    def rank(offer: Mapping[str, Any]) -> tuple[int, int, float, float, str]:
         price = _positive_number(offer.get("price")) or 0.0
         return (
             _availability_rank(offer.get("availability")),
-            _timestamp(offer.get("observed_at")),
             _PRICE_KIND_PRIORITY.get(str(offer.get("price_kind") or "").strip(), 0),
+            _timestamp(offer.get("observed_at")),
             -price,
             str(offer.get("source") or ""),
         )

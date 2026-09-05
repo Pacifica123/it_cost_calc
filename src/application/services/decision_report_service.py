@@ -399,6 +399,8 @@ class DecisionReportService:
             "field_provenance": deepcopy(metadata.get("field_provenance") or {}),
             "specification_sources": self._unique_text(specification_sources),
             "specification_summary": deepcopy(metadata.get("specification_summary") or {}),
+            "procurement_benchmark": deepcopy(metadata.get("procurement_benchmark") or {}),
+            "price_kind": offer.get("price_kind"),
             "manual_override_fields": sorted(str(field) for field in manual_overrides),
             "metrics": metrics,
             "required_metrics": required_metrics,

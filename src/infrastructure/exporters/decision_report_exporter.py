@@ -493,8 +493,8 @@ def _candidate_table(candidates: Sequence[Any]) -> list[str]:
 
 def _catalog_quality_table(components: Sequence[Any]) -> list[str]:
     lines = [
-        "| Компонент | Тип | Источник | Метрики | Не заполнено | Диагностика |",
-        "|---|---|---|---|---|---|",
+        "| Компонент | Тип | Источник | Метрики | ЕИС median | Не заполнено | Диагностика |",
+        "|---|---|---|---|---:|---|---|",
     ]
     for component in components:
         if not isinstance(component, Mapping):
@@ -502,16 +502,19 @@ def _catalog_quality_table(components: Sequence[Any]) -> list[str]:
         metrics = _mapping(component.get("metrics"))
         missing = _sequence(component.get("missing_metrics"))
         warnings = _sequence(component.get("metric_warnings"))
+        benchmark = _mapping(component.get("procurement_benchmark"))
+        benchmark_text = _money(benchmark.get("median_rub")) if benchmark else "—"
         source = component.get("source") or "—"
         parse_source = component.get("parse_source")
         if parse_source:
             source = f"{source} / {parse_source}"
         lines.append(
-            "| {name} | {ctype} | {source} | {metrics} | {missing} | {warnings} |".format(
+            "| {name} | {ctype} | {source} | {metrics} | {benchmark} | {missing} | {warnings} |".format(
                 name=_md(component.get("name")),
                 ctype=_md(component.get("component_type") or "—"),
                 source=_md(source),
                 metrics=_md(_metrics_text(metrics)),
+                benchmark=_md(benchmark_text),
                 missing=_md(", ".join(str(field) for field in missing) or "—"),
                 warnings=_md("; ".join(str(warning) for warning in warnings[:2]) or "—"),
             )

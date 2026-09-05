@@ -35,6 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
             "legacy-dns-live",
             "feed-download",
             "icecat-enrich",
+            "eis-benchmark",
+            "commercial-quote",
+            "browser-capture",
         ],
         default="examples",
         help="Режим построения каталога. По умолчанию используется нормализация уже имеющихся example-снимков.",
@@ -119,6 +122,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.15,
         help="Пауза между Icecat-запросами в секундах.",
     )
+    parser.add_argument("--eis-manifest", help="Диагностический manifest применения ЕИС benchmark.")
+    parser.add_argument(
+        "--eis-max-records",
+        type=int,
+        default=20000,
+        help="Максимум ценовых строк из XML/ZIP/JSON/CSV ЕИС.",
+    )
+    parser.add_argument("--quote-supplier", default="", help="Поставщик коммерческого предложения.")
+    parser.add_argument("--quote-number", default="", help="Номер коммерческого предложения.")
+    parser.add_argument("--quote-date", default="", help="Дата КП YYYY-MM-DD/ISO-8601.")
+    parser.add_argument(
+        "--quote-unknown-availability",
+        action="store_true",
+        help="Не считать позиции КП доступными по умолчанию.",
+    )
+    parser.add_argument("--capture-url", default="", help="URL страницы для browser capture provenance.")
+    parser.add_argument(
+        "--capture-category",
+        default="",
+        help="Явная категория единичного browser capture.",
+    )
     return parser
 
 
@@ -126,6 +150,116 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     output_path = Path(args.output)
+
+    if args.mode == "eis-benchmark":
+        if not args.staging_path:
+            parser.error("--staging-path is required for --mode eis-benchmark")
+        if not args.input:
+            parser.error("--input is required for --mode eis-benchmark")
+        from application.services.catalog_procurement_benchmark_service import (
+            ProcurementBenchmarkError,
+            apply_procurement_benchmarks,
+            load_procurement_observations,
+        )
+        from application.services.catalog_staging_service import CatalogStagingService
+
+        staging_ids = tuple(
+            value.strip() for value in args.staging_ids.split(",") if value.strip()
+        )
+        try:
+            observations = load_procurement_observations(
+                args.input,
+                region=args.region,
+                max_records=max(1, args.eis_max_records),
+                progress=lambda message: print(message, flush=True),
+            )
+            summary = apply_procurement_benchmarks(
+                CatalogStagingService(Path(args.staging_path)),
+                observations,
+                staging_ids=staging_ids,
+                source_location=args.input,
+                region=args.region,
+                manifest_path=args.eis_manifest,
+                progress=lambda message: print(message, flush=True),
+            )
+        except ProcurementBenchmarkError as exc:
+            print(f"Ошибка ЕИС benchmark: {exc}", flush=True)
+            return 8
+        result = summary.as_dict()
+        print(
+            "ЕИС benchmark: "
+            f"наблюдений {result['observations']}, сопоставлено {result['matched_records']}, "
+            f"по identity {result['identity_matches']}, по категории {result['category_matches']}.",
+            flush=True,
+        )
+        return 0
+
+    if args.mode == "commercial-quote":
+        if not args.staging_path:
+            parser.error("--staging-path is required for --mode commercial-quote")
+        if not args.input:
+            parser.error("--input is required for --mode commercial-quote")
+        if not args.quote_supplier:
+            parser.error("--quote-supplier is required for --mode commercial-quote")
+        from application.services.catalog_commercial_quote_service import import_commercial_quote
+        from application.services.catalog_staging_service import CatalogStagingService
+
+        try:
+            summary = import_commercial_quote(
+                CatalogStagingService(Path(args.staging_path)),
+                args.input,
+                supplier_name=args.quote_supplier,
+                quote_number=args.quote_number,
+                quote_date=args.quote_date,
+                region=args.region,
+                assume_available=not args.quote_unknown_availability,
+            )
+        except ValueError as exc:
+            print(f"Ошибка импорта КП: {exc}", flush=True)
+            return 9
+        print(
+            f"КП импортировано: источник {summary.source_id}, строк {summary.records_total}.",
+            flush=True,
+        )
+        return 0
+
+    if args.mode == "browser-capture":
+        if not args.staging_path:
+            parser.error("--staging-path is required for --mode browser-capture")
+        if not args.input:
+            parser.error("--input is required for --mode browser-capture")
+        from application.services.catalog_browser_capture_service import (
+            BrowserCaptureError,
+            capture_browser_file,
+        )
+        from application.services.catalog_staging_service import CatalogStagingService
+
+        try:
+            captured = capture_browser_file(
+                args.input,
+                source_url=args.capture_url,
+                region=args.region,
+                category_override=args.capture_category,
+            )
+            capture_path = Path(args.output)
+            capture_path.parent.mkdir(parents=True, exist_ok=True)
+            capture_path.write_text(
+                __import__("json").dumps(
+                    {"schema_version": 2, "items": [captured.item]},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            CatalogStagingService(Path(args.staging_path)).stage_file(
+                capture_path,
+                source_context=captured.source_context,
+            )
+        except BrowserCaptureError as exc:
+            print(f"Ошибка browser capture: {exc}", flush=True)
+            return 10
+        print(f"Browser capture добавлен: {capture_path}", flush=True)
+        return 0
 
     if args.mode == "icecat-enrich":
         if not args.staging_path:

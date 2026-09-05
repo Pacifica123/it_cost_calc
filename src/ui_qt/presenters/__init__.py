@@ -6,6 +6,7 @@ from ui_qt.presenters.catalog_staging_presenter import (
     CatalogStagingPresenter,
     CatalogStagingSummary,
     IcecatEnrichmentJobSpec,
+    ProcurementBenchmarkJobSpec,
     DnsCatalogJobSpec,
     YandexMarketCatalogJobSpec,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "CatalogStagingSummary",
     "CatalogFilterOption",
     "IcecatEnrichmentJobSpec",
+    "ProcurementBenchmarkJobSpec",
     "DnsCatalogJobSpec",
     "YandexMarketCatalogJobSpec",
     "ComponentEditorPresenter",

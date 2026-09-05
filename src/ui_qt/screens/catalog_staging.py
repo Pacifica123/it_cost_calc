@@ -6,6 +6,9 @@ from ui_qt.models import RowTableModel
 from ui_qt.presenters import CatalogStagingPresenter, QtAppPresenter
 from ui_qt.dialogs.catalog_feed_source_dialog import CatalogFeedSourceDialog
 from ui_qt.dialogs.catalog_icecat_enrichment_dialog import CatalogIcecatEnrichmentDialog
+from ui_qt.dialogs.catalog_procurement_benchmark_dialog import CatalogProcurementBenchmarkDialog
+from ui_qt.dialogs.catalog_commercial_quote_dialog import CatalogCommercialQuoteDialog
+from ui_qt.dialogs.catalog_browser_capture_dialog import CatalogBrowserCaptureDialog
 from ui_qt.widgets import CompactLabel, InfoHint, SmartTable
 
 try:
@@ -19,6 +22,7 @@ try:
         QHBoxLayout,
         QLineEdit,
         QMessageBox,
+        QMenu,
         QPlainTextEdit,
         QPushButton,
         QVBoxLayout,
@@ -28,7 +32,7 @@ except ModuleNotFoundError as exc:
     if exc.name != "PySide6":
         raise
     QComboBox = QDialogButtonBox = QFileDialog = QFrame = QGridLayout = None  # type: ignore[assignment]
-    QHBoxLayout = QLineEdit = QMessageBox = QPlainTextEdit = QPushButton = None  # type: ignore[assignment]
+    QHBoxLayout = QLineEdit = QMessageBox = QMenu = QPlainTextEdit = QPushButton = None  # type: ignore[assignment]
     QVBoxLayout = None  # type: ignore[assignment]
     QDialog = QWidget = object  # type: ignore[assignment,misc]
 
@@ -96,6 +100,7 @@ class CatalogRecordDialog(QDialog):  # type: ignore[misc,valid-type]
         super().__init__(parent)
         self.presenter = presenter
         self._entries: dict[str, QLineEdit] = {}
+        self._identity_entries: dict[str, QLineEdit] = {}
         self._metric_entries: dict[str, QLineEdit] = {}
         self.setWindowTitle("Проверка позиции каталога")
         self.resize(680, 520)
@@ -145,6 +150,31 @@ class CatalogRecordDialog(QDialog):  # type: ignore[misc,valid-type]
             grid.setColumnStretch(column, 1)
         layout.addLayout(grid)
 
+        identity_frame = QFrame(self)
+        identity_frame.setObjectName("surface")
+        identity_grid = QGridLayout(identity_frame)
+        identity_grid.setContentsMargins(10, 10, 10, 10)
+        identity_grid.setHorizontalSpacing(10)
+        identity_grid.setVerticalSpacing(8)
+        identity_values = dict(values.get("identity") or {})
+        for index, (field, label) in enumerate((
+            ("brand", "Бренд"),
+            ("model", "Модель"),
+            ("mpn", "MPN"),
+            ("gtin", "GTIN"),
+        )):
+            row = index // 2
+            column = 0 if index % 2 == 0 else 2
+            identity_grid.addWidget(CompactLabel(label, identity_frame), row, column)
+            entry = QLineEdit(identity_frame)
+            entry.setText(str(identity_values.get(field) or ""))
+            entry.setPlaceholderText("нет данных")
+            self._identity_entries[field] = entry
+            identity_grid.addWidget(entry, row, column + 1)
+        for column in (1, 3):
+            identity_grid.setColumnStretch(column, 1)
+        layout.addWidget(identity_frame, 0)
+
         metrics_frame = QFrame(self)
         metrics_frame.setObjectName("surface")
         metrics_grid = QGridLayout(metrics_frame)
@@ -190,6 +220,9 @@ class CatalogRecordDialog(QDialog):  # type: ignore[misc,valid-type]
             "category": self.category_combo.currentText(),
             "price": self._entries["price"].text(),
             "currency": self._entries["currency"].text(),
+            "identity": {
+                field: entry.text() for field, entry in self._identity_entries.items()
+            },
             "target_category": str(self.target_combo.currentData() or ""),
             "target_component_type": str(self.type_combo.currentData() or ""),
             "quantity": self._entries["quantity"].text(),
@@ -314,6 +347,15 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         source_button.clicked.connect(self.collect_feed_source)
         enrich_button = QPushButton("Обогатить Icecat", self)
         enrich_button.clicked.connect(self.enrich_icecat)
+        evidence_button = QPushButton("Доп. данные", self)
+        evidence_menu = QMenu(evidence_button)
+        quote_action = evidence_menu.addAction("Импорт КП")
+        quote_action.triggered.connect(self.import_commercial_quote)
+        eis_action = evidence_menu.addAction("Бенчмарк ЕИС")
+        eis_action.triggered.connect(self.apply_procurement_benchmark)
+        capture_action = evidence_menu.addAction("Захват браузера")
+        capture_action.triggered.connect(self.capture_from_browser)
+        evidence_button.setMenu(evidence_menu)
         approve_button = QPushButton("Подтвердить", self)
         approve_button.clicked.connect(self.approve_selected)
         reject_button = QPushButton("Отклонить", self)
@@ -327,6 +369,7 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         actions.addWidget(open_button, 0)
         actions.addWidget(source_button, 0)
         actions.addWidget(enrich_button, 0)
+        actions.addWidget(evidence_button, 0)
         actions.addStretch(1)
         actions.addWidget(reject_button, 0)
         actions.addWidget(edit_button, 0)
@@ -411,6 +454,35 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         self.details.setPlainText(
             "Характеристики обновлены. Проверьте метрики и предупреждения."
         )
+
+    def import_commercial_quote(self) -> None:
+        dialog = CatalogCommercialQuoteDialog(self.presenter, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.completed:
+            return
+        self.filter_combo.setCurrentIndex(0)
+        self.refresh_data()
+        self.details.setPlainText("КП добавлено. Проверьте объединение и цену.")
+
+    def apply_procurement_benchmark(self) -> None:
+        staging_ids = [
+            str(row.get("staging_id") or "")
+            for row in self.table.selected_rows()
+            if row.get("staging_id")
+        ]
+        dialog = CatalogProcurementBenchmarkDialog(self.presenter, staging_ids, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.completed:
+            return
+        self.filter_combo.setCurrentIndex(0)
+        self.refresh_data()
+        self.details.setPlainText("ЕИС benchmark обновлён. Выберите позицию.")
+
+    def capture_from_browser(self) -> None:
+        dialog = CatalogBrowserCaptureDialog(self.presenter, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.completed:
+            return
+        self.filter_combo.setCurrentIndex(0)
+        self.refresh_data()
+        self.details.setPlainText("Browser capture добавлен. Проверьте карточку.")
 
     def reject_selected(self) -> None:
         staging_ids = self._selected_ids()

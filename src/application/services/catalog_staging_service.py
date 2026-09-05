@@ -209,6 +209,7 @@ def normalize_catalog_item(
     availability = _text(
         offer.get("availability")
         or _first_alias(item, "availability", "available", "наличие", "остаток")
+        or context.get("default_availability")
         or "unknown"
     )
     observed_at = _text(
@@ -303,6 +304,11 @@ def normalize_catalog_item(
                 "price_kind": price_kind,
                 "observed_at": observed_at or None,
                 "sha256": _text(context.get("sha256")) or None,
+                "source_type": _text(context.get("source_type")) or None,
+                "supplier_name": _text(context.get("supplier_name")) or None,
+                "quote_number": _text(context.get("quote_number")) or None,
+                "quote_date": _text(context.get("quote_date")) or None,
+                "capture_method": _text(context.get("capture_method")) or None,
             },
         )
         for field, present in (
@@ -537,6 +543,7 @@ def catalog_item_to_runtime_row(record: Mapping[str, Any]) -> tuple[str, dict[st
                 else []
             ),
             "specification_summary": deepcopy(_mapping(item.get("specification_summary"))),
+            "procurement_benchmark": deepcopy(_mapping(item.get("procurement_benchmark"))),
             "field_provenance": deepcopy(_mapping(item.get("field_provenance"))),
             "review": deepcopy(_mapping(item.get("review"))),
             "parser_metadata": deepcopy(_mapping(item.get("parser_metadata"))),
@@ -628,6 +635,18 @@ class CatalogStagingService:
             if old:
                 previous_item = _mapping(old.get("source_catalog_item"))
                 item = carry_specification_sources(item, previous_item)
+                previous_benchmark = _mapping(previous_item.get("procurement_benchmark"))
+                if previous_benchmark and not _mapping(item.get("procurement_benchmark")):
+                    carried_benchmark = deepcopy(previous_benchmark)
+                    carried_benchmark["needs_refresh"] = True
+                    item["procurement_benchmark"] = carried_benchmark
+                    provenance = _mapping(item.get("field_provenance"))
+                    previous_provenance = _mapping(previous_item.get("field_provenance"))
+                    if previous_provenance.get("procurement_benchmark"):
+                        provenance["procurement_benchmark"] = deepcopy(
+                            previous_provenance["procurement_benchmark"]
+                        )
+                    item["field_provenance"] = provenance
                 if _text(previous_item.get("item_id")):
                     item["item_id"] = _text(previous_item.get("item_id"))
                 staging_id = _text(old.get("staging_id")) or _staging_id(item)
@@ -702,6 +721,18 @@ class CatalogStagingService:
             offer["price"] = _number(values.get("price"))
             offer["currency"] = _text(values.get("currency") or "RUB").upper()
             item["offer"] = offer
+
+            identity = _mapping(item.get("identity"))
+            identity_values = _mapping(values.get("identity"))
+            for field in ("brand", "model", "mpn", "gtin"):
+                if field not in identity_values:
+                    continue
+                value = _text(identity_values.get(field))
+                if value:
+                    identity[field] = value
+                else:
+                    identity.pop(field, None)
+            item["identity"] = identity
 
             attributes = _mapping(item.get("attributes"))
             metric_values = _mapping(values.get("attributes"))
@@ -909,6 +940,14 @@ def _apply_manual_overrides(
             item[field] = overrides[field]
     if "offer" in overrides:
         item["offer"] = {**_mapping(item.get("offer")), **_mapping(overrides.get("offer"))}
+    if "identity" in overrides:
+        identity = _mapping(item.get("identity"))
+        for field, value in _mapping(overrides.get("identity")).items():
+            if value in (None, ""):
+                identity.pop(field, None)
+            else:
+                identity[field] = value
+        item["identity"] = identity
     if "attributes" in overrides:
         attributes = _mapping(item.get("attributes"))
         for field, value in _mapping(overrides.get("attributes")).items():
@@ -942,6 +981,16 @@ def _build_manual_overrides(
     }
     if offer_diff:
         result["offer"] = offer_diff
+
+    source_identity = _mapping(source_item.get("identity"))
+    current_identity = _mapping(item.get("identity"))
+    identity_diff = {
+        field: current_identity.get(field)
+        for field in ("brand", "model", "mpn", "gtin")
+        if current_identity.get(field) != source_identity.get(field)
+    }
+    if identity_diff:
+        result["identity"] = identity_diff
 
     source_attributes = _mapping(source_item.get("attributes"))
     current_attributes = _mapping(item.get("attributes"))
