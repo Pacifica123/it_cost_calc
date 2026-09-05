@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "technocity",
+      "name": "ТехноСити",
+      "location": "https://www.technocity.ru/upload/tc_price.xlsx",
+      "format": "xlsx",
+      "region": "Новосибирск",
+      "price_kind": "supplier_price",
+      "download_strategy": "direct",
+      "homepage": "https://www.technocity.ru/kp/about/",
+      "notes": "Публичный XLSX-прайс для корпоративных клиентов. Цена считается наблюдением и требует проверки перед закупкой."
+    },
+    {
+      "id": "b2bcorp",
+      "name": "B2BCORP",
+      "location": "https://disk.yandex.ru/i/zLJe8nKiEGH4xw",
+      "format": "xlsx",
+      "region": "Россия",
+      "price_kind": "supplier_price",
+      "download_strategy": "yandex_disk_public",
+      "homepage": "https://comp-ru.ru/prajs-it-oborudovaniya",
+      "notes": "Публичный структурированный XLSX. Ссылка ведёт на общий файл Яндекс Диска и разрешается через API публичной загрузки."
+    }
+  ]
+}

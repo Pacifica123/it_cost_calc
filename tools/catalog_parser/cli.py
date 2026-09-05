@@ -32,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
             "yandex-market-live",
             "yandex-market-http-live",
             "legacy-dns-live",
+            "feed-download",
         ],
         default="examples",
         help="Режим построения каталога. По умолчанию используется нормализация уже имеющихся example-снимков.",
@@ -73,6 +74,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=8.0,
         help="Пауза на первой странице для региона/cookies/challenge.",
     )
+    parser.add_argument("--feed-source-id", default="", help="Идентификатор структурированного feed-источника.")
+    parser.add_argument("--feed-source-name", default="", help="Название структурированного feed-источника.")
+    parser.add_argument(
+        "--feed-format",
+        choices=["auto", "xlsx", "csv", "xml", "yml"],
+        default="auto",
+        help="Формат структурированного feed.",
+    )
+    parser.add_argument(
+        "--feed-price-kind",
+        default="supplier_price",
+        help="Семантика цены feed, например supplier_price.",
+    )
+    parser.add_argument(
+        "--feed-download-strategy",
+        choices=["direct", "yandex_disk_public"],
+        default="direct",
+        help="Способ получения feed по URL.",
+    )
+    parser.add_argument("--feed-manifest", help="Путь для provenance-манифеста feed.")
     return parser
 
 
@@ -81,6 +102,29 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     output_path = Path(args.output)
 
+    if args.mode == "feed-download":
+        if not args.input:
+            parser.error("--input is required for --mode feed-download")
+        from .feed_fetcher import CatalogFeedFetchError, fetch_catalog_feed
+
+        try:
+            result = fetch_catalog_feed(
+                location=args.input,
+                output_path=output_path,
+                source_id=args.feed_source_id or Path(output_path).stem,
+                source_name=args.feed_source_name or args.feed_source_id or Path(output_path).stem,
+                feed_format=args.feed_format,
+                region=args.region,
+                price_kind=args.feed_price_kind,
+                download_strategy=args.feed_download_strategy,
+                manifest_path=args.feed_manifest,
+            )
+        except CatalogFeedFetchError as exc:
+            print(f"Ошибка загрузки feed: {exc}", flush=True)
+            return 6
+        print(f"Feed сохранён: {result.output_path}", flush=True)
+        print(f"Формат: {result.format}; байт: {result.size_bytes}", flush=True)
+        return 0
     if args.mode == "examples":
         payload = build_catalog_from_example_snapshots()
     elif args.mode == "dns-snapshot":

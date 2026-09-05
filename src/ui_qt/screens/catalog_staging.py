@@ -4,7 +4,7 @@ from typing import Any
 
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import CatalogStagingPresenter, QtAppPresenter
-from ui_qt.dialogs.http_catalog_import_dialog import HttpCatalogImportDialog
+from ui_qt.dialogs.catalog_feed_source_dialog import CatalogFeedSourceDialog
 from ui_qt.widgets import CompactLabel, InfoHint, SmartTable
 
 try:
@@ -262,7 +262,7 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
             self.model,
             self,
             empty_title="Каталог не загружен",
-            empty_status="Откройте JSON, CSV или XLSX",
+            empty_status="Откройте JSON, CSV, XLSX или YML/XML",
             on_select=self._show_details,
             on_edit=self.open_editor,
             show_actions=False,
@@ -306,13 +306,11 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
 
-        open_button = QPushButton("Открыть каталог", self)
+        open_button = QPushButton("Импорт файла", self)
         open_button.setProperty("role", "primary")
         open_button.clicked.connect(self.open_catalog)
-        dns_button = QPushButton("Собрать из DNS (HTTP)", self)
-        dns_button.clicked.connect(self.collect_dns_catalog)
-        market_button = QPushButton("Собрать из Яндекс Маркета (HTTP)", self)
-        market_button.clicked.connect(self.collect_yandex_market_catalog)
+        source_button = QPushButton("Источник данных", self)
+        source_button.clicked.connect(self.collect_feed_source)
         approve_button = QPushButton("Подтвердить", self)
         approve_button.clicked.connect(self.approve_selected)
         reject_button = QPushButton("Отклонить", self)
@@ -324,8 +322,7 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         import_button.clicked.connect(self.import_approved)
 
         actions.addWidget(open_button, 0)
-        actions.addWidget(dns_button, 0)
-        actions.addWidget(market_button, 0)
+        actions.addWidget(source_button, 0)
         actions.addStretch(1)
         actions.addWidget(reject_button, 0)
         actions.addWidget(edit_button, 0)
@@ -346,7 +343,7 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
             f"Всего {summary.total} · готово {summary.ready} · блокировано {summary.blocked}"
         )
         if summary.total == 0:
-            self.details.setPlainText("Выберите «Открыть каталог».")
+            self.details.setPlainText("Импортируйте файл или выберите feed-источник.")
 
     def run_primary_action(self) -> None:
         self.open_catalog()
@@ -356,7 +353,7 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
             self,
             "Открыть каталог оборудования",
             str(self.presenter.app_presenter.paths.repo_root),
-            "Каталог (*.json *.csv *.xlsx)",
+            "Каталог (*.json *.csv *.xlsx *.yml *.xml)",
         )
         if not path:
             return
@@ -381,33 +378,18 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
             f"Пропущено: {result['skipped']}.",
         )
 
-    def collect_dns_catalog(self) -> None:
-        dialog = HttpCatalogImportDialog(self.presenter, self, source="dns")
-        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.catalog_path is None:
+    def collect_feed_source(self) -> None:
+        dialog = CatalogFeedSourceDialog(self.presenter, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.job is None:
             return
         try:
-            self.presenter.stage_file(dialog.catalog_path)
+            self.presenter.stage_feed_job(dialog.job)
         except Exception as exc:
-            QMessageBox.warning(self, "Ошибка каталога DNS", str(exc))
+            QMessageBox.warning(self, "Ошибка feed", str(exc))
             return
         self.filter_combo.setCurrentIndex(0)
         self.details.setPlainText(
-            "HTTP-каталог DNS загружен. Проверьте warnings и подтвердите нужные позиции."
-        )
-        self.refresh_data()
-
-    def collect_yandex_market_catalog(self) -> None:
-        dialog = HttpCatalogImportDialog(self.presenter, self, source="yandex_market")
-        if dialog.exec() != QDialog.DialogCode.Accepted or dialog.catalog_path is None:
-            return
-        try:
-            self.presenter.stage_file(dialog.catalog_path)
-        except Exception as exc:
-            QMessageBox.warning(self, "Ошибка каталога Яндекс Маркета", str(exc))
-            return
-        self.filter_combo.setCurrentIndex(0)
-        self.details.setPlainText(
-            "HTTP-каталог Яндекс Маркета загружен. Проверьте warnings, цену и характеристики."
+            "Feed загружен. Проверьте источник, цену и категорию."
         )
         self.refresh_data()
 

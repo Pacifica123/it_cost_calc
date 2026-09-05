@@ -26,7 +26,7 @@ STAGING_REJECTED = "rejected"
 STAGING_BLOCKED = "blocked"
 STAGING_IMPORTED = "imported"
 
-_SUPPORTED_EXTENSIONS = {".json", ".csv", ".xlsx"}
+_SUPPORTED_EXTENSIONS = {".json", ".csv", ".xlsx", ".xml", ".yml"}
 _METRIC_FIELDS = (
     "ram_gb",
     "cpu_cores",
@@ -103,7 +103,9 @@ def load_catalog_rows(path: str | Path) -> list[dict[str, Any]]:
         return result
     if suffix == ".csv":
         return _load_csv_rows(source_path)
-    return _load_xlsx_rows(source_path)
+    if suffix == ".xlsx":
+        return _load_xlsx_rows(source_path)
+    return _load_yml_rows(source_path)
 
 
 def normalize_catalog_item(
@@ -111,10 +113,12 @@ def normalize_catalog_item(
     *,
     source_path: str | Path,
     row_index: int,
+    source_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Normalize schema v1/v2 and flat spreadsheet rows to one staging item."""
+    """Normalize schema v1/v2 and flat feed rows to one staging item."""
 
     item = dict(deepcopy(raw))
+    context = _mapping(source_context)
     identity = _mapping(item.get("identity"))
     offer = _mapping(item.get("offer"))
     attributes = _mapping_or_json(item.get("attributes"))
@@ -126,35 +130,114 @@ def normalize_catalog_item(
         if key in attributes
     }
 
-    title = _text(_first(item, "title", "name", "product_name", "наименование"))
-    category = _text(_first(item, "category", "type", "product_type", "категория")).lower()
-    source = _text(item.get("source") or Path(source_path).stem or "imported")
-    url = _text(offer.get("url") or item.get("url"))
+    title = _text(
+        _first_alias(
+            item,
+            "title",
+            "name",
+            "product_name",
+            "наименование",
+            "наименование товара",
+            "название",
+            "товар",
+        )
+    )
+    raw_category = _text(
+        _first_alias(
+            item,
+            "category",
+            "type",
+            "product_type",
+            "категория",
+            "категория товара",
+            "раздел",
+            "группа",
+            "товарная группа",
+        )
+    )
+    category = _normalize_catalog_category(raw_category, title)
+    source = _text(
+        item.get("source")
+        or context.get("id")
+        or context.get("source_id")
+        or Path(source_path).stem
+        or "imported"
+    )
+    url = _text(
+        offer.get("url")
+        or _first_alias(item, "url", "link", "ссылка", "ссылка на товар", "url товара")
+    )
     price = _number(
-        _first(
+        _first_alias(
             offer,
             "price",
             "price_rub",
             "cost",
             "цена",
+            "цена руб",
+            "цена, руб",
+            "стоимость",
+            "розничная цена",
         )
     )
     if price is None:
-        price = _number(_first(item, "price_rub", "price", "cost", "цена"))
-    currency = _text(offer.get("currency") or item.get("currency") or "RUB").upper()
+        price = _number(
+            _first_alias(
+                item,
+                "price_rub",
+                "price",
+                "cost",
+                "цена",
+                "цена руб",
+                "цена, руб",
+                "стоимость",
+                "розничная цена",
+            )
+        )
+    currency = _text(
+        offer.get("currency")
+        or _first_alias(item, "currency", "валюта", "currencyid")
+        or "RUB"
+    ).upper()
     availability = _text(
-        offer.get("availability") or item.get("availability") or "unknown"
+        offer.get("availability")
+        or _first_alias(item, "availability", "available", "наличие", "остаток")
+        or "unknown"
     )
-    observed_at = _text(offer.get("observed_at") or item.get("observed_at"))
+    observed_at = _text(
+        offer.get("observed_at")
+        or item.get("observed_at")
+        or context.get("observed_at")
+    )
 
     normalized_identity = {
         key: value
         for key, value in {
-            "brand": _text(identity.get("brand") or item.get("brand")),
-            "model": _text(identity.get("model") or item.get("model")),
-            "mpn": _text(identity.get("mpn") or item.get("mpn")),
+            "brand": _text(
+                identity.get("brand")
+                or _first_alias(item, "brand", "vendor", "бренд", "производитель")
+            ),
+            "model": _text(
+                identity.get("model")
+                or _first_alias(item, "model", "модель")
+            ),
+            "mpn": _text(
+                identity.get("mpn")
+                or _first_alias(
+                    item,
+                    "mpn",
+                    "pn",
+                    "part number",
+                    "part_number",
+                    "vendorcode",
+                    "артикул производителя",
+                    "парт номер",
+                    "парт-номер",
+                )
+            ),
             "gtin": _text(
-                identity.get("gtin") or item.get("gtin") or item.get("ean")
+                identity.get("gtin")
+                or _first_alias(item, "gtin", "ean", "barcode", "штрихкод")
             ),
         }.items()
         if value
@@ -164,7 +247,19 @@ def normalize_catalog_item(
         for field in _METRIC_FIELDS
         if _metric_field_value(field, metrics.get(field, item.get(field))) is not None
     }
-    source_product_id = _text(item.get("source_product_id"))
+    source_product_id = _text(
+        item.get("source_product_id")
+        or _first_alias(
+            item,
+            "product_id",
+            "vendor_id",
+            "sku",
+            "article",
+            "артикул",
+            "код товара",
+            "код",
+        )
+    )
     catalog_item_id = _text(item.get("item_id") or item.get("id"))
     if not catalog_item_id:
         catalog_item_id = _stable_id(
@@ -176,10 +271,54 @@ def normalize_catalog_item(
             row_index,
         )
 
+    context_location = _text(
+        context.get("resolved_location")
+        or context.get("location")
+        or context.get("requested_location")
+    )
+    source_name = _text(context.get("name") or context.get("source_name") or source)
+    feed_format = _text(context.get("format") or Path(source_path).suffix.lstrip(".")).lower()
+    price_kind = _text(
+        offer.get("price_kind") or item.get("price_kind") or context.get("price_kind")
+    ) or "retail_offer"
+    method = f"feed:{feed_format or 'file'}"
+
+    field_provenance = _mapping(item.get("field_provenance"))
+    if context:
+        field_provenance.setdefault(
+            "feed",
+            {
+                "source": source,
+                "source_name": source_name,
+                "source_url": context_location or None,
+                "format": feed_format or None,
+                "region": _text(context.get("region")) or None,
+                "price_kind": price_kind,
+                "observed_at": observed_at or None,
+                "sha256": _text(context.get("sha256")) or None,
+            },
+        )
+        for field, present in (
+            ("title", bool(title)),
+            ("category", bool(raw_category or category)),
+            ("price", price is not None),
+            ("identity", bool(normalized_identity)),
+        ):
+            if present:
+                field_provenance.setdefault(
+                    field,
+                    {
+                        "source": source,
+                        "method": method,
+                        "observed_at": observed_at or None,
+                    },
+                )
+
     return {
         "item_id": catalog_item_id,
         "title": title,
         "category": category,
+        "source_category": raw_category or None,
         "source": source,
         "source_product_id": source_product_id or None,
         "identity": normalized_identity,
@@ -188,11 +327,13 @@ def normalize_catalog_item(
             "currency": currency,
             "availability": availability,
             "url": url or None,
-            "region": _text(offer.get("region") or item.get("region")),
+            "region": _text(offer.get("region") or item.get("region") or context.get("region")),
             "observed_at": observed_at or None,
+            "price_kind": price_kind,
+            "source_url": context_location or None,
         },
         "attributes": normalized_metrics,
-        "field_provenance": _mapping(item.get("field_provenance")),
+        "field_provenance": field_provenance,
         "review": _mapping(item.get("review")),
         "parser_metadata": parser_metadata,
         "source_schema_version": int(
@@ -415,13 +556,23 @@ class CatalogStagingService:
             if isinstance(record, Mapping)
         ]
 
-    def stage_file(self, source_path: str | Path) -> list[dict[str, Any]]:
+    def stage_file(
+        self,
+        source_path: str | Path,
+        *,
+        source_context: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         source = Path(source_path)
         rows = load_catalog_rows(source)
         previous = {record.get("staging_id"): record for record in self.list_records()}
         records: list[dict[str, Any]] = []
         for index, raw in enumerate(rows):
-            item = normalize_catalog_item(raw, source_path=source, row_index=index)
+            item = normalize_catalog_item(
+                raw,
+                source_path=source,
+                row_index=index,
+                source_context=source_context,
+            )
             staging_id = _staging_id(item)
             old = previous.get(staging_id, {})
             records.append(_build_staging_record(item, staging_id=staging_id, previous=old))
@@ -743,11 +894,11 @@ def _load_csv_rows(path: Path) -> list[dict[str, Any]]:
     sample = text[:4096]
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+        delimiter = dialect.delimiter
     except csv.Error:
-        reader = csv.DictReader(io.StringIO(text), delimiter=";")
-    else:
-        reader = csv.DictReader(io.StringIO(text), dialect=dialect)
-    return [dict(row) for row in reader]
+        delimiter = ";"
+    matrix = [list(row) for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
+    return _matrix_to_rows(matrix)
 
 
 def _load_xlsx_rows(path: Path) -> list[dict[str, Any]]:
@@ -806,11 +957,77 @@ def _load_xlsx_rows(path: Path) -> list[dict[str, Any]]:
             values[column] = value
         if values:
             matrix.append([values.get(index, "") for index in range(max(values) + 1)])
+    return _matrix_to_rows(matrix)
+
+
+def _load_yml_rows(path: Path) -> list[dict[str, Any]]:
+    """Read Yandex Market Language or generic XML offer lists."""
+
+    try:
+        root = ElementTree.fromstring(path.read_bytes())
+    except ElementTree.ParseError as exc:
+        raise ValueError(f"Не удалось разобрать XML/YML: {exc}") from exc
+
+    categories: dict[str, str] = {}
+    for node in root.findall(".//category"):
+        category_id = str(node.attrib.get("id") or "").strip()
+        label = _text(node.text)
+        if category_id and label:
+            categories[category_id] = label
+
+    offers = root.findall(".//offer")
+    if not offers and _local_name(root.tag) == "offer":
+        offers = [root]
+    rows: list[dict[str, Any]] = []
+    for offer in offers:
+        row: dict[str, Any] = {
+            "source_product_id": str(offer.attrib.get("id") or "").strip(),
+            "availability": offer.attrib.get("available", "unknown"),
+        }
+        params: dict[str, Any] = {}
+        for child in list(offer):
+            key = _local_name(child.tag)
+            value = _text(child.text)
+            if key == "param":
+                param_name = str(child.attrib.get("name") or "").strip()
+                if param_name and value:
+                    params[param_name] = value
+                continue
+            if key == "categoryId":
+                row["category"] = categories.get(value, value)
+            elif key in {"name", "model"}:
+                row[key] = value
+            elif key == "vendor":
+                row["brand"] = value
+            elif key == "vendorCode":
+                row["mpn"] = value
+            elif key in {"barcode", "gtin"}:
+                row["gtin"] = value
+            elif key == "currencyId":
+                row["currency"] = value
+            elif key in {"price", "url"}:
+                row[key] = value
+            elif value:
+                row[key] = value
+        if params:
+            row["attributes"] = params
+        if not row.get("name") and row.get("model"):
+            row["name"] = " ".join(
+                part for part in (str(row.get("brand") or "").strip(), str(row.get("model") or "").strip()) if part
+            )
+        if any(value not in ("", None) for value in row.values()):
+            rows.append(row)
+    return rows
+
+
+def _matrix_to_rows(matrix: list[list[Any]]) -> list[dict[str, Any]]:
+    matrix = [row for row in matrix if any(_text(value) for value in row)]
     if not matrix:
         return []
-    headers = [_text(value) for value in matrix[0]]
+    header_index = _find_header_row(matrix)
+    headers = [_text(value) for value in matrix[header_index]]
     result: list[dict[str, Any]] = []
-    for row in matrix[1:]:
+    for row in matrix[header_index + 1 :]:
         payload = {
             header: row[index] if index < len(row) else ""
             for index, header in enumerate(headers)
@@ -821,12 +1038,136 @@ def _load_xlsx_rows(path: Path) -> list[dict[str, Any]]:
     return result
 
 
+def _find_header_row(matrix: list[list[Any]]) -> int:
+    """Pick the first plausible feed header, tolerating title/preamble rows."""
+
+    best_index = 0
+    best_score = -1
+    for index, row in enumerate(matrix[:25]):
+        normalized = {_normalize_key(value) for value in row if _text(value)}
+        score = sum(
+            1
+            for group in _HEADER_ALIAS_GROUPS
+            if normalized.intersection(group)
+        )
+        if score > best_score:
+            best_index, best_score = index, score
+        if score >= 3:
+            return index
+    return best_index
+
+
 def _xlsx_column_index(reference: str) -> int:
     letters = re.match(r"[A-Z]+", reference.upper())
     value = 0
     for char in letters.group(0) if letters else "A":
         value = value * 26 + ord(char) - ord("A") + 1
     return value - 1
+
+
+_HEADER_ALIAS_GROUPS = (
+    {
+        "title",
+        "name",
+        "productname",
+        "наименование",
+        "наименованиетовара",
+        "название",
+        "товар",
+    },
+    {
+        "category",
+        "type",
+        "producttype",
+        "категория",
+        "категориятовара",
+        "раздел",
+        "группа",
+        "товарнаягруппа",
+    },
+    {
+        "price",
+        "pricerub",
+        "cost",
+        "цена",
+        "ценаруб",
+        "стоимость",
+        "розничнаяцена",
+    },
+    {"brand", "vendor", "бренд", "производитель"},
+    {
+        "mpn",
+        "pn",
+        "partnumber",
+        "vendorcode",
+        "артикулпроизводителя",
+        "партномер",
+    },
+    {"sku", "article", "артикул", "кодтовара", "код"},
+)
+
+
+_BLOCKED_CATEGORY_PATTERNS = (
+    ("cpu", ("процессор", "cpu")),
+    ("gpu", ("видеокарт", "gpu", "графический ускоритель")),
+    ("motherboard", ("материнск", "motherboard")),
+    ("ram", ("оперативн", "модул памяти", "ram")),
+    ("ssd", ("ssd", "твердотельн")),
+    ("hdd", ("жестк", "жёстк", "hdd")),
+    ("component", ("комплектующ", "аксессуар для сервер", "серверн комплектующ")),
+)
+
+_CATEGORY_PATTERNS = (
+    ("workstation", ("рабочая станция", "workstation")),
+    ("laptop", ("ноутбук", "laptop")),
+    ("prebuilt_pc", ("системный блок", "системные блоки", "моноблок", "desktop", "готовый компьютер")),
+    ("router", ("маршрутизатор", "роутер", "router")),
+    ("switch", ("коммутатор", "switch")),
+    ("access_point", ("точка доступа", "точки доступа", "access point")),
+    ("server", ("сервер", "server")),
+    ("printer", ("принтер", "мфу", "printer")),
+    ("monitor", ("монитор", "monitor")),
+)
+
+
+def _normalize_key(value: Any) -> str:
+    return re.sub(r"[^0-9a-zа-я]+", "", _text(value).lower())
+
+
+def _first_alias(payload: Mapping[str, Any], *keys: str) -> Any:
+    normalized = {_normalize_key(key): value for key, value in payload.items()}
+    for key in keys:
+        value = normalized.get(_normalize_key(key))
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _normalize_catalog_category(raw_category: str, title: str) -> str:
+    value = str(raw_category or "").strip().lower()
+    if value in _TARGET_BY_CATEGORY:
+        return value
+
+    # Supplier sections such as "Серверная оперативная память" must stay
+    # blocked even if the title also contains a supported-device word.
+    for category, patterns in _BLOCKED_CATEGORY_PATTERNS:
+        if any(pattern in value for pattern in patterns):
+            return category
+
+    # Prefer the concrete product title over a broad supplier section.
+    # Example: a system block inside "Компьютеры и ноутбуки" is a PC, not a laptop.
+    title_value = str(title or "").strip().lower()
+    for category, patterns in _CATEGORY_PATTERNS:
+        if any(pattern in title_value for pattern in patterns):
+            return category
+    for category, patterns in _CATEGORY_PATTERNS:
+        if any(pattern in value for pattern in patterns):
+            return category
+    return value
+
+
+def _local_name(tag: str) -> str:
+    return str(tag).rsplit("}", 1)[-1]
 
 
 def _mapping(value: Any) -> dict[str, Any]:

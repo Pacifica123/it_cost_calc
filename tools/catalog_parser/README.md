@@ -12,7 +12,7 @@
 - парсер собирает и нормализует данные об оборудовании;
 - результат сохраняется в отдельный каталог данных.
 
-Экран `Каталог` запускает отдельный CLI-процесс и показывает его журнал. По умолчанию GUI использует HTTP-режимы без Playwright. Старые Playwright live-режимы сохранены для диагностики и экспериментов, но доступны только из CLI.
+Экран `Каталог` запускает отдельный CLI-процесс и показывает его журнал. Основной GUI-сценарий теперь использует структурированные XLSX/CSV/YML/XML feeds без браузерной автоматизации. DNS/Yandex HTTP и Playwright live-режимы сохранены в CLI как исследовательские и диагностические.
 
 ## Что лежит в этом каталоге
 
@@ -27,6 +27,28 @@
 - `legacy/` — старые и экспериментальные скрипты парсинга, сохранённые как техническая база.
 
 ## Как использовать
+
+## Structured feed P1
+
+Рекомендуемый путь обновления каталога — прайс или feed поставщика, а не consumer-витрина.
+CLI умеет скачать URL либо скопировать локальный XLSX/CSV/YML/XML и записать provenance-манифест:
+
+```bash
+python scripts/update_equipment_catalog.py \
+  --mode feed-download \
+  --input https://www.technocity.ru/upload/tc_price.xlsx \
+  --feed-source-id technocity \
+  --feed-source-name ТехноСити \
+  --feed-format xlsx \
+  --feed-manifest data/generated/catalog/feed_runs/manual/fetch_manifest.json \
+  --region Новосибирск \
+  --output data/generated/catalog/feed_runs/manual/technocity.xlsx
+```
+
+`feed-download` не нормализует товар прямо в runtime: скачанный файл затем проходит Catalog staging.
+Пресеты лежат в `data/catalog/source_presets.json`, пользовательские источники — в
+`data/generated/catalog/catalog_sources.json`. Для B2BCORP поддержана публичная ссылка Яндекс Диска
+через стратегию `yandex_disk_public`; для обычных URLs используется `direct`.
 
 ### Построить каталог из уже сохранённых example-снимков
 ```bash
@@ -73,7 +95,7 @@ python scripts/update_equipment_catalog.py \
   --output data/generated/catalog/dns_http_runs/manual/equipment_catalog.json
 ```
 
-Этот режим является основным live-сценарием GUI. Он использует обычную cookie-сессию `requests`, сначала прогревает DNS и `/catalog/markdown/`, затем извлекает из ответа пары `product-buy hash + оригинальные containers` и запрашивает цены через `/ajax-state/product-buy/`. Логика hash/containers адаптирована из предоставленного `simple_dns_parser.py`; зависимость на внешний пакет `dns_shop_parser` не переносилась.
+Этот режим больше не является основным GUI-сценарием и оставлен в CLI для диагностики. Он использует обычную cookie-сессию `requests`, сначала прогревает DNS и `/catalog/markdown/`, затем извлекает из ответа пары `product-buy hash + оригинальные containers` и запрашивает цены через `/ajax-state/product-buy/`. Логика hash/containers адаптирована из предоставленного `simple_dns_parser.py`; зависимость на внешний пакет `dns_shop_parser` не переносилась.
 
 HTTP 401/403/429 и защитные страницы не обходятся. Сырые ответы и `snapshot_manifest.json` сохраняются в `data/generated/catalog/dns_http_runs/`. Если DNS принимает HTTP-сессию, каталог строится без браузерного движка.
 
@@ -111,7 +133,7 @@ python scripts/update_equipment_catalog.py \
   --output data/generated/catalog/yandex_market_http_runs/manual/equipment_catalog.json
 ```
 
-GUI использует этот режим для Яндекс Маркета. Обычная `requests`-сессия получает category/card HTML, а дальнейший разбор выполняет уже существующий replayable snapshot-parser. CAPTCHA/401/403/429 классифицируются и сохраняются в диагностике; обход защитных механизмов не реализуется.
+Этот режим оставлен в CLI для диагностики и replay-сценариев. Обычная `requests`-сессия получает category/card HTML, а дальнейший разбор выполняет уже существующий replayable snapshot-parser. CAPTCHA/401/403/429 классифицируются и сохраняются в диагностике; обход защитных механизмов не реализуется.
 
 ### Playwright-сбор Яндекс Маркета из CLI
 
@@ -130,7 +152,7 @@ python scripts/update_equipment_catalog.py \
 
 Режимы `yandex-market-snapshot`, `yandex-market-har` и `yandex-market-html` обеспечивают повторный офлайн-разбор. Общедоступный API каталога не используется: seller API относится к кабинету продавца, а новые ключи старого Content API не выдаются. Подробности, ограничения и критерий теста: `docs/architecture/yandex_market_catalog_parser.md`.
 
-Playwright live-сбор теперь оставлен только в CLI. GUI-кнопка `Собрать из Яндекс Маркета (HTTP)` запускает `yandex-market-http-live`. HAR importer по-прежнему доступен из GUI как локальный fallback и не переносит headers, cookies, POST data, изображения или отзывы.
+Playwright и HTTP live-сборы DNS/Yandex оставлены в CLI. На экране каталога их отдельные кнопки больше не показываются; при необходимости HAR/HTML можно обрабатывать из CLI.
 
 ## Для чего это нужно
 

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from application.services.catalog_source_registry import (
+    CatalogSourceRegistry,
+    normalize_catalog_source,
+)
 from application.services.catalog_staging_service import (
     CatalogStagingService,
     STAGING_APPROVED,
@@ -64,6 +69,16 @@ class CatalogStagingSummary:
 class CatalogFilterOption:
     value: str
     label: str
+
+
+@dataclass(frozen=True)
+class CatalogFeedJobSpec:
+    program: str
+    arguments: tuple[str, ...]
+    working_directory: Path
+    output_path: Path
+    manifest_path: Path
+    source: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -130,9 +145,108 @@ class CatalogStagingPresenter:
             / "catalog_staging.json"
         )
         self.service = service or CatalogStagingService(path, self.app_presenter.storage)
+        self.source_registry = CatalogSourceRegistry(
+            self.app_presenter.paths.repo_root
+            / "data"
+            / "generated"
+            / "catalog"
+            / "catalog_sources.json",
+            presets_path=self.app_presenter.paths.resource_root
+            / "data"
+            / "catalog"
+            / "source_presets.json",
+            storage=self.app_presenter.storage,
+        )
 
-    def stage_file(self, path: str | Path) -> list[dict[str, Any]]:
-        return self.service.stage_file(path)
+    def stage_file(
+        self,
+        path: str | Path,
+        *,
+        source_context: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.service.stage_file(path, source_context=source_context)
+
+    def catalog_sources(self) -> list[dict[str, Any]]:
+        return self.source_registry.list_sources()
+
+    def save_catalog_source(self, source: dict[str, Any]) -> dict[str, Any]:
+        return self.source_registry.save_source(source)
+
+    def build_feed_job(self, source: dict[str, Any]) -> CatalogFeedJobSpec:
+        normalized = normalize_catalog_source(source, preset=bool(source.get("preset")))
+        feed_format = normalized["format"]
+        location = normalized["location"]
+        if feed_format == "auto":
+            suffix = Path(str(location).split("?", 1)[0]).suffix.lower().lstrip(".")
+            if suffix not in {"xlsx", "csv", "xml", "yml"}:
+                raise ValueError("Для этого URL укажите формат XLSX, CSV, XML или YML.")
+            feed_format = suffix
+
+        repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = (
+            repo_root
+            / "data"
+            / "generated"
+            / "catalog"
+            / "feed_runs"
+            / timestamp
+        )
+        output_path = run_root / f"{normalized['id']}.{feed_format}"
+        manifest_path = run_root / "fetch_manifest.json"
+        arguments = (
+            *command_prefix,
+            "--mode",
+            "feed-download",
+            "--input",
+            normalized["location"],
+            "--output",
+            str(output_path),
+            "--feed-source-id",
+            normalized["id"],
+            "--feed-source-name",
+            normalized["name"],
+            "--feed-format",
+            feed_format,
+            "--feed-price-kind",
+            normalized["price_kind"],
+            "--feed-download-strategy",
+            normalized["download_strategy"],
+            "--feed-manifest",
+            str(manifest_path),
+            "--region",
+            normalized["region"],
+        )
+        return CatalogFeedJobSpec(
+            program=program,
+            arguments=tuple(arguments),
+            working_directory=repo_root,
+            output_path=output_path,
+            manifest_path=manifest_path,
+            source=normalized,
+        )
+
+    def stage_feed_job(self, job: CatalogFeedJobSpec) -> list[dict[str, Any]]:
+        if not job.output_path.is_file():
+            raise ValueError("Скачанный feed не найден.")
+        if not job.manifest_path.is_file():
+            raise ValueError("Не найден provenance-манифест feed.")
+        manifest = json.loads(job.manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            raise ValueError("Некорректный provenance-манифест feed.")
+        source_context = {
+            "id": manifest.get("source_id") or job.source["id"],
+            "name": manifest.get("source_name") or job.source["name"],
+            "location": manifest.get("requested_location") or job.source["location"],
+            "resolved_location": manifest.get("resolved_location"),
+            "format": manifest.get("format") or job.source["format"],
+            "region": manifest.get("region") or job.source.get("region", ""),
+            "price_kind": manifest.get("price_kind") or job.source["price_kind"],
+            "observed_at": manifest.get("observed_at"),
+            "sha256": manifest.get("sha256"),
+        }
+        return self.stage_file(job.output_path, source_context=source_context)
 
     def records(self) -> list[dict[str, Any]]:
         return self.service.list_records()
@@ -696,6 +810,7 @@ def _format_number(value: Any) -> str:
 
 
 __all__ = [
+    "CatalogFeedJobSpec",
     "CatalogFilterOption",
     "CatalogStagingPresenter",
     "CatalogStagingSummary",

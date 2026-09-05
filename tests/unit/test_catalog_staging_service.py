@@ -365,3 +365,115 @@ def test_presenter_filters_rows_and_shows_manual_diff(tmp_path: Path):
     assert "Цена: 5000" in details
     assert "6100" in details
     assert "Количество: 1" in details
+
+
+def test_yml_feed_preserves_source_context_and_infers_supported_categories(tmp_path: Path):
+    source = tmp_path / "supplier.yml"
+    source.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<yml_catalog date="2026-09-05 14:00">
+  <shop>
+    <categories>
+      <category id="10">Маршрутизаторы</category>
+      <category id="20">Серверы</category>
+    </categories>
+    <offers>
+      <offer id="router-1" available="true">
+        <name>Office Router R1</name>
+        <vendor>MikroTik</vendor>
+        <vendorCode>R1-PN</vendorCode>
+        <categoryId>10</categoryId>
+        <price>12990</price>
+        <currencyId>RUB</currencyId>
+        <url>https://supplier.example/router-1</url>
+      </offer>
+      <offer id="server-1" available="true">
+        <name>Rack Server S1</name>
+        <vendor>Vendor</vendor>
+        <vendorCode>S1-PN</vendorCode>
+        <categoryId>20</categoryId>
+        <price>250000</price>
+        <currencyId>RUB</currencyId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+""",
+        encoding="utf-8",
+    )
+    service = CatalogStagingService(tmp_path / "staging.json")
+    records = service.stage_file(
+        source,
+        source_context={
+            "id": "supplier-feed",
+            "name": "Supplier Feed",
+            "location": "https://supplier.example/catalog.yml",
+            "format": "yml",
+            "region": "Россия",
+            "price_kind": "supplier_price",
+            "observed_at": "2026-09-05T07:00:00+00:00",
+        },
+    )
+
+    assert [record["catalog_item"]["category"] for record in records] == ["router", "server"]
+    router = records[0]["catalog_item"]
+    assert router["source"] == "supplier-feed"
+    assert router["source_product_id"] == "router-1"
+    assert router["identity"]["brand"] == "MikroTik"
+    assert router["identity"]["mpn"] == "R1-PN"
+    assert router["offer"]["price"] == 12990
+    assert router["offer"]["observed_at"] == "2026-09-05T07:00:00+00:00"
+    assert router["offer"]["price_kind"] == "supplier_price"
+    assert router["field_provenance"]["feed"]["source_url"] == "https://supplier.example/catalog.yml"
+    assert router["field_provenance"]["feed"]["region"] == "Россия"
+    assert router["field_provenance"]["feed"]["price_kind"] == "supplier_price"
+    assert router["field_provenance"]["price"]["method"] == "feed:yml"
+
+
+def test_supplier_component_category_does_not_turn_into_ready_server(tmp_path: Path):
+    source = tmp_path / "parts.csv"
+    source.write_text(
+        "Наименование;Категория;Цена;PN\n"
+        "Server RAM 32GB;Серверная оперативная память;12000;RAM-32\n",
+        encoding="utf-8",
+    )
+    record = CatalogStagingService(tmp_path / "staging.json").stage_file(source)[0]
+
+    assert record["catalog_item"]["category"] == "ram"
+    assert record["status"] == "blocked"
+    assert any("готовое устройство ТО" in message for message in record["validation_errors"])
+
+
+def test_csv_feed_can_skip_preamble_before_header(tmp_path: Path):
+    source = tmp_path / "price.csv"
+    source.write_text(
+        "Прайс поставщика;;;\n"
+        "Обновлено 05.09.2026;;;\n"
+        "Наименование;Категория;Цена;Бренд\n"
+        "Branch Router;Маршрутизаторы;8200;Vendor\n",
+        encoding="utf-8",
+    )
+
+    rows = load_catalog_rows(source)
+
+    assert rows == [
+        {
+            "Наименование": "Branch Router",
+            "Категория": "Маршрутизаторы",
+            "Цена": "8200",
+            "Бренд": "Vendor",
+        }
+    ]
+
+
+def test_specific_title_wins_over_broad_supplier_category(tmp_path: Path):
+    source = tmp_path / "mixed.csv"
+    source.write_text(
+        "Наименование;Категория;Цена\n"
+        "Системный блок Office 500;Компьютеры и ноутбуки;55000\n",
+        encoding="utf-8",
+    )
+
+    record = CatalogStagingService(tmp_path / "staging.json").stage_file(source)[0]
+
+    assert record["catalog_item"]["category"] == "prebuilt_pc"
