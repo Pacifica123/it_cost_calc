@@ -42,3 +42,24 @@ def test_dns_job_spec_runs_unbuffered_cli_in_separate_process(tmp_path: Path) ->
     assert str(capture_path) in capture_job.arguments
     assert "Кемерово" in capture_job.arguments
     assert capture_job.output_path.name == "equipment_catalog.json"
+
+
+def test_dns_http_job_spec_uses_non_playwright_cli_mode(tmp_path: Path) -> None:
+    app = QtAppPresenter(
+        repo_root=tmp_path,
+        runtime_entities_path=tmp_path / "runtime.json",
+    )
+    presenter = CatalogStagingPresenter(app, staging_path=tmp_path / "staging.json")
+    job = presenter.build_dns_http_job(
+        categories=["routers", "servers"],
+        per_category_limit=5,
+        time_limit_seconds=120,
+        region="Кемерово",
+    )
+
+    assert "dns-http-live" in job.arguments
+    assert "--browser-engine" not in job.arguments
+    assert "--profile" not in job.arguments
+    assert "routers,servers" in job.arguments
+    assert "dns_http_runs" in str(job.output_path)
+    assert "Кемерово" in job.arguments

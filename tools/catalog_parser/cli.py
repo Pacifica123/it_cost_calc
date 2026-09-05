@@ -25,10 +25,12 @@ def build_parser() -> argparse.ArgumentParser:
             "dns-har",
             "dns-html",
             "dns-live",
+            "dns-http-live",
             "yandex-market-snapshot",
             "yandex-market-har",
             "yandex-market-html",
             "yandex-market-live",
+            "yandex-market-http-live",
             "legacy-dns-live",
         ],
         default="examples",
@@ -46,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--categories",
         default="routers,switches,prebuilt_pcs,servers",
-        help="Категории через запятую для browser-live режима.",
+        help="Категории через запятую для live-режимов.",
     )
     parser.add_argument(
         "--browser-engine",
@@ -54,14 +56,14 @@ def build_parser() -> argparse.ArgumentParser:
         default="firefox",
         help="Playwright-движок browser-live; при отсутствии устанавливается автоматически.",
     )
-    parser.add_argument("--limit", type=int, default=10, help="Карточек на категорию для browser-live.")
+    parser.add_argument("--limit", type=int, default=10, help="Карточек на категорию для live-режимов.")
     parser.add_argument(
         "--time-limit",
         type=int,
         default=300,
-        help="Общий таймаут browser-live в секундах.",
+        help="Общий таймаут live-сбора в секундах.",
     )
-    parser.add_argument("--snapshot-output", help="Каталог для HTML-снимка browser-live.")
+    parser.add_argument("--snapshot-output", help="Каталог диагностики/snapshot для live-сбора.")
     parser.add_argument("--profile", help="Каталог persistent browser profile для browser-live.")
     parser.add_argument("--region", default="", help="Текстовая метка региона цены.")
     parser.add_argument("--headless", action="store_true", help="Запустить browser-live без окна браузера.")
@@ -148,6 +150,34 @@ def main(argv: list[str] | None = None) -> int:
             return 4
         finally:
             signal.signal(signal.SIGTERM, previous_sigterm)
+    elif args.mode == "dns-http-live":
+        if not args.snapshot_output:
+            parser.error("--snapshot-output is required for --mode dns-http-live")
+        from .sources.dns_http_live import (
+            DnsHttpCollectionError,
+            DnsHttpLiveOptions,
+            build_catalog_from_http_dns,
+        )
+
+        categories = tuple(value.strip() for value in args.categories.split(",") if value.strip())
+        try:
+            payload = build_catalog_from_http_dns(
+                DnsHttpLiveOptions(
+                    snapshot_dir=Path(args.snapshot_output),
+                    categories=categories,
+                    per_category_limit=args.limit,
+                    time_limit_seconds=args.time_limit,
+                    region=args.region,
+                ),
+                progress=lambda message: print(message, flush=True),
+            )
+        except KeyboardInterrupt:
+            print("HTTP-сбор DNS остановлен пользователем.", flush=True)
+            return 130
+        except DnsHttpCollectionError as exc:
+            print(f"Ошибка HTTP-сбора DNS: {exc}", flush=True)
+            print(f"Диагностика: {exc.manifest_path}", flush=True)
+            return exc.exit_code
     elif args.mode == "yandex-market-snapshot":
         if not args.input:
             parser.error("--input is required for --mode yandex-market-snapshot")
@@ -217,6 +247,34 @@ def main(argv: list[str] | None = None) -> int:
             return 4
         finally:
             signal.signal(signal.SIGTERM, previous_sigterm)
+    elif args.mode == "yandex-market-http-live":
+        if not args.snapshot_output:
+            parser.error("--snapshot-output is required for --mode yandex-market-http-live")
+        from .sources.yandex_market_http_live import (
+            YandexMarketHttpCollectionError,
+            YandexMarketHttpLiveOptions,
+            build_catalog_from_http_yandex_market,
+        )
+
+        categories = tuple(value.strip() for value in args.categories.split(",") if value.strip())
+        try:
+            payload = build_catalog_from_http_yandex_market(
+                YandexMarketHttpLiveOptions(
+                    snapshot_dir=Path(args.snapshot_output),
+                    categories=categories,
+                    per_category_limit=args.limit,
+                    time_limit_seconds=args.time_limit,
+                    region=args.region,
+                ),
+                progress=lambda message: print(message, flush=True),
+            )
+        except KeyboardInterrupt:
+            print("HTTP-сбор Яндекс Маркета остановлен пользователем.", flush=True)
+            return 130
+        except YandexMarketHttpCollectionError as exc:
+            print(f"Ошибка HTTP-сбора Яндекс Маркета: {exc}", flush=True)
+            print(f"Диагностика: {exc.manifest_path}", flush=True)
+            return exc.exit_code
     else:
         from .sources.dns_live import build_catalog_from_legacy_dns
 

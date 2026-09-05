@@ -79,7 +79,7 @@ python -m playwright install firefox
 python -m playwright install chromium
 ```
 
-На экране `Каталог` кнопка `Собрать из DNS` запускает parser отдельным процессом, показывает журнал и загружает catalog v2 в staging. Профили браузеров и HTML-снимки находятся только в `data/generated/`.
+На экране `Каталог` кнопки `Собрать из DNS (HTTP)` и `Собрать из Яндекс Маркета (HTTP)` запускают parser отдельным процессом без Playwright, показывают журнал и загружают catalog v2 в staging. Playwright live-режимы сохранены только в CLI; диагностика HTTP-сборов находится в `data/generated/catalog/*_http_runs/`.
 
 ## Сборки для запуска без Python
 

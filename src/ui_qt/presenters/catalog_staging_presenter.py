@@ -236,6 +236,53 @@ class CatalogStagingPresenter:
             snapshot_path=snapshot_path,
         )
 
+    def build_dns_http_job(
+        self,
+        *,
+        categories: list[str],
+        per_category_limit: int,
+        time_limit_seconds: int,
+        region: str = "",
+    ) -> DnsCatalogJobSpec:
+        allowed = {value for value, _label in _DNS_CATEGORY_OPTIONS}
+        selected = tuple(dict.fromkeys(str(value) for value in categories))
+        if not selected or any(value not in allowed for value in selected):
+            raise ValueError("Выберите хотя бы одну поддерживаемую DNS-категорию.")
+        if not 1 <= per_category_limit <= 50:
+            raise ValueError("Лимит карточек должен быть от 1 до 50.")
+        if not 30 <= time_limit_seconds <= 1800:
+            raise ValueError("Таймаут должен быть от 30 до 1800 секунд.")
+
+        repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = repo_root / "data" / "generated" / "catalog" / "dns_http_runs" / timestamp
+        output_path = run_root / "equipment_catalog.json"
+        snapshot_path = run_root / "snapshot"
+        return DnsCatalogJobSpec(
+            program=program,
+            arguments=(
+                *command_prefix,
+                "--mode",
+                "dns-http-live",
+                "--categories",
+                ",".join(selected),
+                "--limit",
+                str(per_category_limit),
+                "--time-limit",
+                str(time_limit_seconds),
+                "--snapshot-output",
+                str(snapshot_path),
+                "--region",
+                str(region).strip(),
+                "--output",
+                str(output_path),
+            ),
+            working_directory=repo_root,
+            output_path=output_path,
+            snapshot_path=snapshot_path,
+        )
+
     def build_dns_capture_job(self, path: str | Path, *, region: str = "") -> DnsCatalogJobSpec:
         capture_path = Path(path).resolve()
         suffix = capture_path.suffix.lower()
@@ -337,6 +384,60 @@ class CatalogStagingPresenter:
         return YandexMarketCatalogJobSpec(
             program=program,
             arguments=tuple(arguments),
+            working_directory=repo_root,
+            output_path=output_path,
+            snapshot_path=snapshot_path,
+        )
+
+    def build_yandex_market_http_job(
+        self,
+        *,
+        categories: list[str],
+        per_category_limit: int,
+        time_limit_seconds: int,
+        region: str = "",
+    ) -> YandexMarketCatalogJobSpec:
+        allowed = {value for value, _label in _YANDEX_MARKET_CATEGORY_OPTIONS}
+        selected = tuple(dict.fromkeys(str(value) for value in categories))
+        if not selected or any(value not in allowed for value in selected):
+            raise ValueError("Выберите хотя бы одну поддерживаемую категорию Яндекс Маркета.")
+        if not 1 <= per_category_limit <= 50:
+            raise ValueError("Лимит карточек должен быть от 1 до 50.")
+        if not 30 <= time_limit_seconds <= 1800:
+            raise ValueError("Таймаут должен быть от 30 до 1800 секунд.")
+
+        repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = (
+            repo_root
+            / "data"
+            / "generated"
+            / "catalog"
+            / "yandex_market_http_runs"
+            / timestamp
+        )
+        output_path = run_root / "equipment_catalog.json"
+        snapshot_path = run_root / "snapshot"
+        return YandexMarketCatalogJobSpec(
+            program=program,
+            arguments=(
+                *command_prefix,
+                "--mode",
+                "yandex-market-http-live",
+                "--categories",
+                ",".join(selected),
+                "--limit",
+                str(per_category_limit),
+                "--time-limit",
+                str(time_limit_seconds),
+                "--snapshot-output",
+                str(snapshot_path),
+                "--region",
+                str(region).strip(),
+                "--output",
+                str(output_path),
+            ),
             working_directory=repo_root,
             output_path=output_path,
             snapshot_path=snapshot_path,

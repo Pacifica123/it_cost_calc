@@ -12,7 +12,7 @@
 - парсер собирает и нормализует данные об оборудовании;
 - результат сохраняется в отдельный каталог данных.
 
-Экран `Каталог` может запустить CLI как отдельный процесс и показать его журнал, но HTML-разбор и Playwright по-прежнему остаются внутри инструмента.
+Экран `Каталог` запускает отдельный CLI-процесс и показывает его журнал. По умолчанию GUI использует HTTP-режимы без Playwright. Старые Playwright live-режимы сохранены для диагностики и экспериментов, но доступны только из CLI.
 
 ## Что лежит в этом каталоге
 
@@ -60,7 +60,24 @@ python scripts/update_equipment_catalog.py \
 
 В обычном Chrome откройте `F12 → Network`, включите `Preserve log`, посетите нужные категории и карточки, затем сохраните `HAR (sanitized)`. Передавать sensitive HAR не требуется.
 
-### Собрать ограниченный каталог DNS через браузер
+### Собрать каталог DNS через HTTP без Playwright
+
+```bash
+python scripts/update_equipment_catalog.py \
+  --mode dns-http-live \
+  --categories routers,switches,prebuilt_pcs,servers \
+  --limit 10 \
+  --time-limit 300 \
+  --snapshot-output data/generated/catalog/dns_http_runs/manual/snapshot \
+  --region Москва \
+  --output data/generated/catalog/dns_http_runs/manual/equipment_catalog.json
+```
+
+Этот режим является основным live-сценарием GUI. Он использует обычную cookie-сессию `requests`, сначала прогревает DNS и `/catalog/markdown/`, затем извлекает из ответа пары `product-buy hash + оригинальные containers` и запрашивает цены через `/ajax-state/product-buy/`. Логика hash/containers адаптирована из предоставленного `simple_dns_parser.py`; зависимость на внешний пакет `dns_shop_parser` не переносилась.
+
+HTTP 401/403/429 и защитные страницы не обходятся. Сырые ответы и `snapshot_manifest.json` сохраняются в `data/generated/catalog/dns_http_runs/`. Если DNS принимает HTTP-сессию, каталог строится без браузерного движка.
+
+### Playwright-сбор DNS из CLI
 
 ```bash
 python scripts/update_equipment_catalog.py \
@@ -75,13 +92,28 @@ python scripts/update_equipment_catalog.py \
   --output data/generated/catalog/dns_runs/manual/equipment_catalog.json
 ```
 
-По умолчанию используется видимый Firefox; в GUI можно выбрать Chromium. Если выбранный Playwright browser engine ещё не установлен, CLI устанавливает его текущим Python-интерпретатором. Первый экран содержит паузу для выбора региона/cookies. Каждый товар сохраняется как HTML, после чего каталог строится каноническим `dns-snapshot` importer. Тот же сценарий доступен кнопкой `Собрать из DNS` на экране каталога.
+По умолчанию используется видимый Firefox; можно выбрать Chromium параметром CLI. Если выбранный Playwright browser engine ещё не установлен, CLI устанавливает его текущим Python-интерпретатором. Этот режим больше не показывается в GUI и остаётся диагностическим fallback для ручных экспериментов.
 
 Все четыре поддерживаемые группы открываются по прямым URL категорий DNS. Если поздняя категория получает `403/429`, уже собранные карточки сохраняются как частичный результат.
 
 Ответы DNS `403/429` распознаются до парсинга ссылок. Сбор останавливается после первого отказа, а причина и URL сохраняются в `snapshot_manifest.json`; смена селекторов в этой ситуации не поможет.
 
-### Исследовать каталог Яндекс Маркета
+### Собрать Яндекс Маркет через HTTP без Playwright
+
+```bash
+python scripts/update_equipment_catalog.py \
+  --mode yandex-market-http-live \
+  --categories routers,switches,prebuilt_pcs,servers \
+  --limit 10 \
+  --time-limit 300 \
+  --snapshot-output data/generated/catalog/yandex_market_http_runs/manual/snapshot \
+  --region Москва \
+  --output data/generated/catalog/yandex_market_http_runs/manual/equipment_catalog.json
+```
+
+GUI использует этот режим для Яндекс Маркета. Обычная `requests`-сессия получает category/card HTML, а дальнейший разбор выполняет уже существующий replayable snapshot-parser. CAPTCHA/401/403/429 классифицируются и сохраняются в диагностике; обход защитных механизмов не реализуется.
+
+### Playwright-сбор Яндекс Маркета из CLI
 
 ```bash
 python scripts/update_equipment_catalog.py \
@@ -98,7 +130,7 @@ python scripts/update_equipment_catalog.py \
 
 Режимы `yandex-market-snapshot`, `yandex-market-har` и `yandex-market-html` обеспечивают повторный офлайн-разбор. Общедоступный API каталога не используется: seller API относится к кабинету продавца, а новые ключи старого Content API не выдаются. Подробности, ограничения и критерий теста: `docs/architecture/yandex_market_catalog_parser.md`.
 
-В GUI тот же сценарий запускается кнопкой `Собрать из Яндекс Маркета`. Live-сбор сохраняет публичные category/card HTML, распознаёт CAPTCHA/HTTP-ограничения и оставляет частичный результат. HAR importer не переносит headers, cookies, POST data, изображения или отзывы.
+Playwright live-сбор теперь оставлен только в CLI. GUI-кнопка `Собрать из Яндекс Маркета (HTTP)` запускает `yandex-market-http-live`. HAR importer по-прежнему доступен из GUI как локальный fallback и не переносит headers, cookies, POST data, изображения или отзывы.
 
 ## Для чего это нужно
 

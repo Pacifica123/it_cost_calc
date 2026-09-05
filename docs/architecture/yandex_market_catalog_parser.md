@@ -1,95 +1,71 @@
-# Исследовательский сбор каталога Яндекс Маркета
+# Каталог Яндекс Маркета: HTTP по умолчанию, Playwright только CLI
 
-## Решение по источнику
+## Назначение
 
-На 2026-08-22 у Яндекс Маркета есть два разных класса API:
-
-- [API Маркета для продавцов](https://yandex.ru/dev/market/partner-api/doc/ru/) работает с ассортиментом, ценами, заказами и отчётами кабинета продавца. Он требует API-Key, созданный в кабинете, и не является публичным поиском по общей витрине;
-- юридические документы всё ещё описывают [Контентный API](https://yandex.ru/legal/market_api_content/ru/), но условия расширенного доступа прямо указывают, что с 26.12.2018 предложение отозвано для новых пользователей и новые ключи не выдаются: [условия услуги](https://yandex.ru/legal/market_api_content_conditions/ru/).
-
-Поэтому патч не требует токен продавца и не использует недокументированные внутренние JSON endpoint'ы Маркета как контракт. Исследуемый источник — публичная веб-витрина, открываемая пользователем через Playwright. Это best-effort интеграция, а не стабильный официальный data feed.
-
-## Контур
+GUI использует `yandex-market-http-live`: отдельный процесс без Playwright получает публичные category/card HTML через обычную cookie-сессию `requests`, сохраняет replayable snapshot и передаёт его существующему нормализатору catalog v2.
 
 ```text
 Экран «Каталог»
-  -> отдельный CLI yandex-market-live
-  -> persistent Playwright profile
-  -> публичные category/card HTML
-  -> локальный replayable snapshot
-  -> нормализация catalog v2
-  -> существующий staging и ручное подтверждение
+  -> yandex-market-http-live
+  -> requests.Session
+  -> category/card HTML
+  -> snapshot_manifest.json
+  -> существующий Yandex Market snapshot parser
+  -> catalog v2
+  -> staging
 ```
 
-Поддерживаются группы:
-
-- `routers` — `https://market.yandex.ru/category/routery`;
-- `switches` — `https://market.yandex.ru/category/kommutatory`;
-- `prebuilt_pcs` — `https://market.yandex.ru/category/gotovyye-kompyutery`;
-- `servers` — `https://market.yandex.ru/category/servernyye-kompyutery`.
-
-Collector принимает только HTTPS-ссылки хоста `market.yandex.ru`, убирает tracking query, ограничивает число карточек и общий таймаут. Между карточками есть пауза. Сырые HTML и manifest остаются в `data/generated/catalog/yandex_market_runs/`.
+Поддерживаются группы `routers`, `switches`, `prebuilt_pcs`, `servers` с теми же публичными URL категорий, что и прежний browser collector.
 
 ## Извлечение
 
-Карточка разбирается слоями:
+Карточки разбираются прежним проверенным слоем:
 
 1. schema.org Product/Offer JSON-LD;
-2. встроенный JSON страницы с выбором product-like узла по идентификатору карточки;
-3. `h1`, canonical/meta и ограниченный набор видимых пар «характеристика — значение»;
-4. best-effort цена из публично отображаемого текста.
+2. встроенный JSON страницы;
+3. `h1`, canonical/meta и видимые пары характеристик;
+4. best-effort цена из публичного текста.
 
-Результат получает `source=yandex_market`, собственный provenance, URL, регион, время наблюдения и warnings. Нормализация технических величин использует тот же канонический слой, что DNS, но источник не подменяется значением `dns`.
+HTTP collector отвечает только за сессию, получение страниц, лимиты, таймауты и сохранение диагностики. Парсер карточки не дублируется.
 
-## Ошибки доступа и fallback
+## Ошибки доступа
 
-HTTP `401/403/429`, `showcaptcha` и SmartCaptcha классифицируются до разбора карточек и записываются в manifest. Уже собранные карточки сохраняются как частичный результат.
+HTTP `401/403/429`, `showcaptcha` и SmartCaptcha фиксируются в `snapshot_manifest.json`. Автоматический обход защитных механизмов не реализуется. Уже полученные карточки могут дать частичный результат.
 
-Режимы `yandex-market-har` и `yandex-market-html` работают полностью локально. HAR importer читает только успешные HTML response bodies `market.yandex.ru`; headers, cookies, POST data, изображения и отзывы игнорируются. Максимальный HAR — 256 МБ, отдельный HTML body — 24 МБ.
+Рабочие каталоги GUI:
 
-Наличие fallback не означает, что live-сбор обязательно будет заблокирован: это определяется реальным подключением, регионом и текущей защитой Маркета при пользовательском тесте.
+- `data/generated/catalog/yandex_market_http_runs/<timestamp>/` — HTTP live;
+- `data/generated/catalog/yandex_market_imports/<timestamp>/` — локальный HAR/HTML.
 
-## Команды
+## Команда HTTP-сбора
+
+```bash
+python scripts/update_equipment_catalog.py \
+  --mode yandex-market-http-live \
+  --categories routers,switches,prebuilt_pcs,servers \
+  --limit 10 \
+  --time-limit 300 \
+  --snapshot-output data/generated/catalog/yandex_market_http_runs/manual/snapshot \
+  --region Москва \
+  --output data/generated/catalog/yandex_market_http_runs/manual/equipment_catalog.json
+```
+
+## Playwright fallback
+
+Предыдущий `yandex-market-live` сохранён, но GUI его не показывает. Он остаётся CLI-only исследовательским режимом для случаев, когда нужно сравнить результат HTTP и браузерной сессии.
 
 ```bash
 python scripts/update_equipment_catalog.py \
   --mode yandex-market-live \
-  --categories routers,switches,prebuilt_pcs,servers \
   --browser-engine firefox \
+  --categories routers,switches \
   --limit 10 \
   --time-limit 300 \
   --snapshot-output data/generated/catalog/yandex_market_runs/manual/snapshot \
   --profile data/generated/catalog/yandex_market_browser_profiles/firefox \
-  --region Москва \
   --output data/generated/catalog/yandex_market_runs/manual/equipment_catalog.json
 ```
 
-Повторный офлайн-разбор:
+## Зависимости
 
-```bash
-python scripts/update_equipment_catalog.py \
-  --mode yandex-market-snapshot \
-  --input data/generated/catalog/yandex_market_runs/manual/snapshot \
-  --output data/generated/catalog/yandex_market_runs/manual/replayed_catalog.json
-```
-
-Локальный capture:
-
-```bash
-python scripts/update_equipment_catalog.py \
-  --mode yandex-market-har \
-  --input browser-capture.har \
-  --region Москва \
-  --output data/generated/catalog/yandex_market_imports/manual/equipment_catalog.json
-```
-
-## Критерий пользовательского теста
-
-Потенциал источника считается подтверждённым, если хотя бы для двух категорий live-сбор формирует catalog v2, где у большинства строк присутствуют:
-
-- стабильный URL и `source_product_id`;
-- текущая цена и регион;
-- минимум три предметные характеристики;
-- отсутствие блокирующих ошибок staging после проверки пользователем.
-
-Если live-сбор завершится кодом `3` или `4`, для вывода о причине нужно смотреть `snapshot_manifest.json` и сохранённый listing HTML, а не только факт пустого каталога.
+Отдельная HTTP-библиотека не добавлялась: используется уже существующий `requests`. Поэтому `requirements/base.txt` продолжает подключать проект через `-e .`, а список runtime-зависимостей остаётся в `pyproject.toml` без нового пакета.
