@@ -24,3 +24,5 @@ def test_dns_catalog_gui_uses_separate_cancellable_process() -> None:
     assert "QDesktopServices.openUrl" in dialog_source
     assert "Импорт HAR / HTML" in dialog_source
     assert "build_dns_capture_job" in dialog_source
+    assert "Подробности — в журнале" in dialog_source
+    assert 'self.status.setText(f"Не удалось запустить процесс:' not in dialog_source

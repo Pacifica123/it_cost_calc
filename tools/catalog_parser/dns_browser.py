@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import shutil
@@ -35,46 +36,54 @@ class DnsBrowserPage:
     html: str
 
 
-def _playwright_install_location(engine: str) -> Path:
-    """Resolve Playwright's installation directory without starting its async driver."""
+def _playwright_browser_revision(engine: str) -> str:
+    """Read the browser revision bundled with the current Playwright package.
 
-    configure_playwright_environment()
+    This intentionally avoids parsing ``playwright install --dry-run`` output.
+    The CLI text format has changed between Playwright releases and can differ
+    in frozen builds, while ``browsers.json`` is the registry used by the
+    bundled driver itself.
+    """
+
     try:
-        from playwright._impl._driver import compute_driver_executable, get_driver_env
+        from playwright._impl._driver import compute_driver_executable
     except ModuleNotFoundError as exc:
         raise DnsBrowserError(
             "Playwright не установлен в окружении приложения. Переустановите зависимости проекта."
         ) from exc
 
-    driver_executable, driver_cli = compute_driver_executable()
-    env = get_driver_env()
-    env["PLAYWRIGHT_BROWSERS_PATH"] = os.environ["PLAYWRIGHT_BROWSERS_PATH"]
-    completed = subprocess.run(
-        [driver_executable, driver_cli, "install", "--dry-run", engine],
-        env=env,
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if completed.returncode != 0:
-        details = (completed.stderr or completed.stdout).strip()
-        suffix = f" ({details})" if details else ""
-        raise DnsBrowserError(f"Не удалось определить каталог Playwright {engine}{suffix}")
+    _driver_executable, driver_cli = compute_driver_executable()
+    registry_path = Path(driver_cli).resolve().parent / "browsers.json"
+    try:
+        payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DnsBrowserError(
+            f"Не удалось прочитать реестр браузеров Playwright: {registry_path}"
+        ) from exc
 
-    current_browser = ""
-    for raw_line in completed.stdout.splitlines():
-        line = raw_line.strip()
-        if line.startswith("browser:"):
-            current_browser = line.partition(":")[2].strip().split()[0]
-            continue
-        if current_browser == engine and line.startswith("Install location:"):
-            value = line.partition(":")[2].strip()
-            if value:
-                return Path(value).expanduser().resolve()
-    raise DnsBrowserError(
-        f"Playwright не сообщил каталог установки для движка {engine}."
-    )
+    for item in payload.get("browsers", []):
+        if str(item.get("name") or "") == engine:
+            revision = str(item.get("revision") or "").strip()
+            if revision:
+                return revision
+    raise DnsBrowserError(f"В реестре Playwright нет движка {engine}.")
+
+
+def _playwright_browser_cache_root() -> Path:
+    configured = configure_playwright_environment()
+    if str(configured) != "0":
+        return configured.expanduser().resolve()
+
+    # Explicit PLAYWRIGHT_BROWSERS_PATH=0 is supported for source/dev runs.
+    # Frozen runs are normalized to the writable user cache by runtime.py.
+    try:
+        from playwright._impl._driver import compute_driver_executable
+    except ModuleNotFoundError as exc:
+        raise DnsBrowserError(
+            "Playwright не установлен в окружении приложения. Переустановите зависимости проекта."
+        ) from exc
+    _driver_executable, driver_cli = compute_driver_executable()
+    return (Path(driver_cli).resolve().parent / ".local-browsers").resolve()
 
 
 def _find_browser_executable(engine: str, install_dir: Path) -> Path:
@@ -100,7 +109,8 @@ def _find_browser_executable(engine: str, install_dir: Path) -> Path:
 
 
 def _playwright_executable_path(engine: str) -> Path:
-    install_dir = _playwright_install_location(engine)
+    revision = _playwright_browser_revision(engine)
+    install_dir = _playwright_browser_cache_root() / f"{engine}-{revision}"
     return _find_browser_executable(engine, install_dir)
 
 
@@ -155,7 +165,10 @@ def ensure_playwright_browser(
     if engine not in PLAYWRIGHT_BROWSER_ENGINES:
         raise DnsBrowserError(f"Неподдерживаемый Playwright-движок: {engine}")
     configure_playwright_environment()
-    probe = probe or _playwright_executable_path
+    if probe is None:
+        cache_root = _playwright_browser_cache_root()
+        progress(f"Кэш Playwright: {cache_root}")
+        probe = _playwright_executable_path
     executable = probe(engine)
     if executable.is_file():
         progress(f"Движок {engine} найден: {executable}")

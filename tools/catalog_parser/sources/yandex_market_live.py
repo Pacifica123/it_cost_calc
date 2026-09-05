@@ -10,7 +10,11 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urljoin, urlparse, urlunparse
 
-from ..market_browser import YandexMarketBrowserPage, YandexMarketBrowserSession
+from ..market_browser import (
+    YandexMarketBrowserError,
+    YandexMarketBrowserPage,
+    YandexMarketBrowserSession,
+)
 from .yandex_market_snapshot import build_catalog_from_yandex_market_snapshot
 
 YANDEX_MARKET_BASE_URL = "https://market.yandex.ru"
@@ -334,22 +338,59 @@ def capture_yandex_market_snapshot(
     return manifest_path
 
 
+def _write_browser_setup_failure(options: YandexMarketLiveOptions, message: str) -> Path:
+    root = Path(options.snapshot_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    manifest_path = root / "snapshot_manifest.json"
+    manifest = {
+        "schema_version": 1,
+        "source": "yandex_market",
+        "region": options.region,
+        "observed_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "capture": {
+            "mode": "user-initiated-playwright",
+            "status": "failed",
+            "browser_engine": options.browser_engine,
+            "categories": list(options.categories),
+            "per_category_limit": options.per_category_limit,
+            "warnings": [],
+            "failure": {
+                "kind": "browser_setup",
+                "status_code": None,
+                "stage": "browser_setup",
+                "message": message,
+            },
+        },
+        "items": [],
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return manifest_path
+
+
 def build_catalog_from_live_yandex_market(
     options: YandexMarketLiveOptions,
     *,
     progress: Callable[[str], None] = print,
 ) -> dict:
     options.validate()
-    with YandexMarketBrowserSession(
-        profile_dir=options.profile_dir,
-        engine=options.browser_engine,
-        headless=options.headless,
-        first_page_wait_seconds=options.first_page_wait_seconds,
-        progress=progress,
-    ) as browser:
-        progress("Подготавливаю сессию Яндекс Маркета через главную страницу.")
-        browser.fetch(f"{YANDEX_MARKET_BASE_URL}/")
-        capture_yandex_market_snapshot(options, fetch=browser.fetch, progress=progress)
+    try:
+        with YandexMarketBrowserSession(
+            profile_dir=options.profile_dir,
+            engine=options.browser_engine,
+            headless=options.headless,
+            first_page_wait_seconds=options.first_page_wait_seconds,
+            progress=progress,
+        ) as browser:
+            progress("Подготавливаю сессию Яндекс Маркета через главную страницу.")
+            browser.fetch(f"{YANDEX_MARKET_BASE_URL}/")
+            capture_yandex_market_snapshot(options, fetch=browser.fetch, progress=progress)
+    except YandexMarketBrowserError as exc:
+        manifest_path = _write_browser_setup_failure(options, str(exc))
+        progress(f"Диагностика браузера сохранена: {manifest_path}")
+        raise YandexMarketLiveCollectionError(str(exc), manifest_path=manifest_path) from exc
     payload = build_catalog_from_yandex_market_snapshot(options.snapshot_dir)
     if int((payload.get("stats") or {}).get("items_total") or 0) <= 0:
         raise YandexMarketLiveCollectionError(

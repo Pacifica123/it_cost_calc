@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 
 from tools.catalog_parser.dns_browser import DnsBrowserSession, ensure_playwright_browser
+from tools.catalog_parser import dns_browser
 
 
 def test_browser_install_is_skipped_when_engine_exists(tmp_path: Path) -> None:
@@ -40,6 +41,26 @@ def test_missing_browser_is_installed_with_current_python(tmp_path: Path) -> Non
     assert install_calls == [
         [sys.executable, "-m", "playwright", "install", "chromium"]
     ]
+
+
+def test_playwright_probe_uses_bundled_revision_with_user_cache(
+    monkeypatch, tmp_path: Path
+) -> None:
+    cache_root = tmp_path / "ms-playwright"
+    executable = cache_root / "firefox-1538" / "firefox" / "firefox"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+
+    monkeypatch.setattr(dns_browser, "configure_playwright_environment", lambda: cache_root)
+    monkeypatch.setattr(dns_browser, "_playwright_browser_revision", lambda _engine: "1538")
+
+    assert dns_browser._playwright_executable_path("firefox") == executable.resolve()
+
+
+def test_playwright_probe_does_not_depend_on_dry_run_output() -> None:
+    source = Path("tools/catalog_parser/dns_browser.py").read_text(encoding="utf-8")
+    assert "browsers.json" in source
+    assert '"install", "--dry-run"' not in source
 
 
 def test_first_qrator_401_is_retried_after_challenge_wait(tmp_path: Path) -> None:

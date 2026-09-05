@@ -282,7 +282,7 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
                     )
             elif exit_code == 4:
                 self.status.setText(
-                    f"Сбор {self.source_title} не завершён. Проверьте сообщение и диагностику в журнале."
+                    f"Сбор {self.source_title} не завершён. Подробности — в журнале."
                 )
             elif exit_code == 5:
                 self.status.setText(
@@ -298,7 +298,10 @@ class DnsCatalogImportDialog(QDialog):  # type: ignore[misc,valid-type]
         self._set_controls_running(False)
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
-        self.status.setText(f"Не удалось запустить процесс: {self._process.errorString()}")
+        details = self._process.errorString()
+        if details:
+            self.log.appendPlainText(f"Ошибка запуска процесса: {details}")
+        self.status.setText("Не удалось запустить процесс. Подробности — в журнале.")
 
     def _set_controls_running(self, running: bool) -> None:
         self.start_button.setEnabled(not running)

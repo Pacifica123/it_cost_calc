@@ -3,7 +3,11 @@ import json
 from pathlib import Path
 
 from tools.catalog_parser.cli import build_parser
-from tools.catalog_parser.market_browser import YandexMarketBrowserPage
+from tools.catalog_parser.market_browser import (
+    YandexMarketBrowserError,
+    YandexMarketBrowserPage,
+)
+from tools.catalog_parser.sources import yandex_market_live
 from tools.catalog_parser.sources.yandex_market_capture import (
     build_catalog_from_yandex_market_har,
     build_catalog_from_yandex_market_html,
@@ -11,6 +15,7 @@ from tools.catalog_parser.sources.yandex_market_capture import (
 from tools.catalog_parser.sources.yandex_market_live import (
     YANDEX_MARKET_CATEGORY_URLS,
     YandexMarketAccessDeniedError,
+    YandexMarketLiveCollectionError,
     YandexMarketLiveOptions,
     capture_yandex_market_snapshot,
     parse_yandex_market_listing_html,
@@ -248,3 +253,46 @@ def test_cli_exposes_all_yandex_market_modes() -> None:
     )
     assert args.mode == "yandex-market-live"
     assert args.limit == 10
+
+
+def test_browser_setup_failure_is_persisted_to_market_manifest(tmp_path: Path) -> None:
+    options = YandexMarketLiveOptions(
+        snapshot_dir=tmp_path / "snapshot",
+        profile_dir=tmp_path / "profile",
+        categories=("routers",),
+        per_category_limit=1,
+        time_limit_seconds=60,
+        request_delay_seconds=0,
+    )
+
+    class BrokenBrowser:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            raise YandexMarketBrowserError("market browser setup failed")
+
+        def __exit__(self, _exc_type, _exc, _traceback) -> None:
+            pass
+
+    original_session = yandex_market_live.YandexMarketBrowserSession
+    yandex_market_live.YandexMarketBrowserSession = BrokenBrowser
+    try:
+        try:
+            yandex_market_live.build_catalog_from_live_yandex_market(
+                options, progress=lambda _message: None
+            )
+        except YandexMarketLiveCollectionError as exc:
+            assert exc.exit_code == 4
+            assert exc.manifest_path == options.snapshot_dir / "snapshot_manifest.json"
+        else:
+            raise AssertionError("browser setup failure must stop collection")
+    finally:
+        yandex_market_live.YandexMarketBrowserSession = original_session
+
+    manifest = json.loads(
+        (options.snapshot_dir / "snapshot_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["capture"]["status"] == "failed"
+    assert manifest["capture"]["failure"]["kind"] == "browser_setup"
+    assert manifest["capture"]["failure"]["message"] == "market browser setup failed"

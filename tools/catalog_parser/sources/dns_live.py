@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlencode, urljoin, urlparse
 
-from ..dns_browser import DnsBrowserPage, DnsBrowserSession
+from ..dns_browser import DnsBrowserError, DnsBrowserPage, DnsBrowserSession
 from .dns_snapshot import build_catalog_from_dns_snapshot
 
 DNS_BASE_URL = "https://www.dns-shop.ru"
@@ -370,22 +370,59 @@ def capture_dns_snapshot(
     return manifest_path
 
 
+def _write_browser_setup_failure(options: DnsLiveOptions, message: str) -> Path:
+    root = Path(options.snapshot_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    manifest_path = root / "snapshot_manifest.json"
+    manifest = {
+        "schema_version": 1,
+        "source": "dns",
+        "region": options.region,
+        "observed_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "capture": {
+            "mode": "user-initiated-playwright",
+            "status": "failed",
+            "browser_engine": options.browser_engine,
+            "categories": list(options.categories),
+            "per_category_limit": options.per_category_limit,
+            "warnings": [],
+            "failure": {
+                "kind": "browser_setup",
+                "status_code": None,
+                "stage": "browser_setup",
+                "message": message,
+            },
+        },
+        "items": [],
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return manifest_path
+
+
 def build_catalog_from_live_dns(
     options: DnsLiveOptions,
     *,
     progress: Callable[[str], None] = print,
 ) -> dict:
     options.validate()
-    with DnsBrowserSession(
-        profile_dir=options.profile_dir,
-        engine=options.browser_engine,
-        headless=options.headless,
-        first_page_wait_seconds=options.first_page_wait_seconds,
-        progress=progress,
-    ) as browser:
-        progress("Подготавливаю DNS-сессию через главную страницу.")
-        browser.fetch(f"{DNS_BASE_URL}/")
-        capture_dns_snapshot(options, fetch=browser.fetch, progress=progress)
+    try:
+        with DnsBrowserSession(
+            profile_dir=options.profile_dir,
+            engine=options.browser_engine,
+            headless=options.headless,
+            first_page_wait_seconds=options.first_page_wait_seconds,
+            progress=progress,
+        ) as browser:
+            progress("Подготавливаю DNS-сессию через главную страницу.")
+            browser.fetch(f"{DNS_BASE_URL}/")
+            capture_dns_snapshot(options, fetch=browser.fetch, progress=progress)
+    except DnsBrowserError as exc:
+        manifest_path = _write_browser_setup_failure(options, str(exc))
+        progress(f"Диагностика браузера сохранена: {manifest_path}")
+        raise DnsLiveCollectionError(str(exc), manifest_path=manifest_path) from exc
     payload = build_catalog_from_dns_snapshot(options.snapshot_dir)
     payload["generated_by"] = "tools.catalog_parser.sources.dns_live"
     manifest = json.loads(

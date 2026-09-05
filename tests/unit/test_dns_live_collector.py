@@ -3,11 +3,12 @@ import json
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from tools.catalog_parser.dns_browser import DnsBrowserPage
+from tools.catalog_parser.dns_browser import DnsBrowserError, DnsBrowserPage
 from tools.catalog_parser.sources.dns_live import (
     DNS_BASE_URL,
     DNS_CATALOG_URLS,
     DnsAccessDeniedError,
+    DnsLiveCollectionError,
     DnsLiveOptions,
     capture_dns_snapshot,
     parse_dns_search_html,
@@ -292,3 +293,44 @@ def test_live_catalog_warms_up_dns_homepage_before_capture(tmp_path: Path) -> No
     assert events[0] == DNS_BASE_URL + "/"
     assert events[1] == DNS_CATALOG_URLS["routers"]
     assert payload["stats"]["items_total"] == 1
+
+
+def test_browser_setup_failure_is_persisted_to_dns_manifest(tmp_path: Path) -> None:
+    options = DnsLiveOptions(
+        snapshot_dir=tmp_path / "snapshot",
+        profile_dir=tmp_path / "profile",
+        categories=("routers",),
+        per_category_limit=1,
+        time_limit_seconds=60,
+        request_delay_seconds=0,
+    )
+
+    class BrokenBrowser:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            raise DnsBrowserError("browser setup failed")
+
+        def __exit__(self, _exc_type, _exc, _traceback) -> None:
+            pass
+
+    original_session = dns_live.DnsBrowserSession
+    dns_live.DnsBrowserSession = BrokenBrowser
+    try:
+        try:
+            dns_live.build_catalog_from_live_dns(options, progress=lambda _message: None)
+        except DnsLiveCollectionError as exc:
+            assert exc.exit_code == 4
+            assert exc.manifest_path == options.snapshot_dir / "snapshot_manifest.json"
+        else:
+            raise AssertionError("browser setup failure must stop collection")
+    finally:
+        dns_live.DnsBrowserSession = original_session
+
+    manifest = json.loads(
+        (options.snapshot_dir / "snapshot_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["capture"]["status"] == "failed"
+    assert manifest["capture"]["failure"]["kind"] == "browser_setup"
+    assert manifest["capture"]["failure"]["message"] == "browser setup failed"
