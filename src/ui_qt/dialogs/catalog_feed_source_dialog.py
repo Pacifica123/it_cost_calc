@@ -111,6 +111,20 @@ class CatalogFeedSourceDialog(QDialog):  # type: ignore[misc,valid-type]
         grid.addWidget(CompactLabel("Регион", self), 3, 2)
         self.region_edit = QLineEdit(self)
         grid.addWidget(self.region_edit, 3, 3)
+        grid.addWidget(CompactLabel("Объём", self), 4, 0)
+        self.limit_combo = QComboBox(self)
+        for label, value in (
+            ("Все строки", 0),
+            ("1 000 строк", 1000),
+            ("5 000 строк", 5000),
+            ("10 000 строк", 10000),
+            ("25 000 строк", 25000),
+        ):
+            self.limit_combo.addItem(label, value)
+        self.limit_combo.setToolTip(
+            "Лимит ускоряет пробную загрузку. Значение «Все строки» сохраняет полный набор альтернатив."
+        )
+        grid.addWidget(self.limit_combo, 4, 1)
         for column in (1, 3):
             grid.setColumnStretch(column, 1)
         layout.addLayout(grid)
@@ -134,7 +148,7 @@ class CatalogFeedSourceDialog(QDialog):  # type: ignore[misc,valid-type]
         self.cancel_button = QPushButton("Остановить", self)
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self._process.terminate)
-        self.stage_button = QPushButton("В staging", self)
+        self.stage_button = QPushButton("Готово", self)
         self.stage_button.setProperty("role", "primary")
         self.stage_button.setEnabled(False)
         self.stage_button.clicked.connect(self.accept)
@@ -166,7 +180,10 @@ class CatalogFeedSourceDialog(QDialog):  # type: ignore[misc,valid-type]
     def start_fetch(self) -> None:
         try:
             values = self.source_values()
-            self.job = self.presenter.build_feed_job(values)
+            self.job = self.presenter.build_feed_job(
+                values,
+                max_rows=int(self.limit_combo.currentData() or 0),
+            )
             if self.save_checkbox.isChecked() and not values.get("preset"):
                 self.presenter.save_catalog_source(values)
         except ValueError as exc:
@@ -196,7 +213,7 @@ class CatalogFeedSourceDialog(QDialog):  # type: ignore[misc,valid-type]
         self._read_output(final=True)
         self._set_running(False)
         if exit_code == 0 and self.job is not None and self.job.output_path.is_file():
-            self.status.setText("Feed готов")
+            self.status.setText("Feed и staging готовы")
             self.stage_button.setEnabled(True)
         else:
             self.status.setText("Feed не загружен")
@@ -218,6 +235,7 @@ class CatalogFeedSourceDialog(QDialog):  # type: ignore[misc,valid-type]
         self.browse_button.setEnabled(not running)
         self.format_combo.setEnabled(not running)
         self.region_edit.setEnabled(not running)
+        self.limit_combo.setEnabled(not running)
         self.save_checkbox.setEnabled(not running)
 
     def _browse_file(self) -> None:

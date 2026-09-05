@@ -34,6 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
             "yandex-market-http-live",
             "legacy-dns-live",
             "feed-download",
+            "catalog-stage",
+            "local-enrich",
             "icecat-enrich",
             "eis-benchmark",
             "commercial-quote",
@@ -99,7 +101,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Способ получения feed по URL.",
     )
     parser.add_argument("--feed-manifest", help="Путь для provenance-манифеста feed.")
-    parser.add_argument("--staging-path", help="Путь к catalog_staging.json для enrichment.")
+    parser.add_argument("--staging-path", help="Путь к catalog_staging.json для staging/enrichment.")
+    parser.add_argument(
+        "--staging-max-rows",
+        type=int,
+        default=0,
+        help="Ограничить число строк staging; 0 означает обработать весь каталог.",
+    )
+    parser.add_argument("--local-manifest", help="Manifest автономного enrichment.")
+    parser.add_argument(
+        "--local-no-defaults",
+        action="store_true",
+        help="Не заполнять отсутствующие метрики демонстрационными defaults.",
+    )
+    parser.add_argument(
+        "--local-no-estimated-price",
+        action="store_true",
+        help="Не строить демонстрационную цену для строк без реальной цены.",
+    )
     parser.add_argument(
         "--staging-ids",
         default="",
@@ -150,6 +169,53 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     output_path = Path(args.output)
+
+    if args.mode == "catalog-stage":
+        if not args.staging_path:
+            parser.error("--staging-path is required for --mode catalog-stage")
+        if not args.input:
+            parser.error("--input is required for --mode catalog-stage")
+        from application.services.catalog_staging_service import CatalogStagingService
+
+        try:
+            records = CatalogStagingService(Path(args.staging_path)).stage_file(
+                args.input,
+                max_rows=max(0, int(args.staging_max_rows)) or None,
+                progress=lambda message: print(message, flush=True),
+            )
+        except (OSError, ValueError) as exc:
+            print(f"Ошибка staging: {exc}", flush=True)
+            return 11
+        print(f"Staging готов: {len(records)} позиций.", flush=True)
+        return 0
+
+    if args.mode == "local-enrich":
+        if not args.staging_path:
+            parser.error("--staging-path is required for --mode local-enrich")
+        from application.services.catalog_local_enrichment_service import (
+            enrich_staging_records_locally,
+        )
+        from application.services.catalog_staging_service import CatalogStagingService
+
+        staging_ids = tuple(
+            value.strip() for value in args.staging_ids.split(",") if value.strip()
+        )
+        summary = enrich_staging_records_locally(
+            CatalogStagingService(Path(args.staging_path)),
+            staging_ids=staging_ids,
+            fill_defaults=not args.local_no_defaults,
+            estimate_missing_price=not args.local_no_estimated_price,
+            manifest_path=args.local_manifest,
+            progress=lambda message: print(message, flush=True),
+        )
+        result = summary.as_dict()
+        print(
+            "Автообогащение: "
+            f"изменено {result['changed']}, явных полей {result['explicit_fields']}, "
+            f"оценочных полей {result['default_fields']}, цен {result['estimated_prices']}.",
+            flush=True,
+        )
+        return 0
 
     if args.mode == "eis-benchmark":
         if not args.staging_path:
@@ -326,6 +392,17 @@ def main(argv: list[str] | None = None) -> int:
             return 6
         print(f"Feed сохранён: {result.output_path}", flush=True)
         print(f"Формат: {result.format}; байт: {result.size_bytes}", flush=True)
+        if args.staging_path:
+            from application.services.catalog_staging_service import CatalogStagingService
+
+            print("Передаю feed в staging...", flush=True)
+            records = CatalogStagingService(Path(args.staging_path)).stage_file(
+                result.output_path,
+                source_context=result.to_dict(),
+                max_rows=max(0, int(args.staging_max_rows)) or None,
+                progress=lambda message: print(message, flush=True),
+            )
+            print(f"Staging обновлён: {len(records)} позиций.", flush=True)
         return 0
     if args.mode == "examples":
         payload = build_catalog_from_example_snapshots()

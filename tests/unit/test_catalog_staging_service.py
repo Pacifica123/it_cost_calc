@@ -276,7 +276,7 @@ def test_manual_corrections_survive_catalog_refresh(tmp_path: Path):
     assert refreshed["status"] == "pending"
     assert any("Источник изменился" in warning for warning in refreshed["validation_warnings"])
     saved = json.loads((tmp_path / "staging.json").read_text(encoding="utf-8"))
-    assert saved["schema_version"] == CATALOG_STAGING_SCHEMA_VERSION == 2
+    assert saved["schema_version"] == CATALOG_STAGING_SCHEMA_VERSION == 3
 
 
 def test_bulk_approval_skips_blocked_records(tmp_path: Path):

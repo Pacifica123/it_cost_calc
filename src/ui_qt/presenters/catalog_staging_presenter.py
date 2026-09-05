@@ -91,6 +91,34 @@ class CatalogFeedJobSpec:
 
 
 @dataclass(frozen=True)
+class CatalogStageJobSpec:
+    program: str
+    arguments: tuple[str, ...]
+    working_directory: Path
+    staging_path: Path
+    source_path: Path
+    max_rows: int
+
+
+@dataclass(frozen=True)
+class LocalEnrichmentJobSpec:
+    program: str
+    arguments: tuple[str, ...]
+    working_directory: Path
+    staging_path: Path
+    manifest_path: Path
+    staging_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CatalogPage:
+    rows: tuple[dict[str, Any], ...]
+    total: int
+    page: int
+    page_size: int
+
+
+@dataclass(frozen=True)
 class IcecatEnrichmentJobSpec:
     program: str
     arguments: tuple[str, ...]
@@ -193,8 +221,44 @@ class CatalogStagingPresenter:
         path: str | Path,
         *,
         source_context: dict[str, Any] | None = None,
+        max_rows: int | None = None,
     ) -> list[dict[str, Any]]:
-        return self.service.stage_file(path, source_context=source_context)
+        return self.service.stage_file(
+            path,
+            source_context=source_context,
+            max_rows=max_rows,
+        )
+
+    def build_stage_job(
+        self,
+        path: str | Path,
+        *,
+        max_rows: int = 0,
+    ) -> CatalogStageJobSpec:
+        source_path = Path(path).resolve()
+        if not source_path.is_file():
+            raise ValueError("Файл каталога не найден.")
+        repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
+        arguments = (
+            *command_prefix,
+            "--mode",
+            "catalog-stage",
+            "--input",
+            str(source_path),
+            "--staging-path",
+            str(self.service.path),
+            "--staging-max-rows",
+            str(max(0, int(max_rows))),
+        )
+        return CatalogStageJobSpec(
+            program=program,
+            arguments=tuple(arguments),
+            working_directory=repo_root,
+            staging_path=self.service.path,
+            source_path=source_path,
+            max_rows=max(0, int(max_rows)),
+        )
 
     def catalog_sources(self) -> list[dict[str, Any]]:
         return self.source_registry.list_sources()
@@ -202,7 +266,12 @@ class CatalogStagingPresenter:
     def save_catalog_source(self, source: dict[str, Any]) -> dict[str, Any]:
         return self.source_registry.save_source(source)
 
-    def build_feed_job(self, source: dict[str, Any]) -> CatalogFeedJobSpec:
+    def build_feed_job(
+        self,
+        source: dict[str, Any],
+        *,
+        max_rows: int = 0,
+    ) -> CatalogFeedJobSpec:
         normalized = normalize_catalog_source(source, preset=bool(source.get("preset")))
         feed_format = normalized["format"]
         location = normalized["location"]
@@ -247,6 +316,10 @@ class CatalogStagingPresenter:
             str(manifest_path),
             "--region",
             normalized["region"],
+            "--staging-path",
+            str(self.service.path),
+            "--staging-max-rows",
+            str(max(0, int(max_rows))),
         )
         return CatalogFeedJobSpec(
             program=program,
@@ -255,6 +328,45 @@ class CatalogStagingPresenter:
             output_path=output_path,
             manifest_path=manifest_path,
             source=normalized,
+        )
+
+    def build_local_enrichment_job(
+        self,
+        staging_ids: list[str] | tuple[str, ...],
+        *,
+        fill_defaults: bool = True,
+        estimate_missing_price: bool = True,
+    ) -> LocalEnrichmentJobSpec:
+        selected = tuple(
+            dict.fromkeys(str(value).strip() for value in staging_ids if str(value).strip())
+        )
+        repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = repo_root / "data" / "generated" / "catalog" / "local_enrichment_runs" / timestamp
+        manifest_path = run_root / "enrichment_manifest.json"
+        arguments: list[str] = [
+            *command_prefix,
+            "--mode",
+            "local-enrich",
+            "--staging-path",
+            str(self.service.path),
+            "--local-manifest",
+            str(manifest_path),
+        ]
+        if selected:
+            arguments.extend(("--staging-ids", ",".join(selected)))
+        if not fill_defaults:
+            arguments.append("--local-no-defaults")
+        if not estimate_missing_price:
+            arguments.append("--local-no-estimated-price")
+        return LocalEnrichmentJobSpec(
+            program=program,
+            arguments=tuple(arguments),
+            working_directory=repo_root,
+            staging_path=self.service.path,
+            manifest_path=manifest_path,
+            staging_ids=selected,
         )
 
     def build_icecat_enrichment_job(
@@ -770,60 +882,109 @@ class CatalogStagingPresenter:
             snapshot_path=run_root / "capture",
         )
 
-    def table_rows(self, status_filter: str = "all") -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for record in self.records():
-            if status_filter != "all" and record.get("status") != status_filter:
-                continue
-            item = dict(record.get("catalog_item") or {})
-            offer = dict(item.get("offer") or {})
-            federation = dict(item.get("federation") or {})
-            target_category = str(record.get("target_category") or "")
-            readiness = staging_record_readiness(record)
-            rows.append(
-                {
-                    "staging_id": str(record.get("staging_id") or ""),
-                    "status": _STATUS_LABELS.get(str(record.get("status")), str(record.get("status"))),
-                    "readiness": _READINESS_LABELS.get(readiness, readiness),
-                    "name": str(item.get("title") or ""),
-                    "source": (
-                        f"{int(federation.get('source_count') or 0)} источника"
-                        if int(federation.get("source_count") or 0) > 1
-                        else str(item.get("source") or "")
-                    ),
-                    "category": str(item.get("category") or ""),
-                    "target": _TARGET_LABELS.get(target_category, target_category or "—"),
-                    "price": float(offer.get("price") or 0.0),
-                    "issues": len(record.get("validation_errors") or [])
-                    + len(record.get("validation_warnings") or []),
-                }
+    def _table_row(self, record: dict[str, Any]) -> dict[str, Any]:
+        item = dict(record.get("catalog_item") or {})
+        offer = dict(item.get("offer") or {})
+        federation = dict(item.get("federation") or {})
+        target_category = str(record.get("target_category") or "")
+        readiness = staging_record_readiness(record)
+        price = float(offer.get("price") or 0.0)
+        return {
+            "staging_id": str(record.get("staging_id") or ""),
+            "status": _STATUS_LABELS.get(str(record.get("status")), str(record.get("status"))),
+            "readiness": _READINESS_LABELS.get(readiness, readiness),
+            "name": str(item.get("title") or ""),
+            "source": (
+                f"{int(federation.get('source_count') or 0)} источника"
+                if int(federation.get("source_count") or 0) > 1
+                else str(item.get("source") or "")
+            ),
+            "category": str(item.get("category") or ""),
+            "target": _TARGET_LABELS.get(target_category, target_category or "—"),
+            "price": price,
+            "issues": len(record.get("validation_errors") or [])
+            + len(record.get("validation_warnings") or []),
+        }
+
+    def _table_projection_row(self, row: dict[str, Any]) -> dict[str, Any]:
+        source_count = int(row.get("source_count") or 0)
+        target_category = str(row.get("target_category") or "")
+        readiness = str(row.get("readiness") or "review")
+        return {
+            "staging_id": str(row.get("staging_id") or ""),
+            "status": _STATUS_LABELS.get(str(row.get("status")), str(row.get("status"))),
+            "readiness": _READINESS_LABELS.get(readiness, readiness),
+            "name": str(row.get("title") or ""),
+            "source": (
+                f"{source_count} источника"
+                if source_count > 1
+                else str(row.get("source") or "")
+            ),
+            "category": str(row.get("category") or ""),
+            "target": _TARGET_LABELS.get(target_category, target_category or "—"),
+            "price": float(row.get("price") or 0.0),
+            "issues": int(row.get("issues") or 0),
+        }
+
+    def table_page(
+        self,
+        status_filter: str = "all",
+        *,
+        page: int = 1,
+        page_size: int = 250,
+        query: str = "",
+    ) -> CatalogPage:
+        size = max(1, min(5000, int(page_size)))
+        requested_page = max(1, int(page))
+        records, total = self.service.page_projection(
+            status_filter=status_filter,
+            query=query,
+            offset=(requested_page - 1) * size,
+            limit=size,
+        )
+        # If filtering shrank the result set, clamp once without constructing all rows.
+        max_page = max(1, (total + size - 1) // size)
+        actual_page = min(requested_page, max_page)
+        if actual_page != requested_page:
+            records, total = self.service.page_projection(
+                status_filter=status_filter,
+                query=query,
+                offset=(actual_page - 1) * size,
+                limit=size,
             )
-        return rows
+        return CatalogPage(
+            rows=tuple(self._table_projection_row(record) for record in records),
+            total=total,
+            page=actual_page,
+            page_size=size,
+        )
+
+    def table_rows(self, status_filter: str = "all") -> list[dict[str, Any]]:
+        """Compatibility path for tests/small non-UI callers."""
+        records, _total = self.service.page_records(
+            status_filter=status_filter,
+            offset=0,
+            limit=max(1, len(self.records()) or 1),
+        )
+        return [self._table_row(record) for record in records]
 
     def summary(self) -> CatalogStagingSummary:
-        records = self.records()
-        statuses = [str(record.get("status")) for record in records]
+        counts = self.service.summary_counts()
         return CatalogStagingSummary(
-            total=len(records),
-            pending=statuses.count(STAGING_PENDING),
-            approved=statuses.count(STAGING_APPROVED),
-            blocked=statuses.count(STAGING_BLOCKED),
-            imported=statuses.count(STAGING_IMPORTED),
-            rejected=statuses.count(STAGING_REJECTED),
-            ready=sum(
-                staging_record_readiness(record) in {"import_ready", "ga_ready"}
-                for record in records
-            ),
+            total=counts["total"],
+            pending=counts[STAGING_PENDING],
+            approved=counts[STAGING_APPROVED],
+            blocked=counts[STAGING_BLOCKED],
+            imported=counts[STAGING_IMPORTED],
+            rejected=counts[STAGING_REJECTED],
+            ready=counts["ready"],
         )
 
     def record_at(self, index: int) -> dict[str, Any]:
         return self.records()[index]
 
     def record_by_id(self, staging_id: str) -> dict[str, Any]:
-        for record in self.records():
-            if record.get("staging_id") == staging_id:
-                return record
-        raise KeyError(staging_id)
+        return self.service.get_record(staging_id)
 
     def approve(self, index: int) -> dict[str, Any]:
         record = self.record_at(index)
@@ -925,6 +1086,7 @@ class CatalogStagingPresenter:
             f"{_TARGET_LABELS.get(str(record.get('target_category')), record.get('target_category') or '—')} / "
             f"{_COMPONENT_TYPE_LABELS.get(str(record.get('target_component_type')), record.get('target_component_type') or '—')}",
             f"Цена: {offer.get('price') or 0:g} {offer.get('currency') or 'RUB'}",
+            f"Тип цены: {offer.get('price_kind') or '—'}",
             f"Наблюдений цены: {len(offers)}",
             "Диапазон цен: "
             + _price_range_text(price_summary),
@@ -1047,6 +1209,9 @@ def _format_number(value: Any) -> str:
 
 __all__ = [
     "CatalogFeedJobSpec",
+    "CatalogStageJobSpec",
+    "LocalEnrichmentJobSpec",
+    "CatalogPage",
     "IcecatEnrichmentJobSpec",
     "CatalogFilterOption",
     "CatalogStagingPresenter",

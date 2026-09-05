@@ -25,3 +25,22 @@ class JsonFileStorage:
             json.dump(payload, file, ensure_ascii=False, indent=2)
         logger.info("JSON сохранён: %s", file_path)
         return file_path
+
+    def write_compact(self, path: str | Path, payload: Any) -> Path:
+        """Atomically write machine-oriented JSON without pretty-print bloat."""
+
+        file_path = Path(path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = file_path.with_name(file_path.name + ".tmp")
+        logger.debug("Компактная запись JSON в %s", file_path)
+        try:
+            with temp_path.open("w", encoding="utf-8") as file:
+                json.dump(payload, file, ensure_ascii=False, separators=(",", ":"))
+                file.flush()
+            temp_path.replace(file_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
+        logger.info("JSON сохранён: %s", file_path)
+        return file_path
+

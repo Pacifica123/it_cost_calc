@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import io
 import json
+import logging
 import posixpath
 import re
 import zipfile
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from xml.etree import ElementTree
 
-from infrastructure.storage import JsonFileStorage
+from infrastructure.storage import CatalogStagingReadModel, JsonFileStorage
 
 from application.services.catalog_federation_service import (
     federate_catalog_items,
@@ -23,8 +23,14 @@ from application.services.catalog_federation_service import (
     source_observations,
 )
 from application.services.catalog_enrichment_service import carry_specification_sources
+from application.services.catalog_local_enrichment_service import (
+    infer_explicit_metrics,
+    infer_price_candidate,
+)
 
-CATALOG_STAGING_SCHEMA_VERSION = 2
+logger = logging.getLogger(__name__)
+
+CATALOG_STAGING_SCHEMA_VERSION = 3
 CATALOG_SOURCE_SCHEMA_VERSION = 2
 
 STAGING_PENDING = "pending"
@@ -83,13 +89,25 @@ def catalog_metric_fields() -> tuple[str, ...]:
     return _METRIC_FIELDS
 
 
-def load_catalog_rows(path: str | Path) -> list[dict[str, Any]]:
-    """Load normalized or flat catalog rows from JSON, CSV or simple XLSX."""
+def iter_catalog_rows(
+    path: str | Path,
+    *,
+    max_rows: int | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Iterate catalog rows without materialising XLSX/CSV sheets in memory.
+
+    ``max_rows`` limits *input alternatives* for an intentionally scoped demo
+    import. ``None`` or ``0`` means all rows.  The main staging path consumes
+    this iterator, while :func:`load_catalog_rows` remains a compatibility
+    helper for tests and small callers.
+    """
 
     source_path = Path(path)
     suffix = source_path.suffix.lower()
     if suffix not in _SUPPORTED_EXTENSIONS:
         raise ValueError(f"Неподдерживаемый формат каталога: {suffix or 'без расширения'}")
+    limit = None if not max_rows or int(max_rows) <= 0 else int(max_rows)
+
     if suffix == ".json":
         payload = json.loads(source_path.read_text(encoding="utf-8"))
         if isinstance(payload, Mapping):
@@ -100,19 +118,33 @@ def load_catalog_rows(path: str | Path) -> list[dict[str, Any]]:
             schema_version = 1
         if not isinstance(rows, list):
             raise ValueError("JSON-каталог должен содержать список items")
-        result = []
+        emitted = 0
         for row in rows:
             if not isinstance(row, Mapping):
                 continue
             item = dict(row)
             item.setdefault("_catalog_schema_version", schema_version)
-            result.append(item)
-        return result
+            yield item
+            emitted += 1
+            if limit is not None and emitted >= limit:
+                return
+        return
     if suffix == ".csv":
-        return _load_csv_rows(source_path)
+        yield from _iter_csv_rows(source_path, max_rows=limit)
+        return
     if suffix == ".xlsx":
-        return _load_xlsx_rows(source_path)
-    return _load_yml_rows(source_path)
+        yield from _iter_xlsx_rows(source_path, max_rows=limit)
+        return
+    for index, row in enumerate(_load_yml_rows(source_path)):
+        if limit is not None and index >= limit:
+            break
+        yield row
+
+
+def load_catalog_rows(path: str | Path) -> list[dict[str, Any]]:
+    """Compatibility helper returning all rows as a list."""
+
+    return list(iter_catalog_rows(path))
 
 
 def normalize_catalog_item(
@@ -147,6 +179,9 @@ def normalize_catalog_item(
             "наименование товара",
             "название",
             "товар",
+            "номенклатура",
+            "наименование номенклатуры",
+            "описание товара",
         )
     )
     raw_category = _text(
@@ -160,6 +195,9 @@ def normalize_catalog_item(
             "раздел",
             "группа",
             "товарная группа",
+            "товарная категория",
+            "категория номенклатуры",
+            "раздел номенклатуры",
         )
     )
     category = _normalize_catalog_category(raw_category, title)
@@ -197,10 +235,22 @@ def normalize_catalog_item(
                 "цена",
                 "цена руб",
                 "цена, руб",
+                "цена с ндс",
+                "цена с ндс, руб",
+                "цена партнера",
+                "цена партнёра",
+                "оптовая цена",
+                "ррц",
                 "стоимость",
                 "розничная цена",
             )
         )
+    if price is None:
+        # Supplier XLSX feeds rarely agree on one exact price header.  Use a
+        # scored current-price detector instead of silently creating 31k zeroes.
+        price, _price_header = infer_price_candidate(offer, item)
+    else:
+        _price_header = ""
     currency = _text(
         offer.get("currency")
         or _first_alias(item, "currency", "валюта", "currencyid")
@@ -255,6 +305,13 @@ def normalize_catalog_item(
         for field in _METRIC_FIELDS
         if _metric_field_value(field, metrics.get(field, item.get(field))) is not None
     }
+    explicit_metrics, explicit_evidence = infer_explicit_metrics(
+        item,
+        title=title,
+        category=category,
+    )
+    for field, value in explicit_metrics.items():
+        normalized_metrics.setdefault(field, value)
     source_product_id = _text(
         item.get("source_product_id")
         or _first_alias(
@@ -326,6 +383,24 @@ def normalize_catalog_item(
                         "observed_at": observed_at or None,
                     },
                 )
+
+    if _price_header:
+        field_provenance.setdefault(
+            "price",
+            {
+                "source": source,
+                "method": "feed:fuzzy-price-column",
+                "column": _price_header,
+                "observed_at": observed_at or None,
+            },
+        )
+    if explicit_evidence:
+        specs = _mapping(field_provenance.get("local_explicit"))
+        for field, evidence in explicit_evidence.items():
+            if field in normalized_metrics:
+                specs.setdefault(field, deepcopy(evidence))
+        if specs:
+            field_provenance["local_explicit"] = specs
 
     return {
         "item_id": catalog_item_id,
@@ -575,37 +650,226 @@ class CatalogStagingService:
     ) -> None:
         self.path = Path(staging_path)
         self.storage = storage or JsonFileStorage()
+        self.read_model = CatalogStagingReadModel(self.path)
+        self._records_cache: list[dict[str, Any]] | None = None
+        self._record_index: dict[str, dict[str, Any]] = {}
+        self._cache_stamp: tuple[int, int] | None = None
+        self._source_path_cache = ""
+
+    def _file_stamp(self) -> tuple[int, int] | None:
+        try:
+            stat = self.path.stat()
+        except FileNotFoundError:
+            return None
+        return (stat.st_mtime_ns, stat.st_size)
+
+    def _set_cache(
+        self,
+        records: list[dict[str, Any]],
+        *,
+        source_path: str | Path | None = None,
+    ) -> list[dict[str, Any]]:
+        self._records_cache = records
+        self._record_index = {
+            _text(record.get("staging_id")): record
+            for record in records
+            if _text(record.get("staging_id"))
+        }
+        if source_path is not None:
+            self._source_path_cache = str(source_path)
+        self._cache_stamp = self._file_stamp()
+        return records
 
     def list_records(self) -> list[dict[str, Any]]:
-        if not self.path.exists():
-            return []
+        stamp = self._file_stamp()
+        if self._records_cache is not None and stamp == self._cache_stamp:
+            return self._records_cache
+        if stamp is None:
+            self._source_path_cache = ""
+            return self._set_cache([])
         payload = self.storage.read(self.path)
         records = payload.get("records", []) if isinstance(payload, Mapping) else []
-        return [
+        self._source_path_cache = (
+            str(payload.get("source_path") or "") if isinstance(payload, Mapping) else ""
+        )
+        upgraded = [
             _upgrade_staging_record(record)
             for record in records
             if isinstance(record, Mapping)
         ]
+        return self._set_cache(upgraded, source_path=self._source_path_cache)
+
+    def _ensure_read_model(self) -> bool:
+        """Make the disposable UI projection available when staging exists.
+
+        Normal large imports build the projection inside their worker process.
+        A legacy/stale JSON therefore pays at most one migration read; all
+        subsequent GUI page/search/summary operations stay inside SQLite.
+        """
+
+        if self.read_model.is_fresh():
+            return True
+        if not self.path.is_file():
+            return False
+        records = self.list_records()
+        compact = [_compact_staging_record(record) for record in records]
+        try:
+            self.read_model.rebuild(records, compact_records=compact)
+        except (OSError, RuntimeError) as exc:
+            logger.warning("Не удалось построить UI read-model каталога: %s", exc)
+            return False
+        return self.read_model.is_fresh()
+
+    def get_record(self, staging_id: str) -> dict[str, Any]:
+        stamp = self._file_stamp()
+        if self._records_cache is not None and stamp == self._cache_stamp:
+            try:
+                return self._record_index[str(staging_id)]
+            except KeyError as exc:
+                raise KeyError(staging_id) from exc
+        if self._ensure_read_model():
+            raw = self.read_model.compact_record(str(staging_id))
+            if isinstance(raw, Mapping):
+                return _upgrade_staging_record(raw)
+        self.list_records()
+        try:
+            return self._record_index[str(staging_id)]
+        except KeyError as exc:
+            raise KeyError(staging_id) from exc
+
+    def page_projection(
+        self,
+        *,
+        status_filter: str = "all",
+        query: str = "",
+        offset: int = 0,
+        limit: int = 250,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return a lightweight page for UI without loading all staging records."""
+
+        if self._ensure_read_model():
+            return self.read_model.page(
+                status_filter=status_filter,
+                query=query,
+                offset=offset,
+                limit=limit,
+            )
+        # Safe compatibility fallback for unavailable/corrupt projection.
+        records, total = self.page_records(
+            status_filter=status_filter,
+            query=query,
+            offset=offset,
+            limit=limit,
+        )
+        projections: list[dict[str, Any]] = []
+        for record in records:
+            item = _mapping(record.get("catalog_item"))
+            offer = _mapping(item.get("offer"))
+            federation = _mapping(item.get("federation"))
+            projections.append(
+                {
+                    "staging_id": _text(record.get("staging_id")),
+                    "status": _text(record.get("status")),
+                    "readiness": staging_record_readiness(record),
+                    "title": _text(item.get("title")),
+                    "source": _text(item.get("source")),
+                    "source_count": int(federation.get("source_count") or 0),
+                    "category": _text(item.get("category")),
+                    "target_category": _text(record.get("target_category")),
+                    "price": float(offer.get("price") or 0.0),
+                    "issues": len(record.get("validation_errors") or [])
+                    + len(record.get("validation_warnings") or []),
+                }
+            )
+        return projections, total
+
+    def page_records(
+        self,
+        *,
+        status_filter: str = "all",
+        query: str = "",
+        offset: int = 0,
+        limit: int = 250,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return one UI page while keeping the full computation catalog available."""
+
+        needle = str(query or "").strip().casefold()
+        start = max(0, int(offset))
+        page_limit = max(1, min(5000, int(limit)))
+        page: list[dict[str, Any]] = []
+        total = 0
+        for record in self.list_records():
+            if status_filter != "all" and record.get("status") != status_filter:
+                continue
+            item = _mapping(record.get("catalog_item"))
+            if needle:
+                haystack = " ".join(
+                    (
+                        _text(item.get("title")),
+                        _text(item.get("source")),
+                        _text(item.get("category")),
+                        _text(_mapping(item.get("identity")).get("brand")),
+                        _text(_mapping(item.get("identity")).get("model")),
+                        _text(_mapping(item.get("identity")).get("mpn")),
+                    )
+                ).casefold()
+                if needle not in haystack:
+                    continue
+            if total >= start and len(page) < page_limit:
+                page.append(record)
+            total += 1
+        return page, total
+
+    def summary_counts(self) -> dict[str, int]:
+        base = {
+            "total": 0,
+            STAGING_PENDING: 0,
+            STAGING_APPROVED: 0,
+            STAGING_BLOCKED: 0,
+            STAGING_IMPORTED: 0,
+            STAGING_REJECTED: 0,
+            "ready": 0,
+        }
+        if self._ensure_read_model():
+            base.update(self.read_model.summary_counts())
+            return base
+        for record in self.list_records():
+            base["total"] += 1
+            status = _text(record.get("status"))
+            if status in base:
+                base[status] += 1
+            if staging_record_readiness(record) in {"import_ready", "ga_ready"}:
+                base["ready"] += 1
+        return base
 
     def stage_file(
         self,
         source_path: str | Path,
         *,
         source_context: Mapping[str, Any] | None = None,
+        max_rows: int | None = None,
+        progress: Any | None = None,
     ) -> list[dict[str, Any]]:
-        """Refresh one source and rebuild the multi-source federated staging catalog."""
+        """Refresh one source and rebuild the multi-source federated staging catalog.
+
+        Parsing is streaming for CSV/XLSX.  ``max_rows`` is optional and exists
+        for quick demonstrations; the default processes every alternative.
+        """
 
         source = Path(source_path)
-        rows = load_catalog_rows(source)
-        incoming = [
-            normalize_catalog_item(
-                raw,
-                source_path=source,
-                row_index=index,
-                source_context=source_context,
+        emit = progress or (lambda _message: None)
+        incoming: list[dict[str, Any]] = []
+        for index, raw in enumerate(iter_catalog_rows(source, max_rows=max_rows)):
+            incoming.append(
+                normalize_catalog_item(
+                    raw,
+                    source_path=source,
+                    row_index=index,
+                    source_context=source_context,
+                )
             )
-            for index, raw in enumerate(rows)
-        ]
+            if index and index % 1000 == 0:
+                emit(f"Нормализовано: {index + 1}")
 
         previous_records = self.list_records()
         refresh_sources = {
@@ -626,12 +890,18 @@ class CatalogStagingService:
                 if _text(observation.get("source")) not in refresh_sources:
                     observations.append(observation)
         observations.extend(incoming)
+        emit(f"Федерация: {len(observations)} наблюдений")
 
         federated_items = federate_catalog_items(observations)
+        # The federated result owns everything needed from here on.  Release
+        # the source-normalization buffers before constructing review records.
+        del observations
+        del incoming
+        previous_index = _build_previous_record_index(previous_records)
         records: list[dict[str, Any]] = []
         used_previous: set[str] = set()
-        for item in federated_items:
-            old = _best_previous_record(item, previous_records, used_previous)
+        for index, item in enumerate(federated_items):
+            old = _best_previous_record_indexed(item, previous_index, used_previous)
             if old:
                 previous_item = _mapping(old.get("source_catalog_item"))
                 item = carry_specification_sources(item, previous_item)
@@ -660,8 +930,11 @@ class CatalogStagingService:
                     previous=old,
                 )
             )
+            if index and index % 2000 == 0:
+                emit(f"Staging: {index + 1}/{len(federated_items)}")
         self._save(records, source_path=source)
-        return self.list_records()
+        emit(f"Готово: {len(records)} позиций")
+        return records
 
     def set_status(self, staging_id: str, status: str) -> dict[str, Any]:
         if status not in {STAGING_PENDING, STAGING_APPROVED, STAGING_REJECTED}:
@@ -780,6 +1053,44 @@ class CatalogStagingService:
             return dict(deepcopy(record))
         raise KeyError(staging_id)
 
+    def transform_source_items(
+        self,
+        transform: Callable[[Mapping[str, Any]], Mapping[str, Any] | None],
+        *,
+        staging_ids: Iterable[str] | None = None,
+    ) -> int:
+        """Transform source items in place and persist once.
+
+        Large enrichment jobs must not build a second ``staging_id -> item``
+        dictionary containing tens of thousands of deep catalog objects.  The
+        callback receives one staging record at a time; returning ``None``
+        leaves it unchanged, while a mapping replaces only that source item.
+        Review state and manual overrides are reconstructed through the normal
+        staging builder.
+        """
+
+        selected = {str(value) for value in (staging_ids or []) if str(value)}
+        records = self.list_records()
+        changed = 0
+        for index, record in enumerate(records):
+            staging_id = _text(record.get("staging_id"))
+            if selected and staging_id not in selected:
+                continue
+            if record.get("status") == STAGING_IMPORTED:
+                continue
+            source_item = transform(record)
+            if not isinstance(source_item, Mapping):
+                continue
+            records[index] = _build_staging_record(
+                source_item,
+                staging_id=staging_id,
+                previous=record,
+            )
+            changed += 1
+        if changed:
+            self._save(records)
+        return changed
+
     def apply_source_item_updates(
         self,
         updates: Mapping[str, Mapping[str, Any]],
@@ -830,26 +1141,43 @@ class CatalogStagingService:
         *,
         source_path: str | Path | None = None,
     ) -> None:
-        previous_source = None
-        if self.path.exists():
-            payload = self.storage.read(self.path)
-            if isinstance(payload, Mapping):
-                previous_source = payload.get("source_path")
-        self.storage.write(
-            self.path,
-            {
-                "schema_version": CATALOG_STAGING_SCHEMA_VERSION,
-                "updated_at": datetime.now(UTC).isoformat(),
-                "source_path": str(source_path or previous_source or ""),
-                "records": records,
-            },
-        )
+        resolved_source = str(source_path or self._source_path_cache or "")
+        compact_records = [_compact_staging_record(record) for record in records]
+        payload = {
+            "schema_version": CATALOG_STAGING_SCHEMA_VERSION,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "source_path": resolved_source,
+            # Runtime/validation fields are reproducible and therefore are not
+            # duplicated on disk.  This cuts large staging files by multiples.
+            "records": compact_records,
+        }
+        writer = getattr(self.storage, "write_compact", None)
+        if callable(writer):
+            writer(self.path, payload)
+        else:
+            self.storage.write(self.path, payload)
+        try:
+            self.read_model.rebuild(records, compact_records=compact_records)
+        except (OSError, RuntimeError) as exc:
+            # Canonical JSON is authoritative; a projection failure must not
+            # corrupt or roll back imported catalog data.  UI falls back and
+            # can rebuild the projection on the next read.
+            logger.warning("Не удалось обновить UI read-model каталога: %s", exc)
+        self._set_cache(records, source_path=resolved_source)
+
 
 
 def _upgrade_staging_record(raw: Mapping[str, Any]) -> dict[str, Any]:
     record = dict(deepcopy(raw))
-    item = _mapping(record.get("catalog_item"))
-    source_item = _mapping(record.get("source_catalog_item")) or deepcopy(item)
+    stored_item = _mapping(record.get("catalog_item"))
+    source_item = _mapping(record.get("source_catalog_item")) or deepcopy(stored_item)
+    overrides = _mapping(record.get("manual_overrides"))
+    if stored_item:
+        item = stored_item
+    elif overrides:
+        item = _apply_manual_overrides(source_item, overrides)
+    else:
+        item = source_item
     record["source_catalog_item"] = source_item
     record["catalog_item"] = item
     default_target = target_for_catalog_category(_text(item.get("category")))
@@ -859,7 +1187,18 @@ def _upgrade_staging_record(raw: Mapping[str, Any]) -> dict[str, Any]:
         "runtime_inputs",
         _default_runtime_inputs(_text(record.get("target_component_type"))),
     )
-    record.setdefault("manual_overrides", {})
+    record.setdefault("manual_overrides", overrides)
+    if overrides and record.get("manual_updated_at"):
+        provenance = _mapping(item.get("field_provenance"))
+        provenance.setdefault(
+            "manual",
+            {
+                "updated_at": record.get("manual_updated_at"),
+                "fields": sorted(overrides),
+            },
+        )
+        item["field_provenance"] = provenance
+        record["catalog_item"] = item
     errors, warnings = validate_staging_record(record)
     record["validation_errors"] = errors
     record["validation_warnings"] = warnings
@@ -871,6 +1210,28 @@ def _upgrade_staging_record(raw: Mapping[str, Any]) -> dict[str, Any]:
     return record
 
 
+def _compact_staging_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep only source state + user decisions; derived fields are rebuilt on load."""
+
+    keys = (
+        "staging_id",
+        "status",
+        "source_catalog_item",
+        "target_category",
+        "target_component_type",
+        "runtime_inputs",
+        "manual_overrides",
+        "manual_updated_at",
+        "imported_at",
+        "source_changed_since_review",
+    )
+    return {
+        key: record.get(key)
+        for key in keys
+        if record.get(key) not in (None, {}, [])
+    }
+
+
 def _build_staging_record(
     source_item: Mapping[str, Any],
     *,
@@ -879,7 +1240,8 @@ def _build_staging_record(
 ) -> dict[str, Any]:
     old = _upgrade_staging_record(previous or {}) if previous else {}
     overrides = _mapping(old.get("manual_overrides"))
-    item = _apply_manual_overrides(source_item, overrides)
+    source_copy = dict(deepcopy(source_item))
+    item = _apply_manual_overrides(source_copy, overrides) if overrides else source_copy
     default_target = target_for_catalog_category(_text(item.get("category")))
     target_category = _text(
         overrides.get("target_category")
@@ -902,7 +1264,7 @@ def _build_staging_record(
     record = {
         "staging_id": staging_id,
         "status": status,
-        "source_catalog_item": dict(deepcopy(source_item)),
+        "source_catalog_item": source_copy,
         "catalog_item": item,
         "target_category": target_category,
         "target_component_type": target_component_type,
@@ -1022,44 +1384,59 @@ def _build_manual_overrides(
 
 
 def _load_csv_rows(path: Path) -> list[dict[str, Any]]:
-    raw = path.read_bytes()
-    text = None
-    for encoding in ("utf-8-sig", "cp1251"):
+    return list(_iter_csv_rows(path))
+
+
+def _iter_csv_rows(
+    path: Path,
+    *,
+    max_rows: int | None = None,
+) -> Iterator[dict[str, Any]]:
+    with path.open("rb") as raw_file:
+        sample_bytes = raw_file.read(65536)
+    encoding = None
+    sample_text = ""
+    for candidate in ("utf-8-sig", "cp1251"):
         try:
-            text = raw.decode(encoding)
+            sample_text = sample_bytes.decode(candidate)
+            encoding = candidate
             break
         except UnicodeDecodeError:
             continue
-    if text is None:
+    if encoding is None:
         raise ValueError("CSV должен быть в UTF-8 или Windows-1251.")
-    sample = text[:4096]
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+        dialect = csv.Sniffer().sniff(sample_text[:4096], delimiters=",;\t")
         delimiter = dialect.delimiter
     except csv.Error:
         delimiter = ";"
-    matrix = [list(row) for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
-    return _matrix_to_rows(matrix)
+    with path.open("r", encoding=encoding, newline="") as stream:
+        matrix = csv.reader(stream, delimiter=delimiter)
+        yield from _iter_matrix_rows(matrix, max_rows=max_rows)
 
 
 def _load_xlsx_rows(path: Path) -> list[dict[str, Any]]:
-    """Read the first XLSX sheet using OOXML from the standard library."""
+    """Compatibility wrapper around the streaming OOXML reader."""
+
+    return list(_iter_xlsx_rows(path))
+
+
+def _iter_xlsx_rows(
+    path: Path,
+    *,
+    max_rows: int | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Read the first XLSX sheet without expanding the whole XML in memory."""
 
     main_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
     rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
     package_rel_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
     with zipfile.ZipFile(path) as archive:
-        shared: list[str] = []
-        if "xl/sharedStrings.xml" in archive.namelist():
-            root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
-            shared = [
-                "".join(node.text or "" for node in item.findall(f".//{{{main_ns}}}t"))
-                for item in root.findall(f"{{{main_ns}}}si")
-            ]
+        shared = _read_xlsx_shared_strings(archive, main_ns)
         workbook = ElementTree.fromstring(archive.read("xl/workbook.xml"))
         first_sheet = workbook.find(f".//{{{main_ns}}}sheet")
         if first_sheet is None:
-            return []
+            return
         relationship_id = first_sheet.attrib.get(f"{{{rel_ns}}}id")
         rels = ElementTree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
         target = None
@@ -1073,32 +1450,119 @@ def _load_xlsx_rows(path: Path) -> list[dict[str, Any]]:
         sheet_path = posixpath.normpath(
             target_path if target_path.startswith("xl/") else f"xl/{target_path}"
         )
-        sheet = ElementTree.fromstring(archive.read(sheet_path))
+        if sheet_path not in archive.namelist():
+            raise ValueError("Первый лист XLSX отсутствует в архиве.")
 
-    matrix: list[list[Any]] = []
-    for row in sheet.findall(f".//{{{main_ns}}}row"):
-        values: dict[int, Any] = {}
-        for cell in row.findall(f"{{{main_ns}}}c"):
-            reference = cell.attrib.get("r", "")
-            column = _xlsx_column_index(reference)
-            cell_type = cell.attrib.get("t")
-            value_node = cell.find(f"{{{main_ns}}}v")
-            if cell_type == "inlineStr":
-                value = "".join(
-                    node.text or "" for node in cell.findall(f".//{{{main_ns}}}t")
+        def matrix_rows() -> Iterator[list[Any]]:
+            with archive.open(sheet_path) as sheet_stream:
+                for _event, row in ElementTree.iterparse(sheet_stream, events=("end",)):
+                    if _local_name(row.tag) != "row":
+                        continue
+                    values: dict[int, Any] = {}
+                    for cell in list(row):
+                        if _local_name(cell.tag) != "c":
+                            continue
+                        reference = cell.attrib.get("r", "")
+                        column = _xlsx_column_index(reference)
+                        if column < 0 or column > 511:
+                            continue
+                        cell_type = cell.attrib.get("t")
+                        value_node = next(
+                            (child for child in list(cell) if _local_name(child.tag) == "v"),
+                            None,
+                        )
+                        if cell_type == "inlineStr":
+                            value = "".join(
+                                node.text or ""
+                                for node in cell.iter()
+                                if _local_name(node.tag) == "t"
+                            )
+                        else:
+                            raw_value = value_node.text if value_node is not None else ""
+                            if cell_type == "s" and raw_value:
+                                try:
+                                    value = shared[int(raw_value)]
+                                except (ValueError, IndexError):
+                                    value = ""
+                            elif cell_type == "b":
+                                value = raw_value == "1"
+                            else:
+                                value = raw_value
+                        values[column] = value
+                    if values:
+                        yield [values.get(index, "") for index in range(max(values) + 1)]
+                    row.clear()
+
+        yield from _iter_matrix_rows(matrix_rows(), max_rows=max_rows)
+
+
+def _read_xlsx_shared_strings(archive: zipfile.ZipFile, main_ns: str) -> list[str]:
+    if "xl/sharedStrings.xml" not in archive.namelist():
+        return []
+    result: list[str] = []
+    with archive.open("xl/sharedStrings.xml") as stream:
+        for _event, node in ElementTree.iterparse(stream, events=("end",)):
+            if _local_name(node.tag) != "si":
+                continue
+            result.append(
+                "".join(
+                    child.text or ""
+                    for child in node.iter()
+                    if _local_name(child.tag) == "t"
                 )
-            else:
-                raw_value = value_node.text if value_node is not None else ""
-                if cell_type == "s" and raw_value:
-                    value = shared[int(raw_value)]
-                elif cell_type == "b":
-                    value = raw_value == "1"
-                else:
-                    value = raw_value
-            values[column] = value
-        if values:
-            matrix.append([values.get(index, "") for index in range(max(values) + 1)])
-    return _matrix_to_rows(matrix)
+            )
+            node.clear()
+    return result
+
+
+def _iter_matrix_rows(
+    matrix: Iterable[Iterable[Any]],
+    *,
+    max_rows: int | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Resolve a supplier header from a tiny buffer, then stream data rows."""
+
+    iterator = iter(matrix)
+    buffer: list[list[Any]] = []
+    while len(buffer) < 25:
+        try:
+            row = list(next(iterator))
+        except StopIteration:
+            break
+        if any(_text(value) for value in row):
+            buffer.append(row)
+    if not buffer:
+        return
+    header_index = _find_header_row(buffer)
+    headers = [_text(value) for value in buffer[header_index]]
+    emitted = 0
+
+    def payload_for(row: Iterable[Any]) -> dict[str, Any]:
+        values = list(row)
+        return {
+            header: values[index] if index < len(values) else ""
+            for index, header in enumerate(headers)
+            if header
+        }
+
+    for row in buffer[header_index + 1 :]:
+        payload = payload_for(row)
+        if any(value not in ("", None) for value in payload.values()):
+            yield payload
+            emitted += 1
+            if max_rows is not None and emitted >= max_rows:
+                return
+    for raw_row in iterator:
+        row = list(raw_row)
+        if not any(_text(value) for value in row):
+            continue
+        payload = payload_for(row)
+        if not any(value not in ("", None) for value in payload.values()):
+            continue
+        yield payload
+        emitted += 1
+        if max_rows is not None and emitted >= max_rows:
+            return
 
 
 def _load_yml_rows(path: Path) -> list[dict[str, Any]]:
@@ -1215,6 +1679,9 @@ _HEADER_ALIAS_GROUPS = (
         "наименованиетовара",
         "название",
         "товар",
+        "номенклатура",
+        "наименованиеноменклатуры",
+        "описаниетовара",
     },
     {
         "category",
@@ -1225,6 +1692,9 @@ _HEADER_ALIAS_GROUPS = (
         "раздел",
         "группа",
         "товарнаягруппа",
+        "товарнаякатегория",
+        "категорияноменклатуры",
+        "разделноменклатуры",
     },
     {
         "price",
@@ -1234,6 +1704,11 @@ _HEADER_ALIAS_GROUPS = (
         "ценаруб",
         "стоимость",
         "розничнаяцена",
+        "ценасндс",
+        "ценасндсруб",
+        "ценапартнера",
+        "оптоваяцена",
+        "ррц",
     },
     {"brand", "vendor", "бренд", "производитель"},
     {
@@ -1372,6 +1847,50 @@ def _metric_field_value(field: str, value: Any) -> Any:
     number = _number(value)
     return number if number is not None else value
 
+
+
+def _build_previous_record_index(
+    previous_records: Iterable[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    index: dict[str, list[dict[str, Any]]] = {}
+    for record in previous_records:
+        item = _mapping(record.get("source_catalog_item"))
+        for key in observation_keys(item):
+            index.setdefault(key, []).append(record)
+    return index
+
+
+def _best_previous_record_indexed(
+    item: Mapping[str, Any],
+    previous_index: Mapping[str, list[dict[str, Any]]],
+    used_previous: set[str],
+) -> dict[str, Any]:
+    """O(keys*candidates) continuity lookup instead of an O(N²) full scan."""
+
+    keys = observation_keys(item)
+    status_rank = {
+        STAGING_IMPORTED: 5,
+        STAGING_APPROVED: 4,
+        STAGING_PENDING: 3,
+        STAGING_BLOCKED: 2,
+        STAGING_REJECTED: 1,
+    }
+    unique: dict[str, dict[str, Any]] = {}
+    for key in keys:
+        for record in previous_index.get(key, []):
+            staging_id = _text(record.get("staging_id"))
+            if staging_id and staging_id not in used_previous:
+                unique[staging_id] = record
+    candidates: list[tuple[int, int, str, dict[str, Any]]] = []
+    for staging_id, record in unique.items():
+        overlap = len(keys & observation_keys(_mapping(record.get("source_catalog_item"))))
+        if overlap:
+            candidates.append(
+                (overlap, status_rank.get(_text(record.get("status")), 0), staging_id, record)
+            )
+    if not candidates:
+        return {}
+    return max(candidates, key=lambda value: (value[0], value[1], value[2]))[3]
 
 
 def _best_previous_record(

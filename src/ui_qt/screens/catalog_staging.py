@@ -5,6 +5,8 @@ from typing import Any
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import CatalogStagingPresenter, QtAppPresenter
 from ui_qt.dialogs.catalog_feed_source_dialog import CatalogFeedSourceDialog
+from ui_qt.dialogs.catalog_stage_file_dialog import CatalogStageFileDialog
+from ui_qt.dialogs.catalog_local_enrichment_dialog import CatalogLocalEnrichmentDialog
 from ui_qt.dialogs.catalog_icecat_enrichment_dialog import CatalogIcecatEnrichmentDialog
 from ui_qt.dialogs.catalog_procurement_benchmark_dialog import CatalogProcurementBenchmarkDialog
 from ui_qt.dialogs.catalog_commercial_quote_dialog import CatalogCommercialQuoteDialog
@@ -282,6 +284,7 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
             raise RuntimeError("PySide6 is required to create CatalogStagingScreen")
         super().__init__(parent)
         self.presenter = CatalogStagingPresenter(app_presenter)
+        self._page = 1
         self._build_ui()
         self.refresh_data()
 
@@ -327,11 +330,38 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
             0,
         )
         row.addStretch(1)
+        self.search_edit = QLineEdit(header)
+        self.search_edit.setPlaceholderText("Поиск по каталогу")
+        self.search_edit.setMaximumWidth(220)
+        self.search_edit.returnPressed.connect(self._reset_page_and_refresh)
+        self.search_edit.textChanged.connect(self._search_text_changed)
+        row.addWidget(self.search_edit, 0)
+
         self.filter_combo = QComboBox(header)
         for option in self.presenter.filter_options():
             self.filter_combo.addItem(option.label, option.value)
-        self.filter_combo.currentIndexChanged.connect(lambda _index: self.refresh_data())
+        self.filter_combo.currentIndexChanged.connect(lambda _index: self._reset_page_and_refresh())
         row.addWidget(self.filter_combo, 0)
+
+        self.page_size_combo = QComboBox(header)
+        for value in (100, 250, 500, 1000):
+            self.page_size_combo.addItem(str(value), value)
+        self.page_size_combo.setCurrentIndex(1)
+        self.page_size_combo.setToolTip("Строк на странице. Расчётный каталог не ограничивается.")
+        self.page_size_combo.currentIndexChanged.connect(lambda _index: self._reset_page_and_refresh())
+        row.addWidget(self.page_size_combo, 0)
+
+        self.prev_page_button = QPushButton("‹", header)
+        self.prev_page_button.setFixedWidth(30)
+        self.prev_page_button.clicked.connect(self._previous_page)
+        row.addWidget(self.prev_page_button, 0)
+        self.page_label = CompactLabel("1/1", header)
+        row.addWidget(self.page_label, 0)
+        self.next_page_button = QPushButton("›", header)
+        self.next_page_button.setFixedWidth(30)
+        self.next_page_button.clicked.connect(self._next_page)
+        row.addWidget(self.next_page_button, 0)
+
         self.status_label = CompactLabel("Нет данных", header)
         row.addWidget(self.status_label, 0)
         return header
@@ -345,8 +375,8 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         open_button.clicked.connect(self.open_catalog)
         source_button = QPushButton("Источник данных", self)
         source_button.clicked.connect(self.collect_feed_source)
-        enrich_button = QPushButton("Обогатить Icecat", self)
-        enrich_button.clicked.connect(self.enrich_icecat)
+        enrich_button = QPushButton("Автообогащение", self)
+        enrich_button.clicked.connect(self.enrich_locally)
         evidence_button = QPushButton("Доп. данные", self)
         evidence_menu = QMenu(evidence_button)
         quote_action = evidence_menu.addAction("Импорт КП")
@@ -355,6 +385,8 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         eis_action.triggered.connect(self.apply_procurement_benchmark)
         capture_action = evidence_menu.addAction("Захват браузера")
         capture_action.triggered.connect(self.capture_from_browser)
+        icecat_action = evidence_menu.addAction("Icecat (аккаунт)")
+        icecat_action.triggered.connect(self.enrich_icecat)
         evidence_button.setMenu(evidence_menu)
         approve_button = QPushButton("Подтвердить", self)
         approve_button.clicked.connect(self.approve_selected)
@@ -383,14 +415,43 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
             if hasattr(self, "filter_combo")
             else "all"
         )
-        self.model.replace_rows(self.presenter.table_rows(status_filter))
+        page_size = int(self.page_size_combo.currentData() or 250)
+        page = self.presenter.table_page(
+            status_filter,
+            page=self._page,
+            page_size=page_size,
+            query=self.search_edit.text(),
+        )
+        self._page = page.page
+        self.model.replace_rows(list(page.rows))
         self.table.refresh_state()
+        page_count = max(1, (page.total + page.page_size - 1) // page.page_size)
+        self.page_label.setText(f"{page.page}/{page_count} · {page.total}")
+        self.prev_page_button.setEnabled(page.page > 1)
+        self.next_page_button.setEnabled(page.page < page_count)
         summary = self.presenter.summary()
         self.status_label.setText(
-            f"Всего {summary.total} · готово {summary.ready} · блокировано {summary.blocked}"
+            f"Всего {summary.total} · готово {summary.ready} · блок {summary.blocked}"
         )
         if summary.total == 0:
             self.details.setPlainText("Импортируйте файл или выберите feed-источник.")
+
+    def _reset_page_and_refresh(self) -> None:
+        self._page = 1
+        self.refresh_data()
+
+    def _search_text_changed(self, text: str) -> None:
+        if not str(text):
+            self._reset_page_and_refresh()
+
+    def _previous_page(self) -> None:
+        if self._page > 1:
+            self._page -= 1
+            self.refresh_data()
+
+    def _next_page(self) -> None:
+        self._page += 1
+        self.refresh_data()
 
     def run_primary_action(self) -> None:
         self.open_catalog()
@@ -404,11 +465,10 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         )
         if not path:
             return
-        try:
-            self.presenter.stage_file(path)
-        except Exception as exc:
-            QMessageBox.warning(self, "Ошибка каталога", str(exc))
+        dialog = CatalogStageFileDialog(self.presenter, path, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.completed:
             return
+        self._page = 1
         self.details.setPlainText("Каталог загружен. Выберите строку и проверьте замечания.")
         self.refresh_data()
 
@@ -429,16 +489,27 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         dialog = CatalogFeedSourceDialog(self.presenter, self)
         if dialog.exec() != QDialog.DialogCode.Accepted or dialog.job is None:
             return
-        try:
-            self.presenter.stage_feed_job(dialog.job)
-        except Exception as exc:
-            QMessageBox.warning(self, "Ошибка feed", str(exc))
-            return
         self.filter_combo.setCurrentIndex(0)
+        self._page = 1
         self.details.setPlainText(
             "Feed загружен. Проверьте источник, цену и категорию."
         )
         self.refresh_data()
+
+    def enrich_locally(self) -> None:
+        staging_ids = [
+            str(row.get("staging_id") or "")
+            for row in self.table.selected_rows()
+            if row.get("staging_id")
+        ]
+        dialog = CatalogLocalEnrichmentDialog(self.presenter, staging_ids, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.completed:
+            return
+        self._page = 1
+        self.refresh_data()
+        self.details.setPlainText(
+            "Автообогащение завершено. Оценочные данные помечены в карточках."
+        )
 
     def enrich_icecat(self) -> None:
         staging_ids = [

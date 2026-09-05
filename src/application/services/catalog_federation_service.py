@@ -187,6 +187,34 @@ def offer_freshness(offer: Mapping[str, Any], *, now: datetime | None = None) ->
 
 
 def _merge_group(group: list[dict[str, Any]]) -> dict[str, Any]:
+    if len(group) == 1:
+        # Do not materialise federation/offer summaries for a product seen in
+        # only one source.  They are derivable from ``offer`` and add a very
+        # large object overhead on 30k+ supplier catalogs.  Once a second
+        # source matches, the normal multi-source branch below is used.
+        merged = dict(deepcopy(group[0]))
+        # Keep the public P2 ``offers`` contract even for one source, but avoid
+        # the much heavier federation/source-observation mirrors.
+        offer = _mapping(merged.get("offer"))
+        if offer:
+            single = dict(offer)
+            single.setdefault("source", str(merged.get("source") or "").strip())
+            single.setdefault("source_name", _source_name(merged))
+            single.setdefault("source_product_id", merged.get("source_product_id") or None)
+            single.setdefault("price_kind", "retail_offer")
+            single.setdefault("currency", str(single.get("currency") or "RUB").upper())
+            single.setdefault("offer_id", _offer_id(single))
+            single.setdefault("freshness", offer_freshness(single))
+            merged["offers"] = [single]
+        else:
+            merged["offers"] = []
+        for key in ("price_summary", "federation", "source_observations"):
+            merged.pop(key, None)
+        provenance = _mapping(merged.get("field_provenance"))
+        provenance.pop("federation", None)
+        merged["field_provenance"] = provenance
+        return merged
+
     offers = _collect_offers(group)
     effective = select_effective_offer(offers)
     representative = _representative(group, effective)
@@ -211,7 +239,12 @@ def _merge_group(group: list[dict[str, Any]]) -> dict[str, Any]:
     merged["offers"] = offers
     merged["offer"] = effective or _mapping(representative.get("offer"))
     merged["price_summary"] = _price_summary(offers, effective)
-    merged["source_observations"] = [_leaf_observation(item) for item in group]
+    # A single-source item already *is* its leaf observation.  Persisting an
+    # extra deep copy here multiplied large staging files for no benefit.
+    if len(group) > 1:
+        merged["source_observations"] = [_leaf_observation(item) for item in group]
+    else:
+        merged.pop("source_observations", None)
     merged["federation"] = {
         "identity_key": canonical_key,
         "identity_kind": canonical_kind,
@@ -402,7 +435,9 @@ def _source_name(item: Mapping[str, Any]) -> str:
 
 
 def _leaf_observation(item: Mapping[str, Any]) -> dict[str, Any]:
-    result = dict(deepcopy(item))
+    # Federation never mutates leaf nested values.  A shallow top-level copy
+    # avoids multiplying tens of thousands of source records in memory.
+    result = dict(item)
     for key in ("offers", "price_summary", "federation", "source_observations"):
         result.pop(key, None)
     return result
