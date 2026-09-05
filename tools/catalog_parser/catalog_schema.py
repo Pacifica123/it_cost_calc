@@ -5,6 +5,24 @@ from typing import Any
 
 
 @dataclass(slots=True)
+class PriceObservation:
+    """One observed price/availability fact from a concrete external source."""
+
+    source: str
+    price: int | float | None
+    currency: str = "RUB"
+    availability: str = "unknown"
+    url: str | None = None
+    region: str = ""
+    observed_at: str | None = None
+    price_kind: str = "retail_offer"
+    source_product_id: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
 class CatalogItem:
     """Нормализованная запись каталога оборудования."""
 
@@ -24,6 +42,9 @@ class CatalogItem:
     offer: dict[str, Any] = field(default_factory=dict)
     field_provenance: dict[str, Any] = field(default_factory=dict)
     review: dict[str, Any] = field(default_factory=dict)
+    offers: list[PriceObservation] = field(default_factory=list)
+    price_summary: dict[str, Any] = field(default_factory=dict)
+    federation: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

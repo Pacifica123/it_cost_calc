@@ -17,6 +17,12 @@ from xml.etree import ElementTree
 
 from infrastructure.storage import JsonFileStorage
 
+from application.services.catalog_federation_service import (
+    federate_catalog_items,
+    observation_keys,
+    source_observations,
+)
+
 CATALOG_STAGING_SCHEMA_VERSION = 2
 CATALOG_SOURCE_SCHEMA_VERSION = 2
 
@@ -365,6 +371,14 @@ def validate_staging_item(item: Mapping[str, Any]) -> tuple[list[str], list[str]
         warnings.append("Не указано время получения цены.")
     if not any(identity.get(key) for key in ("gtin", "mpn", "model")):
         warnings.append("Нет GTIN, MPN или модели для надёжного объединения источников.")
+    federation = _mapping(item.get("federation"))
+    price_summary = _mapping(item.get("price_summary"))
+    if federation.get("identity_conflicts"):
+        warnings.append("Источники расходятся по идентификаторам товара.")
+    if federation.get("category_conflicts"):
+        warnings.append("Источники расходятся по категории товара.")
+    if price_summary.get("freshness") == "stale":
+        warnings.append("Эффективная цена старше 90 дней.")
     for warning in list(review.get("warnings") or []) + list(
         parser_metadata.get("parse_warnings") or []
     ):
@@ -513,6 +527,9 @@ def catalog_item_to_runtime_row(record: Mapping[str, Any]) -> tuple[str, dict[st
             "source_product_id": item.get("source_product_id"),
             "identity": deepcopy(_mapping(item.get("identity"))),
             "offer": deepcopy(offer),
+            "offers": deepcopy(item.get("offers") if isinstance(item.get("offers"), list) else []),
+            "price_summary": deepcopy(_mapping(item.get("price_summary"))),
+            "federation": deepcopy(_mapping(item.get("federation"))),
             "field_provenance": deepcopy(_mapping(item.get("field_provenance"))),
             "review": deepcopy(_mapping(item.get("review"))),
             "parser_metadata": deepcopy(_mapping(item.get("parser_metadata"))),
@@ -562,20 +579,60 @@ class CatalogStagingService:
         *,
         source_context: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """Refresh one source and rebuild the multi-source federated staging catalog."""
+
         source = Path(source_path)
         rows = load_catalog_rows(source)
-        previous = {record.get("staging_id"): record for record in self.list_records()}
-        records: list[dict[str, Any]] = []
-        for index, raw in enumerate(rows):
-            item = normalize_catalog_item(
+        incoming = [
+            normalize_catalog_item(
                 raw,
                 source_path=source,
                 row_index=index,
                 source_context=source_context,
             )
-            staging_id = _staging_id(item)
-            old = previous.get(staging_id, {})
-            records.append(_build_staging_record(item, staging_id=staging_id, previous=old))
+            for index, raw in enumerate(rows)
+        ]
+
+        previous_records = self.list_records()
+        refresh_sources = {
+            _text(item.get("source"))
+            for item in incoming
+            if _text(item.get("source"))
+        }
+        context = _mapping(source_context)
+        context_source = _text(context.get("id") or context.get("source_id"))
+        if context_source:
+            refresh_sources.add(context_source)
+        if not refresh_sources:
+            refresh_sources.add(source.stem or "imported")
+
+        observations: list[dict[str, Any]] = []
+        for record in previous_records:
+            for observation in source_observations(_mapping(record.get("source_catalog_item"))):
+                if _text(observation.get("source")) not in refresh_sources:
+                    observations.append(observation)
+        observations.extend(incoming)
+
+        federated_items = federate_catalog_items(observations)
+        records: list[dict[str, Any]] = []
+        used_previous: set[str] = set()
+        for item in federated_items:
+            old = _best_previous_record(item, previous_records, used_previous)
+            if old:
+                previous_item = _mapping(old.get("source_catalog_item"))
+                if _text(previous_item.get("item_id")):
+                    item["item_id"] = _text(previous_item.get("item_id"))
+                staging_id = _text(old.get("staging_id")) or _staging_id(item)
+                used_previous.add(staging_id)
+            else:
+                staging_id = _staging_id(item)
+            records.append(
+                _build_staging_record(
+                    item,
+                    staging_id=staging_id,
+                    previous=old,
+                )
+            )
         self._save(records, source_path=source)
         return self.list_records()
 
@@ -1231,6 +1288,43 @@ def _metric_field_value(field: str, value: Any) -> Any:
     number = _number(value)
     return number if number is not None else value
 
+
+
+def _best_previous_record(
+    item: Mapping[str, Any],
+    previous_records: list[dict[str, Any]],
+    used_previous: set[str],
+) -> dict[str, Any]:
+    """Pick one reviewed record whose source observations survive in this group."""
+
+    keys = observation_keys(item)
+    status_rank = {
+        STAGING_IMPORTED: 5,
+        STAGING_APPROVED: 4,
+        STAGING_PENDING: 3,
+        STAGING_BLOCKED: 2,
+        STAGING_REJECTED: 1,
+    }
+    candidates: list[tuple[int, int, str, dict[str, Any]]] = []
+    for record in previous_records:
+        staging_id = _text(record.get("staging_id"))
+        if not staging_id or staging_id in used_previous:
+            continue
+        previous_item = _mapping(record.get("source_catalog_item"))
+        overlap = len(keys & observation_keys(previous_item))
+        if not overlap:
+            continue
+        candidates.append(
+            (
+                overlap,
+                status_rank.get(_text(record.get("status")), 0),
+                staging_id,
+                record,
+            )
+        )
+    if not candidates:
+        return {}
+    return max(candidates, key=lambda value: (value[0], value[1], value[2]))[3]
 
 def _stable_id(
     source: str,

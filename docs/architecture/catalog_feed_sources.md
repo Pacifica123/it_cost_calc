@@ -112,3 +112,10 @@ python scripts/update_equipment_catalog.py \
 
 Команда только получает raw feed и provenance-манифест. Нормализация в runtime по-прежнему
 проходит через staging и явное подтверждение пользователя.
+
+
+## Продолжение: P2
+
+После загрузки feed staging больше не рассматривает источники изолированно.
+Федерация товаров, `offers[]`, выбор effective price и правила refresh описаны в
+`docs/architecture/catalog_federation_p2.md`.

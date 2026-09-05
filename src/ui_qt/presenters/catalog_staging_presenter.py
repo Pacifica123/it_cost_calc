@@ -600,6 +600,7 @@ class CatalogStagingPresenter:
                 continue
             item = dict(record.get("catalog_item") or {})
             offer = dict(item.get("offer") or {})
+            federation = dict(item.get("federation") or {})
             target_category = str(record.get("target_category") or "")
             readiness = staging_record_readiness(record)
             rows.append(
@@ -608,7 +609,11 @@ class CatalogStagingPresenter:
                     "status": _STATUS_LABELS.get(str(record.get("status")), str(record.get("status"))),
                     "readiness": _READINESS_LABELS.get(readiness, readiness),
                     "name": str(item.get("title") or ""),
-                    "source": str(item.get("source") or ""),
+                    "source": (
+                        f"{int(federation.get('source_count') or 0)} источника"
+                        if int(federation.get("source_count") or 0) > 1
+                        else str(item.get("source") or "")
+                    ),
                     "category": str(item.get("category") or ""),
                     "target": _TARGET_LABELS.get(target_category, target_category or "—"),
                     "price": float(offer.get("price") or 0.0),
@@ -722,6 +727,9 @@ class CatalogStagingPresenter:
         source_item = dict(record.get("source_catalog_item") or {})
         identity = dict(item.get("identity") or {})
         offer = dict(item.get("offer") or {})
+        offers = list(item.get("offers") or [])
+        federation = dict(item.get("federation") or {})
+        price_summary = dict(item.get("price_summary") or {})
         metrics = dict(item.get("attributes") or {})
         errors = list(record.get("validation_errors") or [])
         warnings = list(record.get("validation_warnings") or [])
@@ -729,12 +737,19 @@ class CatalogStagingPresenter:
         lines = [
             f"Статус: {_STATUS_LABELS.get(str(record.get('status')), record.get('status'))}",
             f"Готовность: {_READINESS_LABELS.get(readiness, readiness)}",
-            f"Источник: {item.get('source') or '—'}",
+            "Источники: "
+            + (
+                ", ".join(str(value) for value in federation.get("sources") or [])
+                or str(item.get("source") or "—")
+            ),
             f"Категория: {item.get('category') or '—'}",
             "Назначение: "
             f"{_TARGET_LABELS.get(str(record.get('target_category')), record.get('target_category') or '—')} / "
             f"{_COMPONENT_TYPE_LABELS.get(str(record.get('target_component_type')), record.get('target_component_type') or '—')}",
             f"Цена: {offer.get('price') or 0:g} {offer.get('currency') or 'RUB'}",
+            f"Наблюдений цены: {len(offers)}",
+            "Диапазон цен: "
+            + _price_range_text(price_summary),
             f"Модель: {identity.get('model') or identity.get('mpn') or '—'}",
             f"Метрики: {metrics or 'нет'}",
         ]
@@ -800,6 +815,21 @@ def _manual_change_lines(
         changes.append(f"Рабочие места: {default_seats:g} → {runtime_inputs.get('client_seats')}")
     return changes
 
+
+
+def _price_range_text(summary: dict[str, Any]) -> str:
+    low = summary.get("min_rub")
+    high = summary.get("max_rub")
+    if low in (None, "") or high in (None, ""):
+        return "—"
+    try:
+        low_number = float(low)
+        high_number = float(high)
+    except (TypeError, ValueError):
+        return "—"
+    if low_number == high_number:
+        return f"{low_number:g} RUB"
+    return f"{low_number:g}–{high_number:g} RUB"
 
 def _format_number(value: Any) -> str:
     try:

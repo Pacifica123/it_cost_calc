@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
-from .catalog_schema import CatalogItem, CatalogSourceInfo
+from .catalog_schema import CatalogItem, CatalogSourceInfo, PriceObservation
 from .dns_network_metrics import merge_parsed_metrics_with_specs, parse_dns_network_title
 from .dns_technical_metrics import merge_technical_metrics_with_attributes, parse_dns_technical_specs
 
@@ -125,7 +125,21 @@ def _normalize_source_item(
             "url": url,
             "region": str(raw.get("region") or ""),
             "observed_at": observed_at,
+            "price_kind": str(raw.get("price_kind") or "retail_offer"),
         },
+        offers=[
+            PriceObservation(
+                source=source,
+                source_product_id=source_product_id,
+                price=price_rub,
+                currency=currency,
+                availability=str(raw.get("availability") or "unknown"),
+                url=url,
+                region=str(raw.get("region") or ""),
+                observed_at=observed_at,
+                price_kind=str(raw.get("price_kind") or "retail_offer"),
+            )
+        ],
         field_provenance={
             "title": {
                 "source": source,
