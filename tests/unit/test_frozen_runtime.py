@@ -70,3 +70,28 @@ def test_default_qt_paths_split_writable_data_from_bundled_fixtures(
     assert paths.runtime_entities_path == writable / "data/generated/runtime_entities.json"
     assert paths.demo_dataset_path == bundled / "data/fixtures/demo_dataset.json"
     assert paths.demo_profiles_path == bundled / "data/fixtures/demo_profiles.json"
+
+
+def test_frozen_playwright_cache_uses_user_cache_instead_of_bundle(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    env = {
+        "PLAYWRIGHT_BROWSERS_PATH": "0",
+        "XDG_CACHE_HOME": str(tmp_path),
+    }
+
+    path = runtime.configure_playwright_environment(env)
+
+    assert path == (tmp_path / "ms-playwright").resolve()
+    assert env["PLAYWRIGHT_BROWSERS_PATH"] == str(path)
+
+
+def test_frozen_playwright_cache_keeps_explicit_user_path(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    custom = tmp_path / "custom-playwright"
+    env = {"PLAYWRIGHT_BROWSERS_PATH": str(custom)}
+
+    path = runtime.configure_playwright_environment(env)
+
+    assert path == custom.resolve()
+    assert env["PLAYWRIGHT_BROWSERS_PATH"] == str(custom)

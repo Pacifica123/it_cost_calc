@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from shared.runtime import external_process_environment
+
 from .dns_browser import DnsBrowserError, ensure_playwright_browser
 
 
@@ -58,6 +60,7 @@ class YandexMarketBrowserSession:
                 headless=self.headless,
                 locale="ru-RU",
                 viewport={"width": 1366, "height": 900},
+                env=external_process_environment(),
             )
         except Exception as exc:
             self._playwright.stop()

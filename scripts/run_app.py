@@ -37,14 +37,18 @@ def _install_playwright_browser(engine: str) -> int:
         return 2
     try:
         from playwright._impl._driver import compute_driver_executable, get_driver_env
+        from shared.runtime import configure_playwright_environment
     except ModuleNotFoundError:
         print("Playwright is not bundled with this release.", file=sys.stderr)
         return 2
 
+    browser_cache = configure_playwright_environment()
     driver_executable, driver_cli = compute_driver_executable()
+    driver_env = get_driver_env()
+    driver_env["PLAYWRIGHT_BROWSERS_PATH"] = str(browser_cache)
     completed = subprocess.run(
         [driver_executable, driver_cli, "install", engine],
-        env=get_driver_env(),
+        env=driver_env,
         check=False,
     )
     return int(completed.returncode)

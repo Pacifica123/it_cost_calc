@@ -67,6 +67,18 @@ bash scripts/build_linux_appimage.sh
 Скрипт сначала собирает `dist/linux/ITCostCalc/`. Если в `PATH` есть `appimagetool`, дополнительно создаётся `dist/linux/ITCostCalc-x86_64.AppImage`.
 Если `appimagetool` не установлен, onedir-сборка остаётся готовой, а для AppImage нужно установить `appimagetool` и повторить команду.
 
+## Playwright в EXE/AppImage
+
+PyInstaller включает Python-пакет и Node-драйвер Playwright, но сами Firefox/Chromium устанавливаются отдельно при первом запуске parser-сценария. В frozen-режиме приложение **не** использует Playwright-режим `PLAYWRIGHT_BROWSERS_PATH=0`, потому что он направляет браузеры внутрь `_internal/playwright/driver/package/.local-browsers`: внутри AppImage этот каталог read-only, а в onefile-сборке он непостоянный.
+
+Вместо этого браузеры хранятся в обычном пользовательском кэше Playwright:
+
+- Linux: `$XDG_CACHE_HOME/ms-playwright` либо `~/.cache/ms-playwright`;
+- Windows: `%LOCALAPPDATA%\ms-playwright`;
+- macOS: `~/Library/Caches/ms-playwright`.
+
+Поэтому source-run и готовая сборка видят одну и ту же установку браузера. Если пользователь явно задал собственный `PLAYWRIGHT_BROWSERS_PATH`, он сохраняется. Команда `--playwright-install` и фактический Playwright driver получают один и тот же путь, что предотвращает ситуацию «установка успешна, executable не найден».
+
 ## Почему не поддерживать Python 3.10
 
 Снижение `requires-python` до 3.10 создаёт риск скрытых проблем с Qt, matplotlib и будущими зависимостями. Для дипломного проекта безопаснее иметь воспроизводимую dev-среду на Python 3.11+ и отдельные release-артефакты для запуска без Python.

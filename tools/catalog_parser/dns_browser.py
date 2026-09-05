@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Callable
 
-from shared.runtime import playwright_install_command
+from shared.runtime import (
+    configure_playwright_environment,
+    external_process_environment,
+    playwright_install_command,
+)
 
 PLAYWRIGHT_BROWSER_ENGINES = ("firefox", "chromium")
 _DNS_CHALLENGE_MARKERS = (
@@ -29,19 +35,112 @@ class DnsBrowserPage:
     html: str
 
 
-def _playwright_executable_path(engine: str) -> Path:
+def _playwright_install_location(engine: str) -> Path:
+    """Resolve Playwright's installation directory without starting its async driver."""
+
+    configure_playwright_environment()
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright._impl._driver import compute_driver_executable, get_driver_env
     except ModuleNotFoundError as exc:
         raise DnsBrowserError(
             "Playwright не установлен в окружении приложения. Переустановите зависимости проекта."
         ) from exc
-    playwright = sync_playwright().start()
-    try:
-        browser_type = getattr(playwright, engine)
-        return Path(browser_type.executable_path)
-    finally:
-        playwright.stop()
+
+    driver_executable, driver_cli = compute_driver_executable()
+    env = get_driver_env()
+    env["PLAYWRIGHT_BROWSERS_PATH"] = os.environ["PLAYWRIGHT_BROWSERS_PATH"]
+    completed = subprocess.run(
+        [driver_executable, driver_cli, "install", "--dry-run", engine],
+        env=env,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout).strip()
+        suffix = f" ({details})" if details else ""
+        raise DnsBrowserError(f"Не удалось определить каталог Playwright {engine}{suffix}")
+
+    current_browser = ""
+    for raw_line in completed.stdout.splitlines():
+        line = raw_line.strip()
+        if line.startswith("browser:"):
+            current_browser = line.partition(":")[2].strip().split()[0]
+            continue
+        if current_browser == engine and line.startswith("Install location:"):
+            value = line.partition(":")[2].strip()
+            if value:
+                return Path(value).expanduser().resolve()
+    raise DnsBrowserError(
+        f"Playwright не сообщил каталог установки для движка {engine}."
+    )
+
+
+def _find_browser_executable(engine: str, install_dir: Path) -> Path:
+    candidates: tuple[str, ...]
+    if engine == "firefox":
+        candidates = ("firefox.exe", "firefox")
+    else:
+        candidates = ("chrome.exe", "chrome", "Chromium")
+
+    if install_dir.is_dir():
+        for name in candidates:
+            for path in install_dir.rglob(name):
+                if path.is_file():
+                    return path.resolve()
+    # Return a useful diagnostic path even when installation is incomplete.
+    if engine == "firefox":
+        return install_dir / "firefox" / ("firefox.exe" if sys.platform.startswith("win") else "firefox")
+    if sys.platform.startswith("win"):
+        return install_dir / "chrome-win64" / "chrome.exe"
+    if sys.platform == "darwin":
+        return install_dir / "chrome-mac" / "Chromium.app" / "Contents" / "MacOS" / "Chromium"
+    return install_dir / "chrome-linux" / "chrome"
+
+
+def _playwright_executable_path(engine: str) -> Path:
+    install_dir = _playwright_install_location(engine)
+    return _find_browser_executable(engine, install_dir)
+
+
+def _system_chromium_executable() -> Path | None:
+    """Find a host Chrome/Chromium that can be used for the DNS compatibility mode."""
+
+    for command in (
+        "google-chrome-stable",
+        "google-chrome",
+        "chromium",
+        "chromium-browser",
+    ):
+        resolved = shutil.which(command)
+        if resolved:
+            return Path(resolved).resolve()
+
+    candidates: list[Path] = []
+    if sys.platform.startswith("win"):
+        for env_name in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            base = os.environ.get(env_name)
+            if not base:
+                continue
+            root = Path(base)
+            candidates.extend(
+                [
+                    root / "Google" / "Chrome" / "Application" / "chrome.exe",
+                    root / "Chromium" / "Application" / "chrome.exe",
+                ]
+            )
+    elif sys.platform == "darwin":
+        candidates.extend(
+            [
+                Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+                Path("/Applications/Chromium.app/Contents/MacOS/Chromium"),
+            ]
+        )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
 
 
 def ensure_playwright_browser(
@@ -51,10 +150,11 @@ def ensure_playwright_browser(
     probe: Callable[[str], Path] | None = None,
     installer: Callable[[list[str]], int] | None = None,
 ) -> Path:
-    """Install a missing Playwright browser with the current Python interpreter."""
+    """Ensure a Playwright browser exists in the same writable cache used at launch."""
 
     if engine not in PLAYWRIGHT_BROWSER_ENGINES:
         raise DnsBrowserError(f"Неподдерживаемый Playwright-движок: {engine}")
+    configure_playwright_environment()
     probe = probe or _playwright_executable_path
     executable = probe(engine)
     if executable.is_file():
@@ -71,7 +171,7 @@ def ensure_playwright_browser(
     if return_code != 0:
         raise DnsBrowserError(
             f"Автоматическая установка {engine} завершилась с кодом {return_code}. "
-            f"Повторите вручную: {sys.executable} -m playwright install {engine}"
+            f"Повторите вручную: {' '.join(command)}"
         )
     executable = probe(engine)
     if not executable.is_file():
@@ -104,8 +204,25 @@ class DnsBrowserSession:
         self._page = None
         self._first_page = True
 
+    def _launch_context(self, browser_type, *, executable_path: Path | None = None):
+        options = {
+            "user_data_dir": str(self.profile_dir),
+            "headless": self.headless,
+            "locale": "ru-RU",
+            "viewport": {"width": 1280, "height": 800},
+            "env": external_process_environment(),
+        }
+        if self.engine == "chromium":
+            # Compatibility mode inspired by the separately supplied Selenium parser:
+            # use the host Chromium when available and avoid the most obvious automation flag.
+            options["args"] = ["--disable-blink-features=AutomationControlled"]
+            options["ignore_default_args"] = ["--enable-automation"]
+            if executable_path is not None:
+                options["executable_path"] = str(executable_path)
+        return browser_type.launch_persistent_context(**options)
+
     def __enter__(self) -> "DnsBrowserSession":
-        ensure_playwright_browser(self.engine, progress=self.progress)
+        configure_playwright_environment()
         try:
             from playwright.sync_api import sync_playwright
         except ModuleNotFoundError as exc:
@@ -115,22 +232,48 @@ class DnsBrowserSession:
             ) from exc
 
         self.profile_dir.mkdir(parents=True, exist_ok=True)
+        system_chromium = _system_chromium_executable() if self.engine == "chromium" else None
+        if self.engine != "chromium" or system_chromium is None:
+            ensure_playwright_browser(self.engine, progress=self.progress)
+
         self._playwright = sync_playwright().start()
         try:
             browser_type = getattr(self._playwright, self.engine)
-            self._context = browser_type.launch_persistent_context(
-                user_data_dir=str(self.profile_dir),
-                headless=self.headless,
-                locale="ru-RU",
-                viewport={"width": 1280, "height": 800},
-            )
+            if system_chromium is not None:
+                self.progress(
+                    f"DNS Chromium: найден системный браузер {system_chromium}. "
+                    "Пробую совместимый режим перед bundled Chromium."
+                )
+                try:
+                    self._context = self._launch_context(
+                        browser_type,
+                        executable_path=system_chromium,
+                    )
+                except Exception:
+                    self.progress(
+                        "Системный Chromium не запустился через Playwright; "
+                        "переключаюсь на bundled Chromium."
+                    )
+                    ensure_playwright_browser("chromium", progress=self.progress)
+                    self._context = self._launch_context(browser_type)
+            else:
+                self._context = self._launch_context(browser_type)
         except Exception as exc:
             self._playwright.stop()
             self._playwright = None
             raise DnsBrowserError(
                 f"Не удалось запустить Playwright {self.engine}. "
-                f"Повторите установку: {sys.executable} -m playwright install {self.engine}"
+                f"Повторите установку командой из журнала для движка {self.engine}."
             ) from exc
+
+        if self.engine == "chromium":
+            try:
+                self._context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+                )
+            except Exception:
+                # Launch itself succeeded; this compatibility hint is best-effort only.
+                pass
         self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
         self._page.set_default_navigation_timeout(45000)
         self.progress(f"Профиль браузера: {self.profile_dir}")
@@ -177,8 +320,15 @@ class DnsBrowserSession:
     def __exit__(self, _exc_type, _exc, _traceback) -> None:
         try:
             if self._context is not None:
-                self._context.close()
+                try:
+                    self._context.close()
+                except Exception:
+                    # The target may already be closed after a rejected navigation.
+                    pass
         finally:
             if self._playwright is not None:
-                self._playwright.stop()
+                try:
+                    self._playwright.stop()
+                except Exception:
+                    pass
             self._context = self._page = self._playwright = None
