@@ -33,6 +33,7 @@ from infrastructure.exporters.decision_report_exporter import (
     export_decision_report_markdown,
     export_solution_component_csv,
 )
+from infrastructure.exporters.interactive_dashboard_exporter import export_interactive_dashboard
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
 from infrastructure.storage import JsonFileStorage
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL, TECHNICAL_CAPITAL_CATEGORIES
@@ -909,6 +910,14 @@ class QtAppPresenter:
                     self._npv_markdown(),
                 )
             }
+        if mode == "interactive_dashboard":
+            report = self._build_decision_report_snapshot()
+            return {
+                "dashboard": export_interactive_dashboard(
+                    report,
+                    export_root / "decision_dashboard.html",
+                )
+            }
         raise ValueError(f"Unknown export mode: {mode!r}")
 
     def export_costs_csv(self, filename: str | Path | None = None) -> Path:
@@ -920,10 +929,10 @@ class QtAppPresenter:
         )
         return path
 
-    def export_decision_report(self) -> dict[str, Path]:
-        export_root = self.generated_reports_dir()
+    def _build_decision_report_snapshot(self) -> dict[str, Any]:
+        """Build one DecisionReport snapshot reused by static and interactive exports."""
         scoped_inputs = self._scoped_decision_report_inputs()
-        report = self.decision_report_builder.execute(
+        return self.decision_report_builder.execute(
             project={
                 "id": "current-it-solution-choice",
                 "title": "Итоговый отчёт выбора ИТ-решения",
@@ -944,6 +953,10 @@ class QtAppPresenter:
                 "scoped_analysis_state": self._scoped_analysis_state(),
             },
         )
+
+    def export_decision_report(self) -> dict[str, Path]:
+        export_root = self.generated_reports_dir()
+        report = self._build_decision_report_snapshot()
         paths = {
             "json": export_decision_report_json(report, export_root / "decision_report.json"),
             "markdown": export_decision_report_markdown(report, export_root / "decision_report.md"),
@@ -951,6 +964,10 @@ class QtAppPresenter:
             "components_csv": export_solution_component_csv(
                 report,
                 export_root / "decision_report_solution_components.csv",
+            ),
+            "dashboard": export_interactive_dashboard(
+                report,
+                export_root / "decision_dashboard.html",
             ),
         }
         return paths

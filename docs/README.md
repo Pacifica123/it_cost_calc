@@ -50,6 +50,10 @@
 - `architecture/dns_live_catalog_gui.md` — управляемый запуск DNS-сбора из Qt через отдельный процесс, snapshots, отмена и staging;
 - `architecture/yandex_market_catalog_parser.md` — исследовательский Playwright/HAR/HTML-сбор публичных карточек Яндекс Маркета в catalog v2;
 
+### ПУАЗ / интерактивная визуализация
+- `puaz/puaz_academic_context.md` — академическая постановка задачи визуального анализа DecisionReport, обоснование визуализаций, ограничения и сценарий демонстрации;
+- `puaz/puaz_presentation_slides.md` — предельно сжатый по-слайдовый материал для презентации ПУАЗ.
+
 ### Продукт
 - `product/vision.md` — продуктовая идея и траектория развития.
 

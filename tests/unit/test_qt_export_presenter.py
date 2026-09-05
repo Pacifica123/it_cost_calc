@@ -22,9 +22,9 @@ def test_export_presenter_builds_decision_report_files(tmp_path: Path):
 
     paths = presenter.export("full_decision_report")
 
-    assert {"json", "markdown", "csv", "components_csv"} <= set(paths)
+    assert {"json", "markdown", "csv", "components_csv", "dashboard"} <= set(paths)
     assert all(path.exists() for path in paths.values())
-    assert presenter.summary().last_files == 4
+    assert presenter.summary().last_files == 5
     assert "Сводка экспорта" in presenter.dashboard_text()
 
 
@@ -39,6 +39,18 @@ def test_export_presenter_exports_partial_markdown_and_csv(tmp_path: Path):
     assert cost_paths["markdown"].read_text(encoding="utf-8").startswith("# Сводка затрат")
     assert csv_paths["csv"].exists()
     assert presenter.path_rows(csv_paths)[0]["kind"] == "csv"
+
+
+def test_export_presenter_builds_interactive_dashboard_only(tmp_path: Path):
+    app = _app(tmp_path)
+    app.replace_entities({"server": [{"name": "srv", "quantity": 1, "price": 1000}]})
+    presenter = ExportPresenter(app)
+
+    paths = presenter.export("interactive_dashboard")
+
+    assert set(paths) == {"dashboard"}
+    assert paths["dashboard"].name == "decision_dashboard.html"
+    assert 'id="scopeFilter"' in paths["dashboard"].read_text(encoding="utf-8")
 
 
 def test_export_presenter_rejects_unknown_mode(tmp_path: Path):

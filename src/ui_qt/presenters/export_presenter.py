@@ -33,7 +33,12 @@ class ExportPresenter:
         ExportMode(
             "full_decision_report",
             "Полный отчёт",
-            "JSON, Markdown, CSV кандидатов и CSV компонентов.",
+            "JSON, Markdown, CSV кандидатов, CSV компонентов и интерактивный HTML-дашборд.",
+        ),
+        ExportMode(
+            "interactive_dashboard",
+            "Интерактивный дашборд",
+            "Офлайн HTML-визуализация DecisionReport с фильтрами и сравнением альтернатив.",
         ),
         ExportMode(
             "cost_summary",
