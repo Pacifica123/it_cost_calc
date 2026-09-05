@@ -5,6 +5,7 @@ from typing import Any
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import CatalogStagingPresenter, QtAppPresenter
 from ui_qt.dialogs.catalog_feed_source_dialog import CatalogFeedSourceDialog
+from ui_qt.dialogs.catalog_icecat_enrichment_dialog import CatalogIcecatEnrichmentDialog
 from ui_qt.widgets import CompactLabel, InfoHint, SmartTable
 
 try:
@@ -311,6 +312,8 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
         open_button.clicked.connect(self.open_catalog)
         source_button = QPushButton("Источник данных", self)
         source_button.clicked.connect(self.collect_feed_source)
+        enrich_button = QPushButton("Обогатить Icecat", self)
+        enrich_button.clicked.connect(self.enrich_icecat)
         approve_button = QPushButton("Подтвердить", self)
         approve_button.clicked.connect(self.approve_selected)
         reject_button = QPushButton("Отклонить", self)
@@ -323,6 +326,7 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
 
         actions.addWidget(open_button, 0)
         actions.addWidget(source_button, 0)
+        actions.addWidget(enrich_button, 0)
         actions.addStretch(1)
         actions.addWidget(reject_button, 0)
         actions.addWidget(edit_button, 0)
@@ -392,6 +396,21 @@ class CatalogStagingScreen(QWidget):  # type: ignore[misc,valid-type]
             "Feed загружен. Проверьте источник, цену и категорию."
         )
         self.refresh_data()
+
+    def enrich_icecat(self) -> None:
+        staging_ids = [
+            str(row.get("staging_id") or "")
+            for row in self.table.selected_rows()
+            if row.get("staging_id")
+        ]
+        dialog = CatalogIcecatEnrichmentDialog(self.presenter, staging_ids, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.completed:
+            return
+        self.filter_combo.setCurrentIndex(0)
+        self.refresh_data()
+        self.details.setPlainText(
+            "Характеристики обновлены. Проверьте метрики и предупреждения."
+        )
 
     def reject_selected(self) -> None:
         staging_ids = self._selected_ids()

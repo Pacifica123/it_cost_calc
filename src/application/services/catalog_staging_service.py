@@ -22,6 +22,7 @@ from application.services.catalog_federation_service import (
     observation_keys,
     source_observations,
 )
+from application.services.catalog_enrichment_service import carry_specification_sources
 
 CATALOG_STAGING_SCHEMA_VERSION = 2
 CATALOG_SOURCE_SCHEMA_VERSION = 2
@@ -530,6 +531,12 @@ def catalog_item_to_runtime_row(record: Mapping[str, Any]) -> tuple[str, dict[st
             "offers": deepcopy(item.get("offers") if isinstance(item.get("offers"), list) else []),
             "price_summary": deepcopy(_mapping(item.get("price_summary"))),
             "federation": deepcopy(_mapping(item.get("federation"))),
+            "specification_sources": deepcopy(
+                item.get("specification_sources")
+                if isinstance(item.get("specification_sources"), list)
+                else []
+            ),
+            "specification_summary": deepcopy(_mapping(item.get("specification_summary"))),
             "field_provenance": deepcopy(_mapping(item.get("field_provenance"))),
             "review": deepcopy(_mapping(item.get("review"))),
             "parser_metadata": deepcopy(_mapping(item.get("parser_metadata"))),
@@ -620,6 +627,7 @@ class CatalogStagingService:
             old = _best_previous_record(item, previous_records, used_previous)
             if old:
                 previous_item = _mapping(old.get("source_catalog_item"))
+                item = carry_specification_sources(item, previous_item)
                 if _text(previous_item.get("item_id")):
                     item["item_id"] = _text(previous_item.get("item_id"))
                 staging_id = _text(old.get("staging_id")) or _staging_id(item)
@@ -740,6 +748,33 @@ class CatalogStagingService:
             self._save(records)
             return dict(deepcopy(record))
         raise KeyError(staging_id)
+
+    def apply_source_item_updates(
+        self,
+        updates: Mapping[str, Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Replace enriched source items while preserving review/manual overrides."""
+
+        if not updates:
+            return self.list_records()
+        records = self.list_records()
+        changed = False
+        for index, record in enumerate(records):
+            staging_id = _text(record.get("staging_id"))
+            source_item = updates.get(staging_id)
+            if not isinstance(source_item, Mapping):
+                continue
+            if record.get("status") == STAGING_IMPORTED:
+                continue
+            records[index] = _build_staging_record(
+                source_item,
+                staging_id=staging_id,
+                previous=record,
+            )
+            changed = True
+        if changed:
+            self._save(records)
+        return self.list_records()
 
     def mark_imported(self, staging_ids: Iterable[str]) -> None:
         imported = set(staging_ids)

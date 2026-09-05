@@ -366,6 +366,11 @@ class DecisionReportService:
         offer = metadata.get("offer")
         if not isinstance(offer, Mapping):
             offer = {}
+        specification_sources = [
+            str(source.get("source_name") or source.get("source"))
+            for source in metadata.get("specification_sources", []) or []
+            if isinstance(source, Mapping) and (source.get("source_name") or source.get("source"))
+        ]
 
         metrics = {
             field: deepcopy(component[field])
@@ -392,6 +397,8 @@ class DecisionReportService:
             "parse_source": parser_metadata.get("parse_source"),
             "confidence": parser_metadata.get("confidence"),
             "field_provenance": deepcopy(metadata.get("field_provenance") or {}),
+            "specification_sources": self._unique_text(specification_sources),
+            "specification_summary": deepcopy(metadata.get("specification_summary") or {}),
             "manual_override_fields": sorted(str(field) for field in manual_overrides),
             "metrics": metrics,
             "required_metrics": required_metrics,

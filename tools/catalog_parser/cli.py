@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 from pathlib import Path
 
@@ -33,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
             "yandex-market-http-live",
             "legacy-dns-live",
             "feed-download",
+            "icecat-enrich",
         ],
         default="examples",
         help="Режим построения каталога. По умолчанию используется нормализация уже имеющихся example-снимков.",
@@ -94,6 +96,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Способ получения feed по URL.",
     )
     parser.add_argument("--feed-manifest", help="Путь для provenance-манифеста feed.")
+    parser.add_argument("--staging-path", help="Путь к catalog_staging.json для enrichment.")
+    parser.add_argument(
+        "--staging-ids",
+        default="",
+        help="Staging ID через запятую; пусто означает все доступные позиции.",
+    )
+    parser.add_argument(
+        "--icecat-username",
+        default="",
+        help="Логин Icecat; альтернативно ICECAT_USERNAME в окружении.",
+    )
+    parser.add_argument(
+        "--icecat-language",
+        default="EN",
+        help="Язык Icecat feature names. Для встроенного mapping рекомендуется EN.",
+    )
+    parser.add_argument("--icecat-manifest", help="Диагностический manifest enrichment.")
+    parser.add_argument(
+        "--icecat-delay",
+        type=float,
+        default=0.15,
+        help="Пауза между Icecat-запросами в секундах.",
+    )
     return parser
 
 
@@ -101,6 +126,49 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     output_path = Path(args.output)
+
+    if args.mode == "icecat-enrich":
+        if not args.staging_path:
+            parser.error("--staging-path is required for --mode icecat-enrich")
+        from application.services.catalog_enrichment_service import (
+            IcecatClient,
+            IcecatConfigurationError,
+            enrich_staging_records,
+        )
+        from application.services.catalog_staging_service import CatalogStagingService
+
+        username = args.icecat_username or os.environ.get("ICECAT_USERNAME", "")
+        token = os.environ.get("ICECAT_API_TOKEN", "")
+        staging_ids = tuple(
+            value.strip() for value in args.staging_ids.split(",") if value.strip()
+        )
+        try:
+            client = IcecatClient(
+                username=username,
+                api_token=token,
+                language=args.icecat_language,
+            )
+            summary = enrich_staging_records(
+                CatalogStagingService(Path(args.staging_path)),
+                client,
+                staging_ids=staging_ids,
+                manifest_path=args.icecat_manifest,
+                request_delay_seconds=max(0.0, args.icecat_delay),
+                progress=lambda message: print(message, flush=True),
+            )
+        except IcecatConfigurationError as exc:
+            print(f"Ошибка доступа Icecat: {exc}", flush=True)
+            return 7
+        result = summary.as_dict()
+        print(
+            "Icecat: "
+            f"совпало {result['matched']}, изменено {result['changed']}, "
+            f"недоступно {result['unavailable']}, ошибок {result['errors']}.",
+            flush=True,
+        )
+        if result["eligible"] and not result["matched"] and result["errors"]:
+            return 6
+        return 0
 
     if args.mode == "feed-download":
         if not args.input:

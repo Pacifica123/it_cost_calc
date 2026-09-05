@@ -82,6 +82,16 @@ class CatalogFeedJobSpec:
 
 
 @dataclass(frozen=True)
+class IcecatEnrichmentJobSpec:
+    program: str
+    arguments: tuple[str, ...]
+    working_directory: Path
+    staging_path: Path
+    manifest_path: Path
+    staging_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DnsCatalogJobSpec:
     program: str
     arguments: tuple[str, ...]
@@ -225,6 +235,48 @@ class CatalogStagingPresenter:
             output_path=output_path,
             manifest_path=manifest_path,
             source=normalized,
+        )
+
+    def build_icecat_enrichment_job(
+        self,
+        staging_ids: list[str] | tuple[str, ...],
+        *,
+        username: str,
+        language: str = "EN",
+    ) -> IcecatEnrichmentJobSpec:
+        """Build a child-process job without placing the API token in argv."""
+
+        login = str(username or "").strip()
+        if not login:
+            raise ValueError("Укажите логин Icecat.")
+        selected = tuple(dict.fromkeys(str(value).strip() for value in staging_ids if str(value).strip()))
+        repo_root = self.app_presenter.paths.repo_root
+        program, command_prefix = catalog_parser_process(repo_root)
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_root = repo_root / "data" / "generated" / "catalog" / "icecat_runs" / timestamp
+        manifest_path = run_root / "enrichment_manifest.json"
+        arguments: list[str] = [
+            *command_prefix,
+            "--mode",
+            "icecat-enrich",
+            "--staging-path",
+            str(self.service.path),
+            "--icecat-username",
+            login,
+            "--icecat-language",
+            str(language or "EN").strip().upper() or "EN",
+            "--icecat-manifest",
+            str(manifest_path),
+        ]
+        if selected:
+            arguments.extend(("--staging-ids", ",".join(selected)))
+        return IcecatEnrichmentJobSpec(
+            program=program,
+            arguments=tuple(arguments),
+            working_directory=repo_root,
+            staging_path=self.service.path,
+            manifest_path=manifest_path,
+            staging_ids=selected,
         )
 
     def stage_feed_job(self, job: CatalogFeedJobSpec) -> list[dict[str, Any]]:
@@ -751,6 +803,14 @@ class CatalogStagingPresenter:
             "Диапазон цен: "
             + _price_range_text(price_summary),
             f"Модель: {identity.get('model') or identity.get('mpn') or '—'}",
+            "Характеристики: "
+            + (
+                ", ".join(
+                    str(value)
+                    for value in dict(item.get("specification_summary") or {}).get("sources", [])
+                )
+                or "только каталог"
+            ),
             f"Метрики: {metrics or 'нет'}",
         ]
         changes = _manual_change_lines(source_item, record)
@@ -841,6 +901,7 @@ def _format_number(value: Any) -> str:
 
 __all__ = [
     "CatalogFeedJobSpec",
+    "IcecatEnrichmentJobSpec",
     "CatalogFilterOption",
     "CatalogStagingPresenter",
     "CatalogStagingSummary",
