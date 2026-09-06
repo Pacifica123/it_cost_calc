@@ -33,12 +33,17 @@ class ExportPresenter:
         ExportMode(
             "full_decision_report",
             "Полный отчёт",
-            "JSON, Markdown, CSV кандидатов, CSV компонентов и интерактивный HTML-дашборд.",
+            "JSON, Markdown, CSV, интерактивный дашборд и сценарный анализ чувствительности.",
         ),
         ExportMode(
             "interactive_dashboard",
             "Интерактивный дашборд",
             "Офлайн HTML-визуализация DecisionReport с фильтрами и сравнением альтернатив.",
+        ),
+        ExportMode(
+            "sensitivity_analysis",
+            "Анализ чувствительности",
+            "What-if HTML + JSON: λ между GA/AHP и TCO-порог экспортированного пула.",
         ),
         ExportMode(
             "cost_summary",

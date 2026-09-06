@@ -34,6 +34,10 @@ from infrastructure.exporters.decision_report_exporter import (
     export_solution_component_csv,
 )
 from infrastructure.exporters.interactive_dashboard_exporter import export_interactive_dashboard
+from infrastructure.exporters.sensitivity_dashboard_exporter import (
+    export_decision_sensitivity_dashboard,
+    export_decision_sensitivity_json,
+)
 from infrastructure.repositories.json_entity_repository import JsonEntityRepository
 from infrastructure.storage import JsonFileStorage
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL, TECHNICAL_CAPITAL_CATEGORIES
@@ -918,6 +922,18 @@ class QtAppPresenter:
                     export_root / "decision_dashboard.html",
                 )
             }
+        if mode == "sensitivity_analysis":
+            report = self._build_decision_report_snapshot()
+            return {
+                "sensitivity_dashboard": export_decision_sensitivity_dashboard(
+                    report,
+                    export_root / "decision_sensitivity_dashboard.html",
+                ),
+                "sensitivity_json": export_decision_sensitivity_json(
+                    report,
+                    export_root / "decision_sensitivity.json",
+                ),
+            }
         raise ValueError(f"Unknown export mode: {mode!r}")
 
     def export_costs_csv(self, filename: str | Path | None = None) -> Path:
@@ -968,6 +984,14 @@ class QtAppPresenter:
             "dashboard": export_interactive_dashboard(
                 report,
                 export_root / "decision_dashboard.html",
+            ),
+            "sensitivity_dashboard": export_decision_sensitivity_dashboard(
+                report,
+                export_root / "decision_sensitivity_dashboard.html",
+            ),
+            "sensitivity_json": export_decision_sensitivity_json(
+                report,
+                export_root / "decision_sensitivity.json",
             ),
         }
         return paths

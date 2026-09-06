@@ -48,11 +48,13 @@
 - `architecture/dns_network_parser_best_effort.md` — best-effort извлечение сетевых характеристик роутеров из названий DNS-Shop с warnings/confidence и приоритетом ручных specs;
 - `architecture/dns_snapshot_import.md` — контракт воспроизводимого офлайн-импорта сохранённых DNS HTML/JSON-LD в catalog v2;
 - `architecture/dns_live_catalog_gui.md` — управляемый запуск DNS-сбора из Qt через отдельный процесс, snapshots, отмена и staging;
-- `architecture/yandex_market_catalog_parser.md` — HTTP/HAR/HTML-сбор публичных карточек Яндекс Маркета в catalog v2; Playwright сохранён как CLI-only fallback;
+- `architecture/yandex_market_catalog_parser.md` — исследовательский Playwright/HAR/HTML-сбор публичных карточек Яндекс Маркета в catalog v2;
 
-### ПУАЗ / интерактивная визуализация
-- `puaz/puaz_academic_context.md` — академическая постановка задачи визуального анализа DecisionReport, обоснование визуализаций, ограничения и сценарий демонстрации;
-- `puaz/puaz_presentation_slides.md` — предельно сжатый по-слайдовый материал для презентации ПУАЗ.
+### ПУАЗ
+- `puaz/puaz_academic_context.md` — первая работа: интерактивная интерпретация одного `DecisionReport`;
+- `puaz/puaz_presentation_slides.md` — сжатый материал презентации первой работы;
+- `puaz/puaz_sensitivity_academic_context.md` — вторая самостоятельная работа: сценарный анализ чувствительности Hybrid-рекомендации;
+- `puaz/puaz_sensitivity_presentation_slides.md` — сжатый по-слайдовый материал второй работы.
 
 ### Продукт
 - `product/vision.md` — продуктовая идея и траектория развития.

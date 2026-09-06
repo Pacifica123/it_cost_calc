@@ -22,9 +22,17 @@ def test_export_presenter_builds_decision_report_files(tmp_path: Path):
 
     paths = presenter.export("full_decision_report")
 
-    assert {"json", "markdown", "csv", "components_csv", "dashboard"} <= set(paths)
+    assert {
+        "json",
+        "markdown",
+        "csv",
+        "components_csv",
+        "dashboard",
+        "sensitivity_dashboard",
+        "sensitivity_json",
+    } <= set(paths)
     assert all(path.exists() for path in paths.values())
-    assert presenter.summary().last_files == 5
+    assert presenter.summary().last_files == 7
     assert "Сводка экспорта" in presenter.dashboard_text()
 
 
@@ -51,6 +59,19 @@ def test_export_presenter_builds_interactive_dashboard_only(tmp_path: Path):
     assert set(paths) == {"dashboard"}
     assert paths["dashboard"].name == "decision_dashboard.html"
     assert 'id="scopeFilter"' in paths["dashboard"].read_text(encoding="utf-8")
+
+
+def test_export_presenter_builds_sensitivity_analysis_only(tmp_path: Path):
+    app = _app(tmp_path)
+    app.replace_entities({"server": [{"name": "srv", "quantity": 1, "price": 1000}]})
+    presenter = ExportPresenter(app)
+
+    paths = presenter.export("sensitivity_analysis")
+
+    assert set(paths) == {"sensitivity_dashboard", "sensitivity_json"}
+    assert paths["sensitivity_dashboard"].name == "decision_sensitivity_dashboard.html"
+    assert paths["sensitivity_json"].name == "decision_sensitivity.json"
+    assert 'id="lambdaRange"' in paths["sensitivity_dashboard"].read_text(encoding="utf-8")
 
 
 def test_export_presenter_rejects_unknown_mode(tmp_path: Path):
