@@ -64,6 +64,14 @@ def test_qt_ahp_runs_only_current_candidate_pool(tmp_path: Path):
     assert report["status"] == "ok"
     assert [row["id"] for row in report["final"]["ranking"]] == ["GA-2", "GA-1"]
     assert {row["id"] for row in report["final"]["ranking"]} == {"GA-1", "GA-2"}
+    provenance = report["alternatives"]["comparison_provenance"]
+    assert provenance["mode"] == "score_derived_ratio"
+    assert provenance["saaty_cap"] is False
+    assert provenance["expert_alternative_judgements"] is False
+    assert all(
+        abs(float(item["CR"])) < 1e-10
+        for item in report["alternatives"]["consistency_per_criterion"]
+    )
     assert app.get_ahp_result(ANALYSIS_SCOPE_TECHNICAL)["candidate_count"] == 2
 
 

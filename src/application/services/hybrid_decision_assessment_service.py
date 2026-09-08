@@ -133,6 +133,8 @@ class HybridDecisionAssessmentService:
             ranking,
             key=lambda item: (
                 float(item["hybrid_score"]),
+                # Preserve unanimous GA/AHP evidence on exact Hybrid ties.
+                float(item["ga_score_normalized"]) + float(item["ahp_score_normalized"]),
                 str(item.get("pareto_status")) == "недоминируемая",
                 -int(item.get("rank_disagreement") or 0),
             ),

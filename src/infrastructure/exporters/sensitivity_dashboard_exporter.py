@@ -68,7 +68,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:9px 8px;border-bottom:1p
 <body><main>
 <div class="eyebrow">ПУАЗ · сценарная визуализация</div>
 <h1>Анализ чувствительности итоговой рекомендации</h1>
-<p class="lead">Модуль исследует, насколько меняется Hybrid-рекомендация при изменении баланса между GA и AHP. TCO-порог дополнительно показывает, что происходит при ограничении уже экспортированного пула альтернатив.</p>
+<p class="lead">Модуль исследует, насколько меняется Hybrid-рекомендация при изменении баланса между GA и AHP. TCO-порог фильтрует уже экспортированный пул, сохраняя исходную min-max нормировку, чтобы не смешивать эффект допустимости с перенормировкой.</p>
 
 <section class="grid controls">
 <div class="panel"><label class="label" for="scopeSelect">Область анализа</label><select id="scopeSelect"></select></div>
@@ -87,7 +87,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:9px 8px;border-bottom:1p
 
 <div class="grid two">
 <div class="panel"><h2 class="sectionTitle">Как меняется Hybrid-score по λ</h2><div id="lineChart" class="chartBox"></div><div id="lineLegend" class="legend"></div></div>
-<div class="panel"><h2 class="sectionTitle">Доля лидерства по λ</h2><div id="shareBars"></div><div id="intervals" class="muted"></div></div>
+<div class="panel"><h2 class="sectionTitle">Точная доля диапазона λ</h2><div id="shareBars"></div><div id="intervals" class="muted"></div></div>
 </div>
 
 <div class="panel" style="margin-bottom:16px"><h2 class="sectionTitle">Карта сценариев: TCO-порог × λ</h2><div id="heatmap" class="chartBox"></div><div id="heatLegend" class="legend"></div></div>
@@ -105,7 +105,8 @@ const fmt=n=>n==null?'—':new Intl.NumberFormat('ru-RU',{maximumFractionDigits:
 const money=n=>n==null?'—':new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0}).format(n);
 const clamp=v=>Math.max(0,Math.min(1,Number(v)||0));
 function norm(values){const finite=values.filter(v=>Number.isFinite(v));if(!finite.length)return values.map(_=>.5);const lo=Math.min(...finite),hi=Math.max(...finite);if(values.length===1&&finite.length===1)return [1];if(Math.abs(hi-lo)<1e-12)return values.map(_=>.5);return values.map(v=>((Number.isFinite(v)?v:lo)-lo)/(hi-lo));}
-function rankScenario(scope,lambda,budget){let rows=scope.candidates.filter(c=>budget===''||budget==='none'||(Number.isFinite(c.tco)&&c.tco<=Number(budget)+1e-9));if(!rows.length)return {ranking:[],winner_id:null,winner_name:null,feasible_count:0};const ga=norm(rows.map(r=>Number.isFinite(r.ga_score)?r.ga_score:null)),ahp=norm(rows.map(r=>Number.isFinite(r.ahp_score)?r.ahp_score:null));rows=rows.map((r,i)=>({...r,ga_score_normalized:ga[i],ahp_score_normalized:ahp[i],hybrid_score:lambda*ga[i]+(1-lambda)*ahp[i],rank_disagreement:Math.abs((r.ga_rank||i+1)-(r.ahp_rank||i+1))}));rows.sort((a,b)=>(b.hybrid_score-a.hybrid_score)||((b.pareto_status==='недоминируемая')-(a.pareto_status==='недоминируемая'))||(a.rank_disagreement-b.rank_disagreement));rows.forEach((r,i)=>r.rank=i+1);return {ranking:rows,winner_id:rows[0]?.id,winner_name:rows[0]?.name,feasible_count:rows.length};}
+function baselineNorm(scope){const stored=scope?.normalization?.baseline_reference||{};if(Object.keys(stored).length)return stored;const ga=norm(scope.candidates.map(r=>Number.isFinite(r.ga_score)?r.ga_score:null)),ahp=norm(scope.candidates.map(r=>Number.isFinite(r.ahp_score)?r.ahp_score:null));return Object.fromEntries(scope.candidates.map((r,i)=>[r.id,{ga:ga[i],ahp:ahp[i]}]));}
+function rankScenario(scope,lambda,budget){let rows=scope.candidates.filter(c=>budget===''||budget==='none'||(Number.isFinite(c.tco)&&c.tco<=Number(budget)+1e-9));if(!rows.length)return {ranking:[],winner_id:null,winner_name:null,feasible_count:0};const ref=baselineNorm(scope);rows=rows.map((r,i)=>{const n=ref[r.id]||{ga:.5,ahp:.5};return {...r,ga_score_normalized:n.ga,ahp_score_normalized:n.ahp,hybrid_score:lambda*n.ga+(1-lambda)*n.ahp,rank_disagreement:Math.abs((r.ga_rank||i+1)-(r.ahp_rank||i+1))};});rows.sort((a,b)=>(b.hybrid_score-a.hybrid_score)||((b.ga_score_normalized+b.ahp_score_normalized)-(a.ga_score_normalized+a.ahp_score_normalized))||((b.pareto_status==='недоминируемая')-(a.pareto_status==='недоминируемая'))||(a.rank_disagreement-b.rank_disagreement));rows.forEach((r,i)=>r.rank=i+1);return {ranking:rows,winner_id:rows[0]?.id,winner_name:rows[0]?.name,feasible_count:rows.length};}
 function colorMap(scope){const ids=[...new Set(scope.candidates.map(c=>c.id))];return Object.fromEntries(ids.map((id,i)=>[id,palette[i%palette.length]]));}
 function currentScope(){return DATA.scopes[scopeSelect.value];}
 function setup(){const entries=Object.entries(DATA.scopes);scopeSelect.innerHTML=entries.map(([id,s])=>`<option value="${id}">${id==='technical'?'ТО':id==='software'?'ПО':id}</option>`).join('');if(!entries.length){document.getElementById('content').innerHTML='<div class="panel empty">Hybrid-результаты отсутствуют. Сначала выполните расчёты GA/AHP/Hybrid и повторите экспорт.</div>';renderNotes();return;}scopeSelect.addEventListener('change',()=>{syncBudget();render();});lambdaRange.addEventListener('input',render);budgetSelect.addEventListener('change',render);syncBudget();render();renderNotes();}

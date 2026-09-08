@@ -120,6 +120,10 @@ def test_npv_presenter_prepares_basis_from_selected_hybrid_costs(tmp_path: Path)
     assert values.cash_flows[0] < 5000.0
     assert presenter.basis_rows()[0]["name"] == "CAPEX"
     assert presenter.basis_rows()[0]["value"] == 1000.0
+    break_even_row = next(
+        row for row in presenter.basis_rows() if row["name"] == "Безубыт. эффект/год"
+    )
+    assert break_even_row["value"] > 0.0
 
 
 def test_cash_flow_parse_and_format_helpers():

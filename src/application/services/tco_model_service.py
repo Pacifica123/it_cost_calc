@@ -189,6 +189,34 @@ class TCOModelService:
         )
         return self._summary_from_cost_model(model, horizon_months=horizon_months)
 
+    def break_even_annual_effect(
+        self,
+        *,
+        investment: float,
+        annual_opex: float,
+        discount_rate: float,
+        horizon_years: int,
+    ) -> dict[str, float]:
+        """Return the constant annual effect that makes NPV equal to zero.
+
+        For constant annual effect ``E`` and annual OPEX ``O`` the model is
+        ``NPV = -I + (E - O) * A`` where ``A`` is the finite-horizon annuity
+        factor.  The inversion therefore gives ``E* = O + I / A``.
+        """
+
+        horizon = max(int(horizon_years), 1)
+        rate = float(discount_rate)
+        if rate <= -1.0:
+            raise ValueError("discount_rate must be greater than -1 for break-even NPV")
+        annuity_factor = sum(1.0 / ((1.0 + rate) ** year) for year in range(1, horizon + 1))
+        if annuity_factor <= 0.0:
+            raise ValueError("annuity factor must be positive")
+        threshold = float(annual_opex) + float(investment) / annuity_factor
+        return {
+            "annual_effect": threshold,
+            "annuity_factor": annuity_factor,
+        }
+
     def build_npv_inputs(
         self,
         tco_summary: Mapping[str, Any],
@@ -204,6 +232,15 @@ class TCOModelService:
         annual_effect_value = float(annual_effect)
         cash_flows = [annual_effect_value - annual_opex for _ in range(effective_horizon)]
 
+        break_even: dict[str, float] | None = None
+        if discount_rate is not None:
+            break_even = self.break_even_annual_effect(
+                investment=initial_investment,
+                annual_opex=annual_opex,
+                discount_rate=float(discount_rate),
+                horizon_years=effective_horizon,
+            )
+
         warnings: list[str] = []
         if annual_effect_value == 0.0:
             warnings.append(
@@ -213,6 +250,12 @@ class TCOModelService:
             warnings.append(
                 "Годовой эффект меньше регулярных расходов: денежные потоки остаются отрицательными."
             )
+        if break_even is not None and annual_effect_value + 1e-12 < break_even["annual_effect"]:
+            warnings.append(
+                "Годовой эффект ниже расчётного безубыточного уровня: "
+                f"требуется не менее {break_even['annual_effect']:.2f} в год "
+                "для выбранных ставки и горизонта."
+            )
 
         result = {
             "investment": initial_investment,
@@ -220,6 +263,8 @@ class TCOModelService:
             "horizon_years": effective_horizon,
             "annual_effect": annual_effect_value,
             "annual_opex": annual_opex,
+            "break_even_annual_effect": None if break_even is None else break_even["annual_effect"],
+            "discounted_annuity_factor": None if break_even is None else break_even["annuity_factor"],
             "cost_sources": {
                 "capex": self._number(tco_summary.get("total_capex"), default=0.0),
                 "one_time_costs": self._number(tco_summary.get("one_time_costs"), default=0.0),

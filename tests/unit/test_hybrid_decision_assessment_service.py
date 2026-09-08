@@ -132,3 +132,37 @@ def test_hybrid_does_not_reuse_default_ahp_when_pool_ids_do_not_match():
     assert result["missing_methods"] == ["matching_ahp_rows"]
     assert [row["id"] for row in result["ranking"]] == ["GA-1"]
     assert result["ignored_ahp_ids"] == ["system1", "system2"]
+
+
+@pytest.mark.parametrize("lambda_value", [0.0, 0.1, 0.5, 0.9, 1.0])
+def test_hybrid_convex_combination_preserves_unanimous_ga_ahp_dominance(lambda_value):
+    service = HybridDecisionAssessmentService()
+    candidates = [
+        _candidate("A", rank=1, ga_score=0.90),
+        _candidate("B", rank=2, ga_score=0.40),
+        _candidate("C", rank=3, ga_score=0.10),
+    ]
+    ahp_report = {"final": {"ranking": [("A", 0.80), ("B", 0.30), ("C", 0.10)]}}
+
+    result = service.assess(candidates, ahp_report=ahp_report, lambda_value=lambda_value)
+
+    by_id = {row["id"]: row for row in result["ranking"]}
+    assert by_id["A"]["ga_score_normalized"] >= by_id["B"]["ga_score_normalized"]
+    assert by_id["A"]["ahp_score_normalized"] >= by_id["B"]["ahp_score_normalized"]
+    assert by_id["A"]["hybrid_score"] >= by_id["B"]["hybrid_score"]
+    assert [row["id"] for row in result["ranking"]].index("A") < [
+        row["id"] for row in result["ranking"]
+    ].index("B")
+
+
+def test_minmax_normalization_is_invariant_to_positive_affine_score_transform():
+    service = HybridDecisionAssessmentService()
+    raw = [-2.0, 1.0, 7.0, 11.0]
+    transformed = [7.0 * value - 13.0 for value in raw]
+
+    normalized_raw, raw_info = service._normalize_scores(raw)
+    normalized_transformed, transformed_info = service._normalize_scores(transformed)
+
+    assert raw_info["status"] == "ok"
+    assert transformed_info["status"] == "ok"
+    assert normalized_transformed == pytest.approx(normalized_raw)

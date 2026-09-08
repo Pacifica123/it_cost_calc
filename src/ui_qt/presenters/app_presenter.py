@@ -518,7 +518,7 @@ class QtAppPresenter:
                 )
                 for alternative in alternatives
             ]
-            matrix = build_pairwise_matrix_from_scores(criterion_scores, saaty_cap=True)
+            matrix = build_pairwise_matrix_from_scores(criterion_scores, saaty_cap=False)
             weights, lam, ci_value, cr_value = ahp_priority_and_consistency(matrix)
             alt_weights_per_criterion.append([float(value) for value in weights.tolist()])
             consistency_per_criterion.append(
@@ -582,6 +582,16 @@ class QtAppPresenter:
                 "ids": [str(item.get("id")) for item in alternatives],
                 "weights_per_criterion": alt_weights_per_criterion,
                 "consistency_per_criterion": consistency_per_criterion,
+                "comparison_provenance": {
+                    "mode": "score_derived_ratio",
+                    "input_scale": "1..5 utility from current candidate pool",
+                    "saaty_cap": False,
+                    "expert_alternative_judgements": False,
+                    "consistency_interpretation": (
+                        "Alternative pairwise matrices are derived from numeric utility scores; "
+                        "their CR is not a measure of expert judgement consistency."
+                    ),
+                },
             },
             "final": {
                 "ranking": ranking,
@@ -594,7 +604,10 @@ class QtAppPresenter:
                 "analysis_scope": scope_key,
                 "candidate_pool_source": snapshot.source_label,
                 "source_method": snapshot.source_method,
-                "note": "Standalone AHP uses the current scoped candidate pool only.",
+                "note": (
+                    "Scoped AHP uses profile criterion weights and score-derived alternative ratios; "
+                    "it is not an expert pairwise elicitation workflow for alternatives."
+                ),
             },
         }
         self._ahp_results[scope_key] = deepcopy(report)

@@ -150,12 +150,21 @@ class NpvPresenter:
         sources = basis.get("cost_sources", {}) if isinstance(basis, Mapping) else {}
         if not isinstance(sources, Mapping):
             sources = {}
-        return [
+        rows = [
             {"name": "CAPEX", "value": float(sources.get("capex", 0.0) or 0.0)},
             {"name": "Разово", "value": float(sources.get("one_time_costs", 0.0) or 0.0)},
             {"name": "OPEX/мес", "value": float(sources.get("monthly_opex", 0.0) or 0.0)},
             {"name": "Энергия", "value": float(sources.get("electricity_monthly_cost", 0.0) or 0.0)},
         ]
+        break_even = basis.get("break_even_annual_effect") if isinstance(basis, Mapping) else None
+        if break_even is not None:
+            rows.append(
+                {
+                    "name": "Безубыт. эффект/год",
+                    "value": float(break_even),
+                }
+            )
+        return rows
 
     def warnings(self, report: Mapping[str, Any] | None = None) -> list[str]:
         payload = dict(report or self._last_report or {})

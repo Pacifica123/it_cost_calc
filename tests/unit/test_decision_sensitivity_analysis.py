@@ -95,3 +95,43 @@ def test_sensitivity_export_is_standalone_and_explains_method_boundaries():
     assert "Fast expensive" in html
     assert "https://" not in html
     assert "http://" not in html
+
+
+def test_exact_lambda_solver_finds_analytical_breakpoint_and_exact_share():
+    scope = DecisionSensitivityAnalysisService().build(_report())["scopes"]["technical"]
+    exact = scope["exact_lambda"]
+
+    assert exact["line_model"] == "affine_in_lambda_on_fixed_pool"
+    assert 0.5 in exact["breakpoints"]
+    assert exact["stability"]["method"] == "exact_lambda_measure"
+    assert exact["stability"]["switch_count"] == 1
+    shares = {row["id"]: row["share_pct"] for row in exact["stability"]["winner_shares"]}
+    assert shares == {"A": 50.0, "B": 50.0}
+
+
+def test_tco_grid_uses_fixed_baseline_normalization_and_keeps_subset_mode_diagnostic():
+    report = _report()
+    report["analysis_results"]["hybrid_assessment"]["by_scope"]["technical"] = {
+        "status": "ok",
+        "lambda": 0.1,
+        "winner_id": "D",
+        "ranking": [
+            {"id": "A", "ga_rank": 3, "ahp_rank": 2, "ga_score": 0.0, "ahp_score": 1.0, "totals": {"tco": {"total_ownership_cost": 1.0}}},
+            {"id": "B", "ga_rank": 2, "ahp_rank": 3, "ga_score": 1.0, "ahp_score": 0.0, "totals": {"tco": {"total_ownership_cost": 1.0}}},
+            {"id": "C", "ga_rank": 1, "ahp_rank": 4, "ga_score": 2.0, "ahp_score": 0.0, "totals": {"tco": {"total_ownership_cost": 2.0}}},
+            {"id": "D", "ga_rank": 4, "ahp_rank": 1, "ga_score": 0.0, "ahp_score": 16.0, "totals": {"tco": {"total_ownership_cost": 1.0}}},
+        ],
+    }
+
+    scope = DecisionSensitivityAnalysisService().build(report)["scopes"]["technical"]
+    fixed = next(row for row in scope["grid"] if row["tco_limit"] == 1.0 and row["lambda"] == 0.1)
+    subset = next(
+        row
+        for row in scope["subset_renormalization_grid"]
+        if row["tco_limit"] == 1.0 and row["lambda"] == 0.1
+    )
+
+    assert fixed["ranking_ids"].index("A") < fixed["ranking_ids"].index("B")
+    assert subset["ranking_ids"].index("B") < subset["ranking_ids"].index("A")
+    assert scope["normalization"]["primary_tco_mode"] == "fixed_baseline_normalization"
+    assert any("Subset-renormalization" in warning for warning in scope["warnings"])

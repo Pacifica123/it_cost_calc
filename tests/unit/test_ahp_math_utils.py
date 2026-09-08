@@ -42,3 +42,23 @@ def test_build_pairwise_matrix_from_scores_caps_values_to_saaty_scale():
     assert matrix[0, 1] == pytest.approx(9.0)
     assert matrix[0, 2] == pytest.approx(9.0)
     assert matrix[2, 0] == pytest.approx(1 / 9)
+
+
+def test_score_derived_ratio_matrix_recovers_original_proportions_without_cap():
+    matrix = build_pairwise_matrix_from_scores([1.0, 10.0, 100.0], saaty_cap=False)
+    weights, lambda_max, ci, cr = ahp_priority_and_consistency(matrix)
+
+    assert list(weights) == pytest.approx([1 / 111, 10 / 111, 100 / 111])
+    assert lambda_max == pytest.approx(3.0)
+    assert ci == pytest.approx(0.0, abs=1e-12)
+    assert cr == pytest.approx(0.0, abs=1e-12)
+
+
+def test_saaty_cap_can_create_consistency_ratio_from_score_derived_matrix():
+    uncapped = build_pairwise_matrix_from_scores([1.0, 10.0, 100.0], saaty_cap=False)
+    capped = build_pairwise_matrix_from_scores([1.0, 10.0, 100.0], saaty_cap=True)
+    _weights, _lambda, _ci, uncapped_cr = ahp_priority_and_consistency(uncapped)
+    _weights, _lambda, _ci, capped_cr = ahp_priority_and_consistency(capped)
+
+    assert uncapped_cr == pytest.approx(0.0, abs=1e-12)
+    assert capped_cr == pytest.approx(0.4834773102, rel=1e-6)
