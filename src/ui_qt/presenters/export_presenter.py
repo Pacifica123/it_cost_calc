@@ -93,7 +93,7 @@ class ExportPresenter:
             total_rows=self.app_presenter.total_rows(),
             npv_ready=bool(self.app_presenter.get_npv_report()),
             report_dir=self.app_presenter.generated_reports_dir(),
-            last_files=len(self._last_paths),
+            last_files=len(self.app_presenter.list_export_artifacts()),
         )
 
     def export(self, mode_id: str) -> dict[str, Path]:

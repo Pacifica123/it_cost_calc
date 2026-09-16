@@ -40,6 +40,7 @@
 - `architecture/system_schema.md` — укрупнённая архитектурная схема;
 - `architecture/module_map.md` — карта модулей и связей между ними;
 - `architecture/data_map.md` — карта данных и артефактов;
+- `architecture/session_persistence.md` — каноническое SQLite-хранение, Session state graph, revisions/stale, fork и immutable export artifacts;
 - `architecture/modules.md` — подробное описание инженерных модулей;
 - `architecture/layers.md` — описание слоёв приложения;
 - `architecture/repository_layout.md` — логика структуры репозитория;

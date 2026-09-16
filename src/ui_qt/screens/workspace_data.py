@@ -278,28 +278,45 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
             self.stepper.set_active("ga")
             self.ga_step.refresh_data()
             self._refresh_step_availability()
+            self._remember_step("ga")
             return
         if step_id == "ahp" and self._has_candidate_pool():
             self.step_stack.setCurrentWidget(self.ahp_step_page)
             self.stepper.set_active("ahp")
             self.ahp_step.refresh_data()
             self._refresh_step_availability()
+            self._remember_step("ahp")
             return
         if step_id == "pareto" and self._has_ahp_result():
             self.step_stack.setCurrentWidget(self.pareto_step_page)
             self.stepper.set_active("pareto")
             self.pareto_step.refresh_data()
             self._refresh_step_availability()
+            self._remember_step("pareto")
             return
         if step_id == "hybrid" and self._has_pareto_result():
             self.step_stack.setCurrentWidget(self.hybrid_step_page)
             self.stepper.set_active("hybrid")
             self.hybrid_step.refresh_data()
             self._refresh_step_availability()
+            self._remember_step("hybrid")
             return
         self.step_stack.setCurrentWidget(self.data_step_page)
         self.stepper.set_active("data")
         self._refresh_step_availability()
+        self._remember_step("data")
+
+    def _remember_step(self, step_id: str) -> None:
+        self.presenter.app_presenter.set_workflow_position(
+            scope=self.presenter.scope,
+            step=step_id,
+        )
+
+    def _restore_step(self) -> None:
+        workflow = self.presenter.app_presenter.get_workflow_position()
+        steps = workflow.get("steps", {}) if isinstance(workflow, dict) else {}
+        requested = str(steps.get(self.presenter.scope) or "data") if isinstance(steps, dict) else "data"
+        self._open_step(requested)
 
     def _has_candidate_pool(self) -> bool:
         return bool(
@@ -344,6 +361,7 @@ class WorkspaceDataScreen(QWidget):  # type: ignore[misc,valid-type]
         self.pareto_step.refresh_data()
         self.hybrid_step.refresh_data()
         self._refresh_step_availability()
+        self._restore_step()
 
     def current_step_id(self) -> str:
         return self.stepper.current_step_id

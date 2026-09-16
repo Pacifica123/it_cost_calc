@@ -37,10 +37,25 @@ class NpvPresenter:
 
     def __init__(self, app_presenter: QtAppPresenter | None = None) -> None:
         self.app_presenter = app_presenter or QtAppPresenter()
-        self._financial_basis: dict[str, Any] | None = None
-        self._last_report: dict[str, Any] | None = None
+        saved_basis = self.app_presenter.get_npv_basis()
+        saved_report = self.app_presenter.get_npv_report()
+        self._financial_basis: dict[str, Any] | None = deepcopy(saved_basis) if saved_basis else None
+        self._last_report: dict[str, Any] | None = deepcopy(saved_report) if saved_report else None
 
     def default_input(self) -> NpvInput:
+        saved = self.app_presenter.get_npv_inputs()
+        if saved:
+            horizon = max(int(saved.get("horizon_years", 5) or 5), 1)
+            cash_flows = tuple(float(value) for value in saved.get("cash_flows", ()))
+            if not cash_flows:
+                cash_flows = tuple(0.0 for _ in range(horizon))
+            return NpvInput(
+                investment=float(saved.get("investment", 0.0) or 0.0),
+                discount_rate=float(saved.get("discount_rate", 0.1) or 0.0),
+                cash_flows=cash_flows,
+                annual_effect=float(saved.get("annual_effect", 0.0) or 0.0),
+                horizon_years=horizon,
+            )
         return NpvInput(
             investment=0.0,
             discount_rate=0.1,
@@ -48,6 +63,12 @@ class NpvPresenter:
             annual_effect=0.0,
             horizon_years=5,
         )
+
+    def saved_report(self) -> dict[str, Any]:
+        return deepcopy(self._last_report or {})
+
+    def has_saved_basis(self) -> bool:
+        return bool(self._financial_basis)
 
     def prepare_from_costs(
         self,
@@ -76,6 +97,14 @@ class NpvPresenter:
         if financial_basis is not None:
             financial_basis["discount_rate"] = npv_input.discount_rate
             financial_basis["horizon_years"] = len(npv_input.cash_flows)
+        self.app_presenter.save_npv_draft(
+            investment=npv_input.investment,
+            discount_rate=npv_input.discount_rate,
+            cash_flows=list(npv_input.cash_flows),
+            annual_effect=npv_input.annual_effect,
+            horizon_years=npv_input.horizon_years,
+            financial_basis=financial_basis,
+        )
         report = self.app_presenter.build_npv_report(
             investment=npv_input.investment,
             discount_rate=npv_input.discount_rate,

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QStackedWidget, QVBoxLa
 from PySide6.QtWidgets import QMainWindow
 
 from ui_qt.design import ThemeManager
+from ui_qt.dialogs import SessionDialog
 from ui_qt.navigation import DEFAULT_ROOT_ROUTE_ID, ROOT_ROUTES, require_root_route
 from ui_qt.navigation.root_menu import RootMenu
 from ui_qt.presenters import QtAppPresenter, QtSettingsPresenter, QtUiSettings
@@ -36,7 +37,13 @@ class QtMainWindow(QMainWindow):
         self._theme_manager = ThemeManager(self._settings.theme)
         self._screen_factories: dict[str, Callable[[], QWidget]] = {}
         self._screen_indexes: dict[str, int] = {}
-        self._last_root_route_id = self._settings.start_route or DEFAULT_ROOT_ROUTE_ID
+        workflow = self.presenter.get_workflow_position()
+        session_route = str(workflow.get("active_route") or "")
+        try:
+            require_root_route(session_route)
+        except (KeyError, ValueError):
+            session_route = self._settings.start_route or DEFAULT_ROOT_ROUTE_ID
+        self._last_root_route_id = session_route
         self._shortcut_refs: list[QShortcut] = []
         self._compact_layout = False
         self._startup_ms = 0.0
@@ -52,7 +59,8 @@ class QtMainWindow(QMainWindow):
         self.setCentralWidget(self._build_shell())
         self._register_root_screens()
         self._install_shortcuts()
-        self.open_root_route(self._settings.start_route)
+        self.open_root_route(self._last_root_route_id)
+        self._sync_session_identity()
         self._apply_responsive_rules()
         self._startup_ms = (perf_counter() - start_time) * 1000.0
 
@@ -76,6 +84,7 @@ class QtMainWindow(QMainWindow):
             "Демо: нагрузочный ТО",
             lambda: self._load_demo_profile("technical_load_1000"),
         )
+        self.action_bar.add_secondary_action("Сессии", self.open_sessions)
         self.action_bar.add_secondary_action("Настройки", self.open_settings)
         self.action_bar.add_secondary_action("Светлая", lambda: self._apply_theme("light"))
         self.action_bar.add_secondary_action("Тёмная", lambda: self._apply_theme("dark"))
@@ -133,9 +142,32 @@ class QtMainWindow(QMainWindow):
         self._last_root_route_id = route_id
         self.root_menu.set_active(route_id, emit=False)
         self._open_screen(route_id)
+        self.presenter.set_workflow_position(active_route=route_id)
         self.action_bar.title_label.setText(route.title)
         self.action_bar.set_status(route.status)
         self.status_strip.set_message(f"Раздел: {route.label}")
+        self._sync_session_identity()
+
+    def open_sessions(self) -> None:
+        dialog = SessionDialog(self.presenter, self)
+        dialog.exec()
+        self._sync_session_identity()
+        workflow = self.presenter.get_workflow_position()
+        route_id = str(workflow.get("active_route") or self._last_root_route_id)
+        try:
+            require_root_route(route_id)
+        except (KeyError, ValueError):
+            route_id = self._last_root_route_id
+        self.open_root_route(route_id)
+        current = self.screen_stack.currentWidget()
+        if hasattr(current, "refresh_data"):
+            current.refresh_data()
+        self.status_strip.set_message(f"Сессия: {self.presenter.active_session().name}")
+
+    def _sync_session_identity(self) -> None:
+        session = self.presenter.active_session()
+        self.setWindowTitle(f"IT Cost Calc — {session.name}")
+        self.setToolTip(f"Активная сессия: {session.name} [{session.context_type}]")
 
     def open_settings(self) -> None:
         self.root_menu.clear_active()

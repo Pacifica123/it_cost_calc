@@ -7,8 +7,7 @@ from collections.abc import Sequence
 from application.services.equipment_service import EquipmentService
 from application.use_cases.load_demo_dataset import LoadDemoDatasetUseCase
 from infrastructure.logging import configure_logging
-from infrastructure.repositories.json_entity_repository import JsonEntityRepository
-from infrastructure.storage import JsonFileStorage
+from infrastructure.storage import JsonFileStorage, SessionEntityRepository, SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +61,12 @@ def load_demo_data(
     logger.debug("CLI-загрузка демо-данных. Лог-файл: %s", log_path)
     data_root = root / "data"
     storage = JsonFileStorage()
-    repository = JsonEntityRepository(
-        runtime_entities_path or data_root / "generated" / "runtime_entities.json", storage
+    legacy_runtime_path = runtime_entities_path or data_root / "generated" / "runtime_entities.json"
+    session_store = SessionStore(
+        legacy_runtime_path.with_name("runtime.sqlite3"),
+        legacy_runtime_path=legacy_runtime_path,
     )
+    repository = SessionEntityRepository(session_store)
     service = EquipmentService(repository)
     use_case = LoadDemoDatasetUseCase(storage, service)
     dataset_path = fixture_path or data_root / "fixtures" / "demo_dataset.json"

@@ -68,6 +68,7 @@ def test_default_qt_paths_split_writable_data_from_bundled_fixtures(
     assert paths.repo_root == writable
     assert paths.resource_root == bundled
     assert paths.runtime_entities_path == writable / "data/generated/runtime_entities.json"
+    assert paths.session_db_path == writable / "data/generated/runtime.sqlite3"
     assert paths.demo_dataset_path == bundled / "data/fixtures/demo_dataset.json"
     assert paths.demo_profiles_path == bundled / "data/fixtures/demo_profiles.json"
 

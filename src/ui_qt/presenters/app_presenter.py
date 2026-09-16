@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -38,8 +39,13 @@ from infrastructure.exporters.sensitivity_dashboard_exporter import (
     export_decision_sensitivity_dashboard,
     export_decision_sensitivity_json,
 )
-from infrastructure.repositories.json_entity_repository import JsonEntityRepository
-from infrastructure.storage import JsonFileStorage
+from infrastructure.storage import (
+    ExportArtifact,
+    JsonFileStorage,
+    SessionEntityRepository,
+    SessionInfo,
+    SessionStore,
+)
 from shared.constants import ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL, TECHNICAL_CAPITAL_CATEGORIES
 from shared.runtime import open_directory, resource_root, writable_runtime_root
 
@@ -51,6 +57,7 @@ class QtRuntimePaths:
     repo_root: Path
     resource_root: Path
     runtime_entities_path: Path
+    session_db_path: Path
     demo_dataset_path: Path
     demo_profiles_path: Path
 
@@ -60,6 +67,7 @@ class QtRuntimePaths:
         repo_root: str | Path | None = None,
         *,
         runtime_entities_path: str | Path | None = None,
+        session_db_path: str | Path | None = None,
         demo_dataset_path: str | Path | None = None,
         demo_profiles_path: str | Path | None = None,
     ) -> "QtRuntimePaths":
@@ -74,6 +82,14 @@ class QtRuntimePaths:
                 runtime_entities_path
                 or generated_data_root / "generated" / "runtime_entities.json"
             ),
+            session_db_path=Path(
+                session_db_path
+                or (
+                    Path(runtime_entities_path).with_name("runtime.sqlite3")
+                    if runtime_entities_path is not None
+                    else generated_data_root / "generated" / "runtime.sqlite3"
+                )
+            ),
             demo_dataset_path=Path(
                 demo_dataset_path or bundled_data_root / "fixtures" / "demo_dataset.json"
             ),
@@ -87,8 +103,8 @@ class QtAppPresenter:
     """Boundary between future Qt screens and existing application services.
 
     The presenter is deliberately free from QWidget, Treeview and tkinter types.
-    It owns the JSON-backed runtime repository and exposes small operations that
-    future screens can call without knowing storage details.
+    SQLite is the canonical mutable runtime/session store. Screens use this
+    boundary without knowing storage details; legacy JSON is import-only.
     """
 
     def __init__(
@@ -96,22 +112,26 @@ class QtAppPresenter:
         *,
         repo_root: str | Path | None = None,
         runtime_entities_path: str | Path | None = None,
+        session_db_path: str | Path | None = None,
         demo_dataset_path: str | Path | None = None,
         demo_profiles_path: str | Path | None = None,
         storage: JsonFileStorage | None = None,
-        repository: JsonEntityRepository | None = None,
+        session_store: SessionStore | None = None,
+        repository: SessionEntityRepository | None = None,
     ) -> None:
         self.paths = QtRuntimePaths.from_repo_root(
             repo_root,
             runtime_entities_path=runtime_entities_path,
+            session_db_path=session_db_path,
             demo_dataset_path=demo_dataset_path,
             demo_profiles_path=demo_profiles_path,
         )
         self.storage = storage or JsonFileStorage()
-        self.repository = repository or JsonEntityRepository(
-            self.paths.runtime_entities_path,
-            self.storage,
+        self.session_store = session_store or SessionStore(
+            self.paths.session_db_path,
+            legacy_runtime_path=self.paths.runtime_entities_path,
         )
+        self.repository = repository or SessionEntityRepository(self.session_store)
         self.catalog_service = EntityCatalogService(self.repository)
         self.equipment_service = EquipmentService(self.repository)
         self.solution_component_runtime_service = SolutionComponentRuntimeService(self.repository)
@@ -141,17 +161,7 @@ class QtAppPresenter:
             profile_service=self.analysis_scope_profile_service,
         )
         self.demo_loader = LoadDemoDatasetUseCase(self.storage, self.equipment_service)
-        self._electricity_profile: dict[str, float] = {
-            "hours_per_day": 8.0,
-            "working_days": 22.0,
-            "cost_per_kwh": 1.0,
-        }
-        self._electricity_report: dict[str, Any] = {"total_cost": 0.0, "items": []}
-        self._npv_report: dict[str, Any] = {}
-        self._ga_results: dict[str, dict[str, Any]] = {}
-        self._ahp_results: dict[str, dict[str, Any]] = {}
-        self._pareto_results: dict[str, dict[str, Any]] = {}
-        self._hybrid_results: dict[str, dict[str, Any]] = {}
+        self._restore_candidate_pools()
 
     @property
     def entities(self) -> dict[str, list[dict[str, Any]]]:
@@ -247,7 +257,9 @@ class QtAppPresenter:
         raise ValueError(f"Неизвестный demo-профиль: {requested_id}. Доступно: {available}")
 
     def save(self) -> Path:
-        return self.repository.save()
+        """Return the canonical SQLite path; mutations are committed eagerly."""
+
+        return self.session_store.path
 
     def total_rows(self) -> int:
         return sum(len(rows) for rows in self.repository.entities.values())
@@ -255,18 +267,132 @@ class QtAppPresenter:
     def has_runtime_data(self) -> bool:
         return self.total_rows() > 0
 
-    def _reset_derived_results(self) -> None:
-        self._reset_electricity_result()
-        self._npv_report = {}
-        self._ga_results.clear()
-        self._ahp_results.clear()
-        self._pareto_results.clear()
-        self._hybrid_results.clear()
-        self.scoped_candidate_pool_service.clear("technical")
-        self.scoped_candidate_pool_service.clear("software")
+    # ---- Session lifecycle -------------------------------------------------
+    def list_sessions(self) -> list[SessionInfo]:
+        return self.session_store.list_sessions()
 
-    def _reset_electricity_result(self) -> None:
-        self._electricity_report = {"total_cost": 0.0, "items": []}
+    def active_session(self) -> SessionInfo:
+        return self.session_store.active_session()
+
+    def create_session(
+        self,
+        name: str,
+        *,
+        context_type: str = "discussion",
+        from_global: bool = True,
+    ) -> SessionInfo:
+        info = self.session_store.create_session(
+            name, context_type=context_type, from_global=from_global, activate=True
+        )
+        self._restore_candidate_pools()
+        return info
+
+    def switch_session(self, session_id: str) -> SessionInfo:
+        info = self.session_store.switch_session(session_id)
+        self._restore_candidate_pools()
+        return info
+
+    def rename_session(self, session_id: str, name: str) -> SessionInfo:
+        return self.session_store.rename_session(session_id, name)
+
+    def duplicate_session(self, session_id: str, *, name: str | None = None) -> SessionInfo:
+        info = self.session_store.duplicate_session(session_id, name=name, activate=True)
+        self._restore_candidate_pools()
+        return info
+
+    def delete_session(self, session_id: str) -> None:
+        self.session_store.delete_session(session_id)
+        self._restore_candidate_pools()
+
+    def save_active_entities_as_global(self) -> None:
+        """Explicitly replace reusable global data from the active session."""
+
+        self.session_store.replace_global_entities(self.entities_snapshot())
+
+    def resync_active_from_global(self) -> None:
+        """Explicitly deep-copy global reusable data into the active session."""
+
+        self.session_store.resync_active_from_global()
+        self._reset_derived_results()
+
+    def get_workflow_position(self) -> dict[str, Any]:
+        state = self.session_store.session_state()
+        workflow = state.get("workflow", {})
+        return deepcopy(dict(workflow)) if isinstance(workflow, Mapping) else {}
+
+    def set_workflow_position(
+        self,
+        *,
+        active_route: str | None = None,
+        scope: str | None = None,
+        step: str | None = None,
+    ) -> None:
+        def apply(state: dict[str, Any]) -> None:
+            workflow = state.setdefault("workflow", {})
+            if active_route is not None:
+                workflow["active_route"] = str(active_route)
+            if scope is not None and step is not None:
+                workflow.setdefault("steps", {})[str(scope)] = str(step)
+
+        self.session_store.mutate_active_state(apply)
+
+    def _state_payload(
+        self,
+        container: str,
+        key: str,
+        *,
+        artifact_key: str,
+        current_only: bool = True,
+    ) -> dict[str, Any]:
+        state = self.session_store.session_state()
+        if current_only and not self.session_store.artifact_is_current(state, artifact_key):
+            return {}
+        values = state.get(container, {})
+        payload = values.get(key, {}) if isinstance(values, Mapping) else {}
+        return deepcopy(dict(payload)) if isinstance(payload, Mapping) else {}
+
+    def _artifact_meta(
+        self,
+        *,
+        parameters: Mapping[str, Any] | None = None,
+        provenance: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        session = self.active_session()
+        return {
+            "validity": "current",
+            "input_revision": session.input_revision,
+            "produced_from_session_revision": session.revision,
+            "produced_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "parameters": deepcopy(dict(parameters or {})),
+            "provenance": deepcopy(dict(provenance or {})),
+        }
+
+    def _restore_candidate_pools(self) -> None:
+        for scope in (ANALYSIS_SCOPE_SOFTWARE, ANALYSIS_SCOPE_TECHNICAL):
+            self.scoped_candidate_pool_service.clear(scope)
+            state = self.session_store.session_state()
+            key = f"pool:{scope}"
+            if not self.session_store.artifact_is_current(state, key):
+                continue
+            pools = state.get("candidate_pools", {})
+            payload = pools.get(scope, {}) if isinstance(pools, Mapping) else {}
+            if not isinstance(payload, Mapping):
+                continue
+            candidates = payload.get("candidates", [])
+            if not isinstance(candidates, list):
+                continue
+            self.scoped_candidate_pool_service.replace(
+                scope,
+                [item for item in candidates if isinstance(item, Mapping)],
+                source_label=str(payload.get("source_label") or "сохранённый пул"),
+                source_method=str(payload.get("source_method") or "session"),
+            )
+
+    def _reset_derived_results(self) -> None:
+        """Drop only RAM projections; SQLite keeps old results as stale evidence."""
+
+        self.scoped_candidate_pool_service.clear(ANALYSIS_SCOPE_TECHNICAL)
+        self.scoped_candidate_pool_service.clear(ANALYSIS_SCOPE_SOFTWARE)
 
     def list_energy_rows(self) -> list[dict[str, Any]]:
         """Return energy rows from the final selected technical configuration.
@@ -324,23 +450,38 @@ class QtAppPresenter:
             cost_per_kwh=float(cost_per_kwh),
             round_the_clock_names=self.list_round_the_clock_equipment_names(),
         )
-        self._electricity_profile = {
+        profile = {
             "hours_per_day": float(hours_per_day),
             "working_days": float(working_days),
             "cost_per_kwh": float(cost_per_kwh),
         }
-        self._electricity_report = deepcopy(report)
-        self._npv_report = {}
+        meta = self._artifact_meta(
+            parameters=profile,
+            provenance={"producer": "electricity_calculator", "row_count": len(rows)},
+        )
+
+        def persist(state: dict[str, Any]) -> None:
+            state["electricity_profile"] = deepcopy(profile)
+            state["electricity_report"] = deepcopy(report)
+            state.setdefault("derived_meta", {})["electricity"] = meta
+
+        self.session_store.mutate_active_state(persist, stale_keys=("npv",))
         return deepcopy(report)
 
     def get_electricity_cost(self) -> float:
-        return float(self._electricity_report.get("total_cost", 0.0) or 0.0)
+        return float(self.get_electricity_report().get("total_cost", 0.0) or 0.0)
 
     def get_electricity_profile(self) -> dict[str, float]:
-        return dict(self._electricity_profile)
+        state = self.session_store.session_state()
+        profile = state.get("electricity_profile", {})
+        return {str(key): float(value) for key, value in dict(profile).items()} if isinstance(profile, Mapping) else {}
 
     def get_electricity_report(self) -> dict[str, Any]:
-        return deepcopy(self._electricity_report)
+        state = self.session_store.session_state()
+        if not self.session_store.artifact_is_current(state, "electricity"):
+            return {"total_cost": 0.0, "items": []}
+        report = state.get("electricity_report", {})
+        return deepcopy(dict(report)) if isinstance(report, Mapping) else {"total_cost": 0.0, "items": []}
 
     def prepare_cost_summary(self) -> dict[str, Any]:
         """Build CAPEX/OPEX/TCO for the final selected Hybrid configuration.
@@ -392,6 +533,24 @@ class QtAppPresenter:
                 warnings = list(basis.get("warnings", []))
                 warnings.append("NPV ожидает итоговый Hybrid-выбор, поэтому TCO-основа пока нулевая.")
                 basis["warnings"] = warnings
+        draft = {
+            "investment": float(basis.get("investment", 0.0) or 0.0),
+            "discount_rate": float(discount_rate if discount_rate is not None else basis.get("discount_rate", 0.0) or 0.0),
+            "cash_flows": [float(value) for value in basis.get("cash_flows", [])],
+            "annual_effect": float(annual_effect),
+            "horizon_years": int(basis.get("horizon_years", horizon_years) or horizon_years),
+        }
+        basis_meta = self._artifact_meta(
+            parameters=draft,
+            provenance={"producer": "npv_basis_from_current_costs"},
+        )
+
+        def persist(state: dict[str, Any]) -> None:
+            state["npv_basis"] = deepcopy(basis)
+            state["npv_inputs"] = deepcopy(draft)
+            state.setdefault("derived_meta", {})["npv_basis"] = basis_meta
+
+        self.session_store.mutate_active_state(persist, stale_keys=("npv",))
         return basis
 
     def build_npv_report(
@@ -408,12 +567,102 @@ class QtAppPresenter:
             cash_flows=[float(value) for value in cash_flows],
             financial_basis=financial_basis,
         )
-        self._npv_report = deepcopy(report)
+        report["discount_rate"] = float(discount_rate)
+        meta = self._artifact_meta(
+            parameters={
+                "investment": float(investment),
+                "discount_rate": float(discount_rate),
+                "cash_flows": [float(value) for value in cash_flows],
+            },
+            provenance={"producer": "npv_report_builder"},
+        )
+
+        def persist(state: dict[str, Any]) -> None:
+            state["npv_inputs"] = {
+                "investment": float(investment),
+                "discount_rate": float(discount_rate),
+                "cash_flows": [float(value) for value in cash_flows],
+                "annual_effect": float(
+                    financial_basis.get("annual_effect", 0.0)
+                    if isinstance(financial_basis, Mapping) else 0.0
+                ),
+                "horizon_years": len(cash_flows),
+            }
+            if isinstance(financial_basis, Mapping):
+                state["npv_basis"] = deepcopy(dict(financial_basis))
+            state["npv_report"] = deepcopy(report)
+            state.setdefault("derived_meta", {})["npv"] = meta
+
+        self.session_store.mutate_active_state(persist)
         return deepcopy(report)
 
-    def get_npv_report(self) -> dict[str, Any]:
-        return deepcopy(self._npv_report)
+    def get_npv_inputs(self) -> dict[str, Any]:
+        state = self.session_store.session_state()
+        payload = state.get("npv_inputs", {})
+        return deepcopy(dict(payload)) if isinstance(payload, Mapping) else {}
 
+    def get_npv_basis(self) -> dict[str, Any]:
+        state = self.session_store.session_state()
+        if not self.session_store.artifact_is_current(state, "npv_basis"):
+            return {}
+        payload = state.get("npv_basis", {})
+        return deepcopy(dict(payload)) if isinstance(payload, Mapping) else {}
+
+    def save_npv_draft(
+        self,
+        *,
+        investment: float,
+        discount_rate: float,
+        cash_flows: list[float],
+        annual_effect: float,
+        horizon_years: int,
+        financial_basis: Mapping[str, Any] | None = None,
+    ) -> None:
+        draft = {
+            "investment": float(investment),
+            "discount_rate": float(discount_rate),
+            "cash_flows": [float(value) for value in cash_flows],
+            "annual_effect": float(annual_effect),
+            "horizon_years": int(horizon_years),
+        }
+
+        def persist(state: dict[str, Any]) -> None:
+            state["npv_inputs"] = draft
+            if isinstance(financial_basis, Mapping):
+                state["npv_basis"] = deepcopy(dict(financial_basis))
+            else:
+                state["npv_basis"] = {}
+
+        stale_keys = ("npv",) if isinstance(financial_basis, Mapping) else ("npv", "npv_basis")
+        self.session_store.mutate_active_state(persist, stale_keys=stale_keys)
+
+    def get_npv_report(self) -> dict[str, Any]:
+        state = self.session_store.session_state()
+        if not self.session_store.artifact_is_current(state, "npv"):
+            return {}
+        report = state.get("npv_report", {})
+        return deepcopy(dict(report)) if isinstance(report, Mapping) else {}
+
+
+    def _persist_scoped_result(
+        self,
+        container: str,
+        method: str,
+        scope: str,
+        payload: Mapping[str, Any],
+        *,
+        parameters: Mapping[str, Any] | None = None,
+        provenance: Mapping[str, Any] | None = None,
+        stale_keys: tuple[str, ...] = (),
+    ) -> None:
+        artifact_key = f"{method}:{scope}"
+        meta = self._artifact_meta(parameters=parameters, provenance=provenance)
+
+        def persist(state: dict[str, Any]) -> None:
+            state.setdefault(container, {})[scope] = deepcopy(dict(payload))
+            state.setdefault("derived_meta", {})[artifact_key] = meta
+
+        self.session_store.mutate_active_state(persist, stale_keys=stale_keys)
 
     def run_genetic_optimization(
         self,
@@ -439,26 +688,105 @@ class QtAppPresenter:
             ga_params=dict(ga_params or {}),
         )
         scope_key = str(scope)
-        self._ga_results[scope_key] = deepcopy(result)
-        self.scoped_candidate_pool_service.replace_from_ga_result(
+        snapshot = self.scoped_candidate_pool_service.replace_from_ga_result(
             scope_key,
             result,
             source_label=f"GA top-N {scope_key}",
         )
+        ga_meta = self._artifact_meta(
+            parameters={
+                "max_budget": max_budget,
+                "max_power": max_power,
+                "target_units": target_units,
+                "max_target_units": max_target_units,
+                "max_selected_items": max_selected_items,
+                "ga_params": dict(ga_params or {}),
+            },
+            provenance={"producer": "genetic_optimizer", "scope": scope_key},
+        )
+        pool_meta = self._artifact_meta(
+            parameters={"candidate_count": len(snapshot.candidates)},
+            provenance={"producer": "ga_candidate_pool", "scope": scope_key},
+        )
+
+        def persist(state: dict[str, Any]) -> None:
+            state.setdefault("ga_results", {})[scope_key] = deepcopy(result)
+            state.setdefault("candidate_pools", {})[scope_key] = {
+                "scope": snapshot.scope,
+                "candidates": deepcopy(snapshot.candidates),
+                "source_label": snapshot.source_label,
+                "source_method": snapshot.source_method,
+            }
+            meta = state.setdefault("derived_meta", {})
+            meta[f"ga:{scope_key}"] = ga_meta
+            meta[f"pool:{scope_key}"] = pool_meta
+
+        stale = [f"ahp:{scope_key}", f"pareto:{scope_key}", f"hybrid:{scope_key}", "npv"]
+        if scope_key == ANALYSIS_SCOPE_TECHNICAL:
+            stale.append("electricity")
+        self.session_store.mutate_active_state(persist, stale_keys=tuple(stale))
         return deepcopy(result)
 
     def get_ga_result(self, scope: str) -> dict[str, Any]:
-        """Return latest GA result for a ПО/ТО scope."""
+        """Return only the current GA result; stale payload remains in SQLite."""
 
-        return deepcopy(self._ga_results.get(str(scope), {}))
+        scope_key = str(scope)
+        return self._state_payload(
+            "ga_results", scope_key, artifact_key=f"ga:{scope_key}"
+        )
 
     def get_candidate_pool_snapshot(self, scope: str) -> CandidatePoolSnapshot:
-        """Return latest shared candidate-pool snapshot for a ПО/ТО scope."""
+        """Return the current persisted shared candidate pool.
 
-        snapshot = self.scoped_candidate_pool_service.get(scope)
+        A legacy/test caller may still inject a pool through the old in-memory
+        service.  When no persisted pool has ever existed for this scope, that
+        value is imported once into SQLite before it is used.  A persisted stale
+        pool is never revived this way.
+        """
+
+        scope_key = str(scope)
+        state = self.session_store.session_state()
+        artifact_key = f"pool:{scope_key}"
+        meta = state.get("derived_meta", {}) if isinstance(state, Mapping) else {}
+        if artifact_key not in meta:
+            legacy = self.scoped_candidate_pool_service.get(scope_key)
+            if legacy.candidates:
+                pool_meta = self._artifact_meta(
+                    parameters={"candidate_count": len(legacy.candidates)},
+                    provenance={"producer": "legacy_candidate_pool_bridge", "scope": scope_key},
+                )
+
+                def persist_legacy_pool(current: dict[str, Any]) -> None:
+                    current.setdefault("candidate_pools", {})[scope_key] = {
+                        "scope": legacy.scope,
+                        "candidates": deepcopy(legacy.candidates),
+                        "source_label": legacy.source_label,
+                        "source_method": legacy.source_method,
+                    }
+                    current.setdefault("derived_meta", {})[artifact_key] = pool_meta
+
+                self.session_store.mutate_active_state(persist_legacy_pool)
+                state = self.session_store.session_state()
+        if not self.session_store.artifact_is_current(state, artifact_key):
+            return CandidatePoolSnapshot(scope=scope_key)
+        pools = state.get("candidate_pools", {})
+        payload = pools.get(scope_key, {}) if isinstance(pools, Mapping) else {}
+        if not isinstance(payload, Mapping):
+            return CandidatePoolSnapshot(scope=scope_key)
         return CandidatePoolSnapshot(
-            scope=snapshot.scope,
-            candidates=deepcopy(snapshot.candidates),
+            scope=str(payload.get("scope") or scope_key),
+            candidates=deepcopy(
+                [item for item in payload.get("candidates", []) if isinstance(item, Mapping)]
+            ),
+            source_label=str(payload.get("source_label") or "сохранённый пул"),
+            source_method=str(payload.get("source_method") or "session"),
+        )
+
+    def _restore_candidate_pool_scope(self, scope: str) -> CandidatePoolSnapshot:
+        snapshot = self.get_candidate_pool_snapshot(scope)
+        return self.scoped_candidate_pool_service.replace(
+            snapshot.scope,
+            snapshot.candidates,
             source_label=snapshot.source_label,
             source_method=snapshot.source_method,
         )
@@ -467,8 +795,8 @@ class QtAppPresenter:
         """Rank the current scoped candidate pool with standalone AHP."""
 
         scope_key = str(scope)
+        snapshot = self._restore_candidate_pool_scope(scope_key)
         case = self.scoped_candidate_pool_service.to_criteria_case(scope_key)
-        snapshot = self.scoped_candidate_pool_service.get(scope_key)
         alternatives = list(case.get("alternatives", []))
         criteria = list(case.get("criteria", []))
         scores = case.get("scores", {}) if isinstance(case.get("scores"), Mapping) else {}
@@ -480,9 +808,12 @@ class QtAppPresenter:
                 "final": {"ranking": []},
                 "candidate_configurations": [],
             }
-            self._ahp_results[scope_key] = deepcopy(report)
-            self._pareto_results.pop(scope_key, None)
-            self._hybrid_results.pop(scope_key, None)
+            self._persist_scoped_result(
+                "ahp_results", "ahp", scope_key, report,
+                parameters={"candidate_count": 0},
+                provenance={"producer": "scoped_ahp", "status": "skipped"},
+                stale_keys=(f"hybrid:{scope_key}", "npv"),
+            )
             return deepcopy(report)
         if not criteria:
             report = {
@@ -492,9 +823,12 @@ class QtAppPresenter:
                 "final": {"ranking": []},
                 "candidate_configurations": deepcopy(snapshot.candidates),
             }
-            self._ahp_results[scope_key] = deepcopy(report)
-            self._pareto_results.pop(scope_key, None)
-            self._hybrid_results.pop(scope_key, None)
+            self._persist_scoped_result(
+                "ahp_results", "ahp", scope_key, report,
+                parameters={"candidate_count": len(alternatives)},
+                provenance={"producer": "scoped_ahp", "status": "skipped"},
+                stale_keys=(f"hybrid:{scope_key}", "npv"),
+            )
             return deepcopy(report)
 
         profile = self.analysis_scope_profile_service.get_profile(scope_key)
@@ -610,19 +944,25 @@ class QtAppPresenter:
                 ),
             },
         }
-        self._ahp_results[scope_key] = deepcopy(report)
-        self._pareto_results.pop(scope_key, None)
-        self._hybrid_results.pop(scope_key, None)
+        self._persist_scoped_result(
+            "ahp_results", "ahp", scope_key, report,
+            parameters={"candidate_count": len(alternatives)},
+            provenance={"producer": "scoped_ahp", "scope": scope_key},
+            stale_keys=(f"hybrid:{scope_key}", "npv"),
+        )
         return deepcopy(report)
 
     def get_ahp_result(self, scope: str) -> dict[str, Any]:
-        return deepcopy(self._ahp_results.get(str(scope), {}))
+        scope_key = str(scope)
+        return self._state_payload(
+            "ahp_results", scope_key, artifact_key=f"ahp:{scope_key}"
+        )
 
     def run_pareto_for_candidate_pool(self, scope: str) -> dict[str, Any]:
         """Run Pareto/criteria-importance over the current scoped candidate pool."""
 
         scope_key = str(scope)
-        snapshot = self.scoped_candidate_pool_service.get(scope_key)
+        snapshot = self._restore_candidate_pool_scope(scope_key)
         if not snapshot.candidates:
             report = {
                 "status": "skipped",
@@ -631,8 +971,12 @@ class QtAppPresenter:
                 "final_nondominated": [],
                 "candidate_configurations": [],
             }
-            self._pareto_results[scope_key] = deepcopy(report)
-            self._hybrid_results.pop(scope_key, None)
+            self._persist_scoped_result(
+                "pareto_results", "pareto", scope_key, report,
+                parameters={"candidate_count": 0},
+                provenance={"producer": "criteria_importance_pipeline", "status": "skipped"},
+                stale_keys=(f"hybrid:{scope_key}", "npv"),
+            )
             return deepcopy(report)
 
         case = self.scoped_candidate_pool_service.to_criteria_case(scope_key)
@@ -647,19 +991,26 @@ class QtAppPresenter:
                     "source_method": snapshot.source_method,
                 }
             )
-        self._pareto_results[scope_key] = deepcopy(report)
-        self._hybrid_results.pop(scope_key, None)
+        self._persist_scoped_result(
+            "pareto_results", "pareto", scope_key, report,
+            parameters={"candidate_count": len(snapshot.candidates)},
+            provenance={"producer": "criteria_importance_pipeline", "scope": scope_key},
+            stale_keys=(f"hybrid:{scope_key}", "npv"),
+        )
         return deepcopy(report)
 
     def get_pareto_result(self, scope: str) -> dict[str, Any]:
-        return deepcopy(self._pareto_results.get(str(scope), {}))
+        scope_key = str(scope)
+        return self._state_payload(
+            "pareto_results", scope_key, artifact_key=f"pareto:{scope_key}"
+        )
 
 
     def run_hybrid_assessment(self, scope: str, *, lambda_value: float = 0.5) -> dict[str, Any]:
         """Build a Hybrid summary for the current scoped GA/AHP/Pareto state."""
 
         scope_key = str(scope)
-        snapshot = self.scoped_candidate_pool_service.get(scope_key)
+        snapshot = self._restore_candidate_pool_scope(scope_key)
         result = self.hybrid_assessment_service.assess(
             snapshot.candidates,
             ahp_report=self.get_ahp_result(scope_key),
@@ -676,11 +1027,22 @@ class QtAppPresenter:
                     "source_method": snapshot.source_method,
                 }
             )
-        self._hybrid_results[scope_key] = deepcopy(result)
+        stale = ["npv"]
+        if scope_key == ANALYSIS_SCOPE_TECHNICAL:
+            stale.append("electricity")
+        self._persist_scoped_result(
+            "hybrid_results", "hybrid", scope_key, result,
+            parameters={"lambda_value": float(lambda_value)},
+            provenance={"producer": "hybrid_assessment_service", "scope": scope_key},
+            stale_keys=tuple(stale),
+        )
         return deepcopy(result)
 
     def get_hybrid_result(self, scope: str) -> dict[str, Any]:
-        return deepcopy(self._hybrid_results.get(str(scope), {}))
+        scope_key = str(scope)
+        return self._state_payload(
+            "hybrid_results", scope_key, artifact_key=f"hybrid:{scope_key}"
+        )
 
     def selected_hybrid_candidate(self, scope: str) -> dict[str, Any] | None:
         """Return the current Hybrid winner from the scoped candidate pool.
@@ -699,7 +1061,7 @@ class QtAppPresenter:
         winner_id = str(report.get("winner_id") or winner.get("id") or "")
         if not winner_id:
             return None
-        snapshot = self.scoped_candidate_pool_service.get(scope_key)
+        snapshot = self.get_candidate_pool_snapshot(scope_key)
         for candidate in snapshot.candidates:
             if str(candidate.get("id") or "") == winner_id:
                 return deepcopy(candidate)
@@ -855,9 +1217,36 @@ class QtAppPresenter:
 
 
     def generated_reports_dir(self) -> Path:
-        export_root = self.paths.repo_root / "data" / "generated"
+        """Return disposable filesystem materialization root for the active session."""
+
+        session_id = self.active_session().session_id
+        export_root = self.paths.repo_root / "data" / "generated" / "reports" / session_id
         export_root.mkdir(parents=True, exist_ok=True)
         return export_root
+
+    def list_export_artifacts(self) -> list[ExportArtifact]:
+        return self.session_store.list_exports()
+
+    def rematerialize_export(self, artifact_id: str, target: str | Path | None = None) -> Path:
+        destination = Path(target) if target is not None else self.generated_reports_dir()
+        return self.session_store.rematerialize_export(artifact_id, destination)
+
+    def _record_export_paths(self, mode: str, paths: Mapping[str, Path]) -> None:
+        for kind, path in paths.items():
+            if not path.is_file():
+                continue
+            suffix = path.suffix.lower().lstrip(".") or str(kind)
+            self.session_store.record_export(
+                kind=str(kind),
+                format=suffix,
+                name=path.name,
+                payload=path.read_bytes(),
+                metadata={
+                    "mode": str(mode),
+                    "materialized_path": str(path),
+                    "source": "qt_export",
+                },
+            )
 
     def build_export_dashboard_summary(self) -> str:
         totals = self.prepare_cost_summary()
@@ -894,60 +1283,60 @@ class QtAppPresenter:
         if mode == "full_decision_report":
             return self.export_decision_report()
         if mode == "raw_costs_csv":
-            return {"csv": self.export_costs_csv(export_root / "total_costs.csv")}
-        if mode == "cost_summary":
-            return {
+            paths = {"csv": self.export_costs_csv(export_root / "total_costs.csv")}
+        elif mode == "cost_summary":
+            paths = {
                 "markdown": self._write_markdown_export(
                     export_root / "cost_summary_context.md",
                     "Сводка затрат",
                     self._cost_summary_markdown(),
                 )
             }
-        if mode == "technical_analysis":
-            return {
+        elif mode == "technical_analysis":
+            paths = {
                 "markdown": self._write_markdown_export(
                     export_root / "technical_analysis_context.md",
                     "Аналитика ТО",
                     self._scope_analysis_markdown("technical"),
                 )
             }
-        if mode == "software_analysis":
-            return {
+        elif mode == "software_analysis":
+            paths = {
                 "markdown": self._write_markdown_export(
                     export_root / "software_analysis_context.md",
                     "Аналитика ПО",
                     self._scope_analysis_markdown("software"),
                 )
             }
-        if mode == "npv":
-            return {
+        elif mode == "npv":
+            paths = {
                 "markdown": self._write_markdown_export(
                     export_root / "npv_context.md",
                     "NPV-контекст",
                     self._npv_markdown(),
                 )
             }
-        if mode == "interactive_dashboard":
+        elif mode == "interactive_dashboard":
             report = self._build_decision_report_snapshot()
-            return {
+            paths = {
                 "dashboard": export_interactive_dashboard(
-                    report,
-                    export_root / "decision_dashboard.html",
+                    report, export_root / "decision_dashboard.html"
                 )
             }
-        if mode == "sensitivity_analysis":
+        elif mode == "sensitivity_analysis":
             report = self._build_decision_report_snapshot()
-            return {
+            paths = {
                 "sensitivity_dashboard": export_decision_sensitivity_dashboard(
-                    report,
-                    export_root / "decision_sensitivity_dashboard.html",
+                    report, export_root / "decision_sensitivity_dashboard.html"
                 ),
                 "sensitivity_json": export_decision_sensitivity_json(
-                    report,
-                    export_root / "decision_sensitivity.json",
+                    report, export_root / "decision_sensitivity.json"
                 ),
             }
-        raise ValueError(f"Unknown export mode: {mode!r}")
+        else:
+            raise ValueError(f"Unknown export mode: {mode!r}")
+        self._record_export_paths(mode, paths)
+        return paths
 
     def export_costs_csv(self, filename: str | Path | None = None) -> Path:
         path = Path(filename) if filename is not None else self.generated_reports_dir() / "total_costs.csv"
@@ -1007,6 +1396,7 @@ class QtAppPresenter:
                 export_root / "decision_sensitivity.json",
             ),
         }
+        self._record_export_paths("full_decision_report", paths)
         return paths
 
     def open_generated_reports_folder(self) -> Path:
@@ -1026,7 +1416,7 @@ class QtAppPresenter:
         candidates: list[dict[str, Any]] = []
 
         for scope in scopes:
-            snapshot = self.scoped_candidate_pool_service.get(scope)
+            snapshot = self.get_candidate_pool_snapshot(scope)
             for index, candidate in enumerate(snapshot.candidates, start=1):
                 exported = deepcopy(candidate)
                 metadata = dict(exported.get("metadata") or {})
@@ -1062,7 +1452,7 @@ class QtAppPresenter:
     def _scoped_analysis_state(self) -> dict[str, Any]:
         state: dict[str, Any] = {}
         for scope in ("software", "technical"):
-            snapshot = self.scoped_candidate_pool_service.get(scope)
+            snapshot = self.get_candidate_pool_snapshot(scope)
             state[scope] = {
                 "candidate_pool_count": len(snapshot.candidates),
                 "ga_status": self.get_ga_result(scope).get("status", "not_run"),

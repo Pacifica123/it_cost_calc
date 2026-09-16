@@ -8,7 +8,7 @@ flowchart LR
     REG[data/fixtures/regression/demo_control_invariants.json] --> DCTRL[DemoControlScenarioService]
     C9FIX[data/fixtures/solution_component_c9_demo_dataset.json] --> C9CTRL[scripts/run_solution_component_c9_demo.py]
     C9INV[data/fixtures/regression/solution_component_c9_invariants.json] --> C9CTRL
-    FIX --> RUNTIME[data/generated/runtime_entities.json]
+    FIX --> RUNTIME[data/generated/runtime.sqlite3 / active Session]
     RUNTIME --> RNORM[application: normalization scope/component_type]
     RNORM --> PROFILE[application: AnalysisScopeProfileService]
     PROFILE --> CAND[application: CandidateConfigurationService]
@@ -18,7 +18,8 @@ flowchart LR
     TCO --> DREPORT[application: DecisionReportService]
     NPV --> DREPORT
     ANALYTICS --> DREPORT
-    DREPORT --> REPORTS[data/generated/*.csv + JSON/Markdown reports]
+    DREPORT --> EXPORTDB[SQLite export_artifacts / immutable BLOB]
+    EXPORTDB --> REPORTS[data/generated/reports/<session-id>/ materialization]
     RUNTIME --> LOGS[data/generated/logs/]
 
     RAW[data/examples/parser/*.json] --> CNORM[data/examples/catalog/normalized_dns_catalog.json]
@@ -44,7 +45,8 @@ flowchart LR
 - `data/examples/parser/` — сохранённые снимки парсинга.
 
 ### 2. Рабочие runtime-данные
-- `data/generated/runtime_entities.json` — текущее состояние пользовательских сущностей;
+- `data/generated/runtime.sqlite3` — каноническое mutable состояние: global reusable data, Sessions, derived state и export artifacts;
+- `data/generated/runtime_entities.json` — только legacy source для однократного idempotent импорта;
 - `data/generated/logs/` — логи приложения;
 - `data/generated/catalog/` — рабочий каталог оборудования;
 - `data/generated/ahp/` — выходные файлы расчётов и отчётов.
@@ -63,7 +65,7 @@ flowchart LR
 | Регрессионные инварианты demo | `data/fixtures/regression/demo_control_invariants.json` | разработчик | `scripts/run_demo_control_scenario.py --check-only` |
 | C9 fixture редактора компонентов | `data/fixtures/solution_component_c9_demo_dataset.json` | разработчик | `scripts/run_solution_component_c9_demo.py`, защитные материалы |
 | C9 инварианты редактора | `data/fixtures/regression/solution_component_c9_invariants.json` | разработчик | `scripts/run_solution_component_c9_demo.py` |
-| Runtime-сущности | `data/generated/runtime_entities.json` | приложение | GUI, сервисы, экспорт |
+| Runtime/Session state | `data/generated/runtime.sqlite3` | приложение | GUI, сервисы, расчёты, история экспорта |
 | CSV-отчёт | `data/generated/` или пользовательский путь | сценарий экспорта | пользователь |
 | Каталог оборудования | `data/generated/catalog/equipment_catalog.json` | `tools/catalog_parser` | основное приложение, тесты |
 | Staging каталога | `data/generated/catalog/catalog_staging.json` | экран «Каталог» | пользователь, импорт ТО |
@@ -74,9 +76,16 @@ flowchart LR
 | Логи | `data/generated/logs/it_cost_calc.log` | приложение | разработчик |
 
 
+
+## Session boundary и история экспорта
+
+Mutable state больше не разделён между runtime JSON и RAM. `QtAppPresenter` читает и изменяет активную Session в `runtime.sqlite3`; GA/AHP/Pareto/Hybrid candidate pools, electricity, NPV и meaningful workflow position сохраняются вместе с entities. Derived state имеет revision/provenance/validity и при изменении входов становится `stale`, а не удаляется.
+
+Сохранённые глобальные entities служат только источником для явного snapshot/resync. После попадания в Session они независимы от global state. Export files в `data/generated/reports/<session-id>/` являются materialization; каноническая история и payload находятся в `export_artifacts`. Подробнее: `session_persistence.md`.
+
 ## Runtime-нормализация после этапа 2
 
-`data/generated/runtime_entities.json` и старые фикстуры могут не содержать явных полей `scope` и `component_type`. Прикладной слой достраивает эти признаки через `RuntimeEntityNormalizationService` перед тем, как записи попадут в сервисы стоимости, GA/AHP-сценарии или экспорт.
+Состояние `entities` активной Session и старые фикстуры могут не содержать явных полей `scope` и `component_type`. Прикладной слой достраивает эти признаки через `RuntimeEntityNormalizationService` перед тем, как записи попадут в сервисы стоимости, GA/AHP-сценарии или экспорт.
 
 Переходная логика не переносится во вкладки интерфейса: UI передаёт категорию и пользовательские поля, а application-слой решает, относится ли запись к `technical`, `software`, `implementation` или `common`, и какой `component_type` можно безопасно назначить.
 
@@ -87,7 +96,7 @@ flowchart LR
 После нормализации runtime-записей прикладной слой выбирает профиль области анализа через `AnalysisScopeProfileService`. Профиль определяет, какие категории становятся кандидатами, какие критерии и ограничения применяются, какие подсказки показываются в UI и какие metadata попадают в GA/AHP export payload.
 
 ```text
-runtime_entities.json → RuntimeEntityNormalizationService → AnalysisScopeProfileService → GA / GA+AHP / AHP / Pareto / export
+active Session entities → RuntimeEntityNormalizationService → AnalysisScopeProfileService → GA / GA+AHP / AHP / Pareto / export
 ```
 
 Благодаря этому вкладки больше не являются главным источником знаний о различиях ПО и ТО: они выбирают `scope`, а прикладной слой возвращает правила анализа. Подробности описаны в `analysis_scope_profiles.md`.
@@ -98,7 +107,7 @@ runtime_entities.json → RuntimeEntityNormalizationService → AnalysisScopePro
 После профилей анализа прикладной слой формирует общий пул `candidate_configurations`. Это переходный формат между runtime-компонентами и аналитическими методами. Он не заменяет старые поля мгновенно: `configurations`, `candidate_solutions`, `alternatives` и `scores` сохраняются, но рядом с ними появляется единый контракт альтернативы.
 
 ```text
-runtime_entities.json
+active Session entities
   → RuntimeEntityNormalizationService
   → AnalysisScopeProfileService
   → CandidateConfigurationService
@@ -135,7 +144,7 @@ NPV больше не обязан начинаться с пустого руч
 После TCO/NPV-моста данные могут быть собраны в единый итоговый отчёт выбора. `DecisionReportService` не запускает методы заново, а фиксирует текущее состояние runtime-компонентов, стоимости, пула альтернатив и уже рассчитанных аналитических результатов.
 
 ```text
-runtime_entities.json
+active Session entities
   → RuntimeEntityNormalizationService
   → CandidateConfigurationService / TCOModelService / аналитические методы
   → DecisionReportService
@@ -146,11 +155,11 @@ JSON остаётся полным машинным отчётом, Markdown —
 
 ## Старая ИТ-песочница после этапа 7
 
-Вкладка `ИТ-песочница` не является основным источником CAPEX/OPEX-аналитики. Новые свободные статьи сохраняются в `runtime_entities.json` с префиксом `legacy_infrastructure:` и служебной пометкой `_legacy_sandbox=true`.
+Вкладка `ИТ-песочница` не является основным источником CAPEX/OPEX-аналитики. Новые свободные статьи сохраняются в `entities` активной Session с префиксом `legacy_infrastructure:` и служебной пометкой `_legacy_sandbox=true`.
 
 ```text
 ИТ-песочница
-  → data/generated/runtime_entities.json: legacy_infrastructure:*
+  → active Session entities: legacy_infrastructure:*
   → DecisionReport raw components, strict_analysis_participation=false
 ```
 
@@ -223,7 +232,7 @@ PYTHONDONTWRITEBYTECODE=1 python -B scripts/run_solution_component_c9_demo.py
 
 | Уровень | Основные артефакты | Назначение |
 |---|---|---|
-| Исходный ввод | `runtime_entities.json`, `demo_dataset.json`, каталог оборудования | Компоненты, расходы, энергетические параметры и demo-данные |
+| Исходный ввод | active Session (`runtime.sqlite3`), `demo_dataset.json`, каталог оборудования | Компоненты, расходы, энергетические параметры и demo-данные |
 | Нормализация | `scope`, `component_type`, `client_seats`, sandbox-признаки | Приведение legacy-записей к общей предметной схеме |
 | Альтернативы | `candidate_configurations` | Единый пул для AHP, GA, GA + AHP, анализа важности и отчёта |
 | Стоимость | `totals.tco`, NPV cash flow | Связь CAPEX/OPEX/энергии с финансовой оценкой |

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from bootstrap import load_demo_data
-from infrastructure.storage import JsonFileStorage
+from infrastructure.storage import SessionStore
 
 
 def test_bootstrap_load_demo_data_writes_runtime_storage(tmp_path: Path):
@@ -14,8 +14,10 @@ def test_bootstrap_load_demo_data_writes_runtime_storage(tmp_path: Path):
         runtime_entities_path=runtime_path,
     )
 
-    payload = JsonFileStorage().read(runtime_path)
+    db_path = runtime_path.with_name("runtime.sqlite3")
+    store = SessionStore(db_path, legacy_runtime_path=runtime_path)
 
-    assert runtime_path.exists()
+    assert db_path.exists()
+    assert not runtime_path.exists()
     assert "server" in dataset
-    assert payload["entities"]["server"][0]["name"] == dataset["server"][0]["name"]
+    assert store.session_state()["entities"]["server"][0]["name"] == dataset["server"][0]["name"]

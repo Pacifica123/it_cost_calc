@@ -57,7 +57,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self._build_ui()
         self._setup_auto_recalculation()
         self._load_defaults()
-        self._sync_summary()
+        self._restore_saved_state()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -354,8 +354,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         )
 
     def _load_defaults(self) -> None:
-        self.presenter.clear_basis()
-        self._basis_loaded = False
+        self._basis_loaded = self.presenter.has_saved_basis()
         self._flows_generated = True
         values = self.presenter.default_input()
         self._apply_input(values)
@@ -364,7 +363,24 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self._sync_chart()
 
     def refresh_data(self) -> None:
-        self.load_from_costs()
+        self.presenter = NpvPresenter(self.presenter.app_presenter)
+        self._load_defaults()
+        self._restore_saved_state()
+
+    def _restore_saved_state(self) -> None:
+        report = self.presenter.saved_report()
+        self._basis_loaded = self.presenter.has_saved_basis()
+        if self._basis_loaded:
+            self.basis_model.replace_rows(self.presenter.basis_rows(report or None))
+        if report:
+            self.cash_flow_model.replace_rows(self.presenter.table_rows(report))
+            self._sync_summary(report)
+            self._sync_chart(report)
+            self.status_label.setText("Восстановлено")
+        else:
+            self._sync_summary()
+            self._sync_chart()
+        self._sync_detail_state()
 
     def load_from_costs(self) -> None:
         try:

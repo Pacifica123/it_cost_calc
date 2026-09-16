@@ -217,6 +217,10 @@ class EnergyScreen(QWidget):  # type: ignore[misc,valid-type]
         return box
 
     def refresh_data(self) -> None:
+        profile = self.presenter.profile
+        self.hours_input.setValue(profile.hours_per_day)
+        self.days_input.setValue(profile.working_days)
+        self.price_input.setValue(profile.cost_per_kwh)
         self.model.replace_rows(self.presenter.table_rows())
         self._sync_equipment_state()
         self._sync_round_clock_label()

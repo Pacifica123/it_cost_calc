@@ -44,8 +44,9 @@ class EnergyPresenter:
 
     def __init__(self, app_presenter: QtAppPresenter | None = None) -> None:
         self.app_presenter = app_presenter or QtAppPresenter()
-        self._profile = self.DEFAULT_PROFILE
-        self._report: dict[str, Any] = {"total_cost": 0.0, "items": []}
+        saved_profile = self.app_presenter.get_electricity_profile()
+        self._profile = self._normalize_profile(saved_profile or self.DEFAULT_PROFILE.as_dict())
+        self._report = deepcopy(self.app_presenter.get_electricity_report())
 
     @property
     def profile(self) -> EnergyProfileInput:
