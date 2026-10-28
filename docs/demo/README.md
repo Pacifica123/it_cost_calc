@@ -9,6 +9,7 @@
 - `technical_load_1000_demo.md` — нагрузочный сценарий ТО на 1000 устройств для проверки скорости и устойчивости.
 - `demo_data_contract.md` — контракт ролей demo/educational/regression-данных и контрольный сценарий после этапа 8.
 - `solution_component_editor_defense_guide.md` — финальный сценарий защиты редактора `SolutionComponent` после C9.
+- `puaz_dashboard_control_example.md` — контрольный пример ПУАЗ для интерактивного дашборда: ПО и ТО, ранги четырёх методов, CAPEX/OPEX, качество данных.
 
 ## Как использовать
 
@@ -28,6 +29,7 @@
 python -B scripts/run_demo_control_scenario.py --check-only
 python -B scripts/run_calculation_control_demo.py --check-only
 python -B scripts/run_technical_load_demo.py --check-only
+python -B scripts/run_puaz_dashboard_control.py --check-only
 ```
 
 Проверка подтверждает, что fixture-строки имеют `scope` и `component_type`, формируют общий пул `CandidateConfiguration`, получают TCO и попадают в `DecisionReport`. Нагрузочный сценарий отдельно подтверждает загрузку 1000 строк ТО и прохождение цепочки GA → AHP → Pareto по большому исходному массиву.

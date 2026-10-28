@@ -84,6 +84,10 @@ class QtMainWindow(QMainWindow):
             "Демо: нагрузочный ТО",
             lambda: self._load_demo_profile("technical_load_1000"),
         )
+        self.action_bar.add_secondary_action(
+            "Демо: контроль ПУАЗ",
+            lambda: self._load_demo_profile("puaz_dashboard_control"),
+        )
         self.action_bar.add_secondary_action("Сессии", self.open_sessions)
         self.action_bar.add_secondary_action("Настройки", self.open_settings)
         self.action_bar.add_secondary_action("Светлая", lambda: self._apply_theme("light"))

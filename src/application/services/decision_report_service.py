@@ -286,19 +286,25 @@ class DecisionReportService:
     ) -> dict[str, Any]:
         """Summarize catalog provenance and metric completeness for the report."""
 
-        catalog_components: list[Mapping[str, Any]] = []
-        catalog_components.extend(component for component in components if isinstance(component, Mapping))
+        # Source rows (runtime entities) are authoritative for metric completeness.
+        # Candidate components are derived copies: the optimisation layer may
+        # fill an absent metric with 0.0, which must not hide a missing value.
+        catalog_components: list[tuple[Mapping[str, Any], bool]] = []
+        catalog_components.extend(
+            (component, True) for component in components if isinstance(component, Mapping)
+        )
         for candidate in candidates:
             if not isinstance(candidate, Mapping):
                 continue
             catalog_components.extend(
-                component
+                (component, False)
                 for component in candidate.get("components", []) or []
                 if isinstance(component, Mapping)
             )
 
         rows: dict[str, dict[str, Any]] = {}
-        for index, component in enumerate(catalog_components):
+        source_keys: set[str] = set()
+        for index, (component, is_source) in enumerate(catalog_components):
             metadata = component.get("catalog_metadata")
             if not isinstance(metadata, Mapping):
                 metadata = {}
@@ -311,8 +317,11 @@ class DecisionReportService:
             previous = rows.get(key)
             if previous is None:
                 rows[key] = row
+                if is_source:
+                    source_keys.add(key)
                 continue
-            previous["metrics"].update(row["metrics"])
+            if is_source or key not in source_keys:
+                previous["metrics"].update(row["metrics"])
             previous["metric_warnings"] = self._unique_text(
                 previous["metric_warnings"] + row["metric_warnings"]
             )
@@ -615,7 +624,9 @@ class DecisionReportService:
                 normalized = to_plain_data(candidate)
                 candidate_id = str(normalized.get("id") or normalized.get("name") or len(by_id) + 1)
                 normalized.setdefault("id", candidate_id)
-                by_id[candidate_id] = normalized
+                # GA numbers candidates per analysis scope (GA-1, GA-2, ...), so the
+                # same id may legitimately exist in ПО and ТО: key by scope + id.
+                by_id[f"{self._candidate_scope(normalized)}::{candidate_id}"] = normalized
 
         if not by_id and entities:
             try:
@@ -954,6 +965,16 @@ class DecisionReportService:
         return (
             f"Рекомендуемая альтернатива — {name}. При расхождении методов отчёт показывает лидеров "
             "по каждому методу и причины расхождения, а не скрывает неопределённость."
+        )
+
+    @staticmethod
+    def _candidate_scope(candidate: Mapping[str, Any]) -> str:
+        metadata = candidate.get("metadata") if isinstance(candidate.get("metadata"), Mapping) else {}
+        return str(
+            candidate.get("scope")
+            or metadata.get("analysis_scope")
+            or metadata.get("candidate_pool_scope")
+            or "all"
         )
 
     def _nested_list(self, value: Mapping[str, Any], *path: str) -> list[Mapping[str, Any]]:

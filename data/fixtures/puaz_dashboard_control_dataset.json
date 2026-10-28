@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "scenario_id": "puaz_dashboard_control_v1",
+  "dataset_role": "demonstration_dashboard_control",
+  "description": "Контрольный пример ПУАЗ для интерактивного дашборда DecisionReport: 6 каталожных позиций ТО с разным качеством метрик, 2 вечные лицензии ПО и 2 компонента решения с ежемесячной оплатой (сервисный контракт ТО и облачная подписка ПО).",
+  "reproducibility": {
+    "ga_seed": 42,
+    "ga_pop_size": 24,
+    "ga_generations": 30,
+    "ga_mutation_rate": 0.04,
+    "ga_form_by_scope": {
+      "technical": {
+        "budget": 300000.0,
+        "min_units": 3.0,
+        "max_units": 0.0
+      },
+      "software": {
+        "budget": 60000.0,
+        "min_units": 3.0,
+        "max_units": 0.0
+      }
+    },
+    "ga_form_note": "Поля экрана GA: «Бюджет», «Мин. мест», «Макс. мест» (0 — без верхней границы), «Популяция», «Поколений»; seed и мутация — значения по умолчанию.",
+    "hybrid_lambda": 0.5,
+    "expected_file": "data/fixtures/regression/puaz_dashboard_control_expected.json"
+  },
+  "control_purpose": [
+    "ПО и ТО присутствуют в DecisionReport одновременно, хотя GA нумерует кандидатов GA-1, GA-2 ... в каждой области заново.",
+    "Ранги GA, AHP, Pareto и Hybrid видны у каждой альтернативы и дают проверяемый индекс аналитической поддержки.",
+    "Структура затрат содержит и CAPEX, и OPEX: у части альтернатив есть ежемесячные платежи.",
+    "Блок качества данных непустой: есть полная, неполная, с предупреждением и с ручным уточнением позиция."
+  ],
+  "entities": {
+    "server": [
+      {
+        "name": "К1 Сервер базовый",
+        "quantity": 1,
+        "price": 120000.0,
+        "max_power": 300,
+        "client_seats": 0,
+        "category": "server",
+        "scope": "technical",
+        "component_type": "server",
+        "ram_gb": 32,
+        "cpu_cores": 8,
+        "storage_gb": 1000,
+        "max_power_watts": 300,
+        "origin": "catalog",
+        "catalog_item_id": "ctl-srv-1",
+        "catalog_metadata": {
+          "source": "control-catalog",
+          "source_product_id": "SRV-1"
+        }
+      },
+      {
+        "name": "К2 Сервер расширенный",
+        "quantity": 1,
+        "price": 180000.0,
+        "max_power": 450,
+        "client_seats": 0,
+        "category": "server",
+        "scope": "technical",
+        "component_type": "server",
+        "ram_gb": 64,
+        "cpu_cores": 16,
+        "storage_gb": 2000,
+        "max_power_watts": 450,
+        "origin": "catalog",
+        "catalog_item_id": "ctl-srv-2",
+        "catalog_metadata": {
+          "source": "control-catalog",
+          "source_product_id": "SRV-2",
+          "manual_overrides": {
+            "price": 180000.0
+          }
+        }
+      }
+    ],
+    "client": [
+      {
+        "name": "К3 Рабочее место офисное",
+        "quantity": 1,
+        "price": 45000.0,
+        "max_power": 65,
+        "client_seats": 3,
+        "category": "client",
+        "scope": "technical",
+        "component_type": "workstation",
+        "ram_gb": 8,
+        "cpu_cores": 4,
+        "storage_gb": 256,
+        "max_power_watts": 65,
+        "origin": "catalog",
+        "catalog_item_id": "ctl-ws-1",
+        "catalog_metadata": {
+          "source": "control-catalog",
+          "source_product_id": "WS-1"
+        }
+      },
+      {
+        "name": "К4 Рабочее место производительное",
+        "quantity": 1,
+        "price": 70000.0,
+        "max_power": 120,
+        "client_seats": 3,
+        "category": "client",
+        "scope": "technical",
+        "component_type": "workstation",
+        "ram_gb": 16,
+        "cpu_cores": 8,
+        "max_power_watts": 120,
+        "origin": "catalog",
+        "catalog_item_id": "ctl-ws-2",
+        "metric_warnings": [
+          "compute metric storage_gb is missing"
+        ],
+        "catalog_metadata": {
+          "source": "control-catalog",
+          "source_product_id": "WS-2"
+        }
+      }
+    ],
+    "network": [
+      {
+        "name": "К5 Маршрутизатор",
+        "quantity": 1,
+        "price": 15000.0,
+        "max_power": 15,
+        "client_seats": 0,
+        "category": "network",
+        "scope": "technical",
+        "component_type": "network_device",
+        "lan_ports": 5,
+        "lan_speed_mbps": 1000,
+        "wifi_total_mbps": 0,
+        "ipv6_support": true,
+        "max_power_watts": 15,
+        "origin": "catalog",
+        "catalog_item_id": "ctl-net-1",
+        "catalog_metadata": {
+          "source": "control-catalog",
+          "source_product_id": "NET-1"
+        }
+      },
+      {
+        "name": "К6 Маршрутизатор Wi-Fi",
+        "quantity": 1,
+        "price": 25000.0,
+        "max_power": 20,
+        "client_seats": 0,
+        "category": "network",
+        "scope": "technical",
+        "component_type": "network_device",
+        "lan_ports": 4,
+        "lan_speed_mbps": 1000,
+        "wifi_total_mbps": 1200,
+        "ipv6_support": true,
+        "max_power_watts": 20,
+        "origin": "catalog",
+        "catalog_item_id": "ctl-net-2",
+        "catalog_metadata": {
+          "source": "control-catalog",
+          "source_product_id": "NET-2",
+          "parser_metadata": {
+            "parse_warnings": [
+              "wifi standard parsed from title"
+            ]
+          }
+        }
+      }
+    ],
+    "licenses": [
+      {
+        "name": "П1 ОС рабочих мест",
+        "quantity": 1,
+        "price": 20000.0,
+        "license_units": 3,
+        "functionality_score": 3,
+        "support_score": 3,
+        "max_power": 0.0,
+        "client_seats": 0,
+        "category": "licenses",
+        "scope": "software",
+        "component_type": "software_license"
+      },
+      {
+        "name": "П2 Офисный пакет",
+        "quantity": 1,
+        "price": 30000.0,
+        "license_units": 3,
+        "functionality_score": 4,
+        "support_score": 3,
+        "max_power": 0.0,
+        "client_seats": 0,
+        "category": "licenses",
+        "scope": "software",
+        "component_type": "software_license"
+      }
+    ],
+    "subscription_licenses": [],
+    "server_rental": [],
+    "migration": [],
+    "testing": [],
+    "backup": [],
+    "labor_costs": [],
+    "server_administration": [],
+    "solution_components": [
+      {
+        "schema_version": 1,
+        "id": "ctl-tech-contract-server",
+        "name": "К7 Сервер с сервисным контрактом",
+        "scope": "technical",
+        "component_type": "server",
+        "origin": "demo",
+        "strict_analysis_participation": true,
+        "purchase_cost": 140000.0,
+        "quantity": 1,
+        "metrics": {
+          "source_category": "server",
+          "max_power": 350.0,
+          "client_seats": 0,
+          "performance_score": 0.8,
+          "reliability_score": 0.9,
+          "hours_per_day": 12.0,
+          "working_days": 22.0,
+          "ram_gb": 48,
+          "cpu_cores": 12,
+          "storage_gb": 1500,
+          "max_power_watts": 350.0
+        },
+        "cost_assumptions": [
+          "Сервер закупается с годовым сервисным контрактом, который оплачивается ежемесячно."
+        ],
+        "monthly_cost": 3000.0
+      },
+      {
+        "schema_version": 1,
+        "id": "ctl-soft-cloud-office",
+        "name": "П3 Облачный офис (подписка)",
+        "scope": "software",
+        "component_type": "software_subscription",
+        "origin": "demo",
+        "strict_analysis_participation": true,
+        "monthly_cost": 2000.0,
+        "metrics": {
+          "source_category": "subscription_licenses",
+          "license_units": 3,
+          "functionality_score": 0.9,
+          "support_score": 0.85
+        },
+        "cost_assumptions": [
+          "Подписка на 3 пользователей без разовой закупки лицензий."
+        ]
+      }
+    ]
+  }
+}

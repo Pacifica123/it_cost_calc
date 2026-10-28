@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "scenario_id": "puaz_dashboard_control_v1",
+  "expected": {
+    "recommended": {
+      "id": "GA-1",
+      "name": "GA-кандидат 1",
+      "method": "Hybrid / software"
+    },
+    "kpis": {
+      "all": {
+        "alternatives": 13,
+        "tco_min": 20000.0,
+        "tco_max": 290000.0,
+        "average_support": 50.0
+      },
+      "technical": {
+        "alternatives": 8,
+        "tco_min": 240000.0,
+        "tco_max": 290000.0,
+        "average_support": 50.0
+      },
+      "software": {
+        "alternatives": 5,
+        "tco_min": 20000.0,
+        "tco_max": 54000.0,
+        "average_support": 50.0
+      }
+    },
+    "catalog_quality": {
+      "total": 6,
+      "complete": 5,
+      "incomplete": 1,
+      "with_warnings": 2,
+      "with_manual_overrides": 1
+    },
+    "candidates": {
+      "software::GA-1": {
+        "name": "GA-кандидат 1",
+        "scope": "software",
+        "recommended": true,
+        "capex": 30000.0,
+        "annual_opex": 0.0,
+        "tco": 30000.0,
+        "analysis_support": 100.0,
+        "ranks": {
+          "AHP": "1/5",
+          "GA": "1/5",
+          "Hybrid": "1/5",
+          "Pareto": "1/5"
+        }
+      },
+      "software::GA-2": {
+        "name": "GA-кандидат 2",
+        "scope": "software",
+        "recommended": false,
+        "capex": 50000.0,
+        "annual_opex": 0.0,
+        "tco": 50000.0,
+        "analysis_support": 75.0,
+        "ranks": {
+          "AHP": "2/5",
+          "GA": "2/5",
+          "Hybrid": "2/5",
+          "Pareto": "2/5"
+        }
+      },
+      "software::GA-3": {
+        "name": "GA-кандидат 3",
+        "scope": "software",
+        "recommended": false,
+        "capex": 20000.0,
+        "annual_opex": 0.0,
+        "tco": 20000.0,
+        "analysis_support": 50.0,
+        "ranks": {
+          "AHP": "3/5",
+          "GA": "3/5",
+          "Hybrid": "3/5",
+          "Pareto": "3/5"
+        }
+      },
+      "software::GA-4": {
+        "name": "GA-кандидат 4",
+        "scope": "software",
+        "recommended": false,
+        "capex": 30000.0,
+        "annual_opex": 24000.0,
+        "tco": 54000.0,
+        "analysis_support": 25.0,
+        "ranks": {
+          "AHP": "4/5",
+          "GA": "4/5",
+          "Hybrid": "4/5",
+          "Pareto": "4/5"
+        }
+      },
+      "software::GA-5": {
+        "name": "GA-кандидат 5",
+        "scope": "software",
+        "recommended": false,
+        "capex": 20000.0,
+        "annual_opex": 24000.0,
+        "tco": 44000.0,
+        "analysis_support": 0.0,
+        "ranks": {
+          "AHP": "5/5",
+          "GA": "5/5",
+          "Hybrid": "5/5",
+          "Pareto": "5/5"
+        }
+      },
+      "technical::GA-1": {
+        "name": "GA-кандидат 1",
+        "scope": "technical",
+        "recommended": false,
+        "capex": 290000.0,
+        "annual_opex": 0.0,
+        "tco": 290000.0,
+        "analysis_support": 100.0,
+        "ranks": {
+          "AHP": "1/8",
+          "GA": "1/8",
+          "Hybrid": "1/8",
+          "Pareto": "1/8"
+        }
+      },
+      "technical::GA-2": {
+        "name": "GA-кандидат 2",
+        "scope": "technical",
+        "recommended": false,
+        "capex": 265000.0,
+        "annual_opex": 0.0,
+        "tco": 265000.0,
+        "analysis_support": 85.71,
+        "ranks": {
+          "AHP": "2/8",
+          "GA": "2/8",
+          "Hybrid": "2/8",
+          "Pareto": "2/8"
+        }
+      },
+      "technical::GA-3": {
+        "name": "GA-кандидат 3",
+        "scope": "technical",
+        "recommended": false,
+        "capex": 275000.0,
+        "annual_opex": 0.0,
+        "tco": 275000.0,
+        "analysis_support": 71.43,
+        "ranks": {
+          "AHP": "3/8",
+          "GA": "3/8",
+          "Hybrid": "3/8",
+          "Pareto": "3/8"
+        }
+      },
+      "technical::GA-4": {
+        "name": "GA-кандидат 4",
+        "scope": "technical",
+        "recommended": false,
+        "capex": 265000.0,
+        "annual_opex": 0.0,
+        "tco": 265000.0,
+        "analysis_support": 46.43,
+        "ranks": {
+          "AHP": "4/8",
+          "GA": "4/8",
+          "Hybrid": "4/8",
+          "Pareto": "7/8"
+        }
+      },
+      "technical::GA-5": {
+        "name": "GA-кандидат 5",
+        "scope": "technical",
+        "recommended": false,
+        "capex": 250000.0,
+        "annual_opex": 0.0,
+        "tco": 250000.0,
+        "analysis_support": 46.43,
+        "ranks": {
+          "AHP": "5/8",
+          "GA": "5/8",
+          "Hybrid": "5/8",
+          "Pareto": "4/8"
+        }
+      },
+      "technical::GA-6": {
+        "name": "GA-кандидат 6",
+        "scope": "technical",
+        "recommended": false,
+        "capex": 250000.0,
+        "annual_opex": 36000.0,
+        "tco": 286000.0,
+        "analysis_support": 25.0,
+        "ranks": {
+          "AHP": "7/8",
+          "GA": "6/8",
+          "Hybrid": "7/8",
+          "Pareto": "5/8"
+        }
+      },
+      "technical::GA-7": {
+        "name": "GA-кандидат 7",
+        "scope": "technical",
+        "recommended": false,
+        "capex": 240000.0,
+        "annual_opex": 0.0,
+        "tco": 240000.0,
+        "analysis_support": 17.86,
+        "ranks": {
+          "AHP": "6/8",
+          "GA": "7/8",
+          "Hybrid": "6/8",
+          "Pareto": "8/8"
+        }
+      },
+      "technical::GA-8": {
+        "name": "GA-кандидат 8",
+        "scope": "technical",
+        "recommended": false,
+        "capex": 225000.0,
+        "annual_opex": 36000.0,
+        "tco": 261000.0,
+        "analysis_support": 7.14,
+        "ranks": {
+          "AHP": "8/8",
+          "GA": "8/8",
+          "Hybrid": "8/8",
+          "Pareto": "6/8"
+        }
+      }
+    }
+  }
+}

@@ -348,9 +348,15 @@ class TCOModelService:
         *,
         category: str,
     ) -> float:
-        explicit = self._number(payload.get("purchase_cost"), default=0.0)
-        if explicit:
-            return explicit
+        # An explicit purchase_cost of 0.0 is meaningful (pure subscription): it must
+        # not fall back to total_cost, which for solution components already
+        # contains the first-year recurring payments and would double-count OPEX.
+        raw = payload.get("purchase_cost")
+        if raw not in (None, ""):
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                pass
         return self._purchase_cost(payload, category=category)
 
     def _purchase_cost(self, payload: Mapping[str, Any], *, category: str) -> float:

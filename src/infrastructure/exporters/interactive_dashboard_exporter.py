@@ -49,7 +49,11 @@ def build_interactive_dashboard_payload(report: Mapping[str, Any]) -> dict[str, 
                 "source": str(candidate.get("source") or metadata.get("candidate_pool_method") or "—"),
                 "candidate_pool_source": str(metadata.get("candidate_pool_source") or "—"),
                 "recommended": is_recommended,
+                # totals.capital_cost is the analytics cost of the first year and may
+                # already include recurring OPEX; the TCO model keeps the pure CAPEX.
                 "capex": _first_number(
+                    tco.get("total_capex"),
+                    totals.get("initial_investment"),
                     totals.get("capital_cost"),
                     totals.get("capex"),
                     totals.get("initial_investment"),
@@ -189,7 +193,9 @@ def _ranking_rows(key: str, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
             for index, item in enumerate(nondominated, start=1)
         ]
     if key == "genetic_optimization":
-        for field in ("candidate_solutions", "candidate_configurations", "ranking"):
+        # candidate_configurations carry the same ids as the AHP/Pareto/Hybrid
+        # rankings; raw candidate_solutions have no id and cannot be matched.
+        for field in ("candidate_configurations", "ranking", "candidate_solutions"):
             rows = _normalize_ranking(payload.get(field))
             if rows:
                 for index, row in enumerate(rows, start=1):

@@ -20,6 +20,12 @@
       "title": "Нагрузочный ТО 1000",
       "description": "Большой синтетический набор для проверки скорости: 1000 технических устройств в server/client/network.",
       "path": "data/fixtures/demo_technical_load_1000_dataset.json"
+    },
+    {
+      "id": "puaz_dashboard_control",
+      "title": "Контрольный пример ПУАЗ (дашборд)",
+      "description": "Набор для проверки интерактивного дашборда: ПО и ТО, ранги четырёх методов, CAPEX и OPEX, качество каталожных данных.",
+      "path": "data/fixtures/puaz_dashboard_control_dataset.json"
     }
   ]
 }
