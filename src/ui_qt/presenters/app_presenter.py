@@ -1536,6 +1536,19 @@ class QtAppPresenter:
         implementation = ImplementationPresenter(self)
         implementation_view = implementation.build(planning.components, values, implementation.saved_settings())
         sections.extend(implementation.report_sections(implementation_view))
+        from ui_qt.presenters.rooms_presenter import RoomsPresenter, RoomsSettings
+
+        rooms = RoomsPresenter(self)
+        room_settings = rooms.saved_settings()
+        if not room_settings.custom:
+            room_settings = RoomsSettings(
+                tuple(rooms.default_rooms(planning.components)),
+                room_settings.ups_minutes,
+                room_settings.ups_for_workstations,
+                room_settings.tariff_per_kwh,
+            )
+        if room_settings.rooms:
+            sections.append(("Инфраструктура помещений", rooms.report_section(rooms.build(room_settings))))
         return sections
 
     def open_generated_reports_folder(self) -> Path:

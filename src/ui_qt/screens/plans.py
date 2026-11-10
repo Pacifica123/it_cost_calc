@@ -9,6 +9,7 @@ from ui_qt.presenters.implementation_presenter import (
     ImplementationPresenter,
     ImplementationSettings,
 )
+from ui_qt.presenters.rooms_presenter import ROOM_COLUMNS, RoomsPresenter, RoomsSettings, room_from_mapping
 from ui_qt.presenters.licenses_presenter import LicenseSettings, LicensesPresenter, parse_date, ru_date
 from ui_qt.presenters.financing_presenter import FINANCING_FIELDS, FinancingPresenter, FinancingSettings
 from ui_qt.presenters.planning_presenter import PlanningInput, PlanningPresenter
@@ -26,7 +27,10 @@ try:
         QLineEdit,
         QPushButton,
         QScrollArea,
+        QCheckBox,
         QTableView,
+        QTableWidget,
+        QTableWidgetItem,
         QTabWidget,
         QVBoxLayout,
         QWidget,
@@ -37,6 +41,7 @@ except ModuleNotFoundError as exc:
     QTimer = None  # type: ignore[assignment]
     QFrame = QGridLayout = QHBoxLayout = QHeaderView = QLabel = QLineEdit = None  # type: ignore[assignment]
     QPushButton = QScrollArea = QTableView = QTabWidget = QVBoxLayout = None  # type: ignore[assignment]
+    QCheckBox = QTableWidget = QTableWidgetItem = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
 
 
@@ -57,7 +62,7 @@ PLAN_FIELDS: tuple[tuple[str, str, str], ...] = (
 
 
 class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
-    """«Планы»: TCO по годам, амортизация, замена, финансирование, лицензии, внедрение, риски и сценарии."""
+    """«Планы»: TCO по годам, амортизация, замена, финансирование, лицензии, внедрение, риски, помещения."""
 
     def __init__(self, app_presenter: QtAppPresenter | None = None, parent: QWidget | None = None) -> None:  # type: ignore[valid-type]
         if QLineEdit is None:
@@ -74,6 +79,17 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self.staff_model = RowTableModel(columns=("name", "value"), headers={"name": "Показатель", "value": "Значение"})
         self.licenses_presenter = LicensesPresenter(self.presenter.app_presenter)
         self.implementation_presenter = ImplementationPresenter(self.presenter.app_presenter)
+        self.rooms_presenter = RoomsPresenter(self.presenter.app_presenter)
+        self._rooms_custom = False
+        self._filling_rooms = False
+        self.room_result_model = RowTableModel(
+            columns=("name", "area", "lan", "climate", "light", "total"),
+            headers={"name": "Помещение", "area": "Площадь", "lan": "Линии / кабель", "climate": "Охлаждение", "light": "Освещение", "total": "Сумма"},
+        )
+        self.room_lines_model = RowTableModel(
+            columns=("group", "name", "quantity", "price", "total"),
+            headers={"group": "Раздел", "name": "Позиция", "quantity": "Кол-во", "price": "Цена", "total": "Сумма"},
+        )
         self.duration_inputs: dict[str, QLineEdit] = {}  # type: ignore[valid-type]
         self.shift_inputs: dict[str, QLineEdit] = {}  # type: ignore[valid-type]
         self.schedule_model = RowTableModel(
@@ -163,6 +179,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self.tabs.addTab(self._build_licenses_tab(), "Лицензии")
         self.tabs.addTab(self._build_implementation_tab(), "Внедрение")
         self.tabs.addTab(self._build_risks_tab(), "Риски и сценарии")
+        self.tabs.addTab(self._build_rooms_tab(), "Помещения")
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
         header = QFrame(self)
@@ -465,6 +482,155 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self.scenario_model.replace_rows(self.implementation_presenter.scenario_rows(view))
         self.scenario_note.setText(self.implementation_presenter.scenario_text(view))
 
+    def _build_rooms_tab(self) -> QWidget:  # type: ignore[valid-type]
+        page, layout = self._tab_page()
+        layout.addWidget(CompactLabel("Помещения (ячейки редактируются; «Окна» и «Серверная» — да/нет)", page))
+        self.rooms_table = QTableWidget(0, len(ROOM_COLUMNS), page)
+        self.rooms_table.setHorizontalHeaderLabels([title for _key, title in ROOM_COLUMNS])
+        self.rooms_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.rooms_table.verticalHeader().setVisible(False)
+        self.rooms_table.setMinimumHeight(150)
+        self.rooms_table.itemChanged.connect(self._room_cell_changed)
+        layout.addWidget(self.rooms_table)
+        row = QHBoxLayout()
+        for text, callback, tooltip in (
+            ("Добавить", self.add_room, "Новое помещение 5 × 4 м."),
+            ("Удалить", self.remove_room, "Удалить выбранное помещение."),
+            ("По выбору", self.reset_rooms, "Офис и серверная по составу итоговой конфигурации."),
+        ):
+            button = QPushButton(text, page)
+            button.setToolTip(tooltip)
+            button.clicked.connect(callback)
+            row.addWidget(button, 0)
+        row.addStretch(1)
+        row.addWidget(CompactLabel("ИБП, мин", page), 0)
+        self.ups_minutes_input = QLineEdit(page)
+        self.ups_minutes_input.setMaximumWidth(70)
+        row.addWidget(self.ups_minutes_input, 0)
+        self.ups_workstations_check = QCheckBox("ИБП и для ПК", page)
+        self.ups_workstations_check.toggled.connect(lambda _checked: self._recalc_timer.start() if hasattr(self, "_recalc_timer") else None)
+        row.addWidget(self.ups_workstations_check, 0)
+        row.addWidget(CompactLabel("Тариф, ₽/кВт·ч", page), 0)
+        self.rooms_tariff_input = QLineEdit(page)
+        self.rooms_tariff_input.setMaximumWidth(70)
+        row.addWidget(self.rooms_tariff_input, 0)
+        layout.addLayout(row)
+        self.rooms_note = self._note(page)
+        layout.addWidget(self.rooms_note)
+        self.rooms_chart = AnalysisChart(page)
+        layout.addWidget(self.rooms_chart)
+        self.room_result_table = self._table(self.room_result_model, page, 130)
+        layout.addWidget(self.room_result_table)
+        self.room_lines_table = self._table(self.room_lines_model, page, 380)
+        header = self.room_lines_table.horizontalHeader()
+        for column in (0, 2, 3, 4):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.room_lines_table)
+        layout.addStretch(1)
+        return page
+
+    def _fill_rooms_table(self, rooms) -> None:
+        self._filling_rooms = True
+        try:
+            self.rooms_table.setRowCount(0)
+            for room in rooms:
+                self._append_room_row(room)
+        finally:
+            self._filling_rooms = False
+
+    def _append_room_row(self, room) -> None:
+        index = self.rooms_table.rowCount()
+        self.rooms_table.insertRow(index)
+        for column, (key, _title) in enumerate(ROOM_COLUMNS):
+            value = getattr(room, key)
+            if isinstance(value, bool):
+                text = "да" if value else "нет"
+            elif isinstance(value, float):
+                text = f"{value:g}"
+            else:
+                text = str(value)
+            self.rooms_table.setItem(index, column, QTableWidgetItem(text))
+
+    def read_rooms(self) -> list:
+        rooms = []
+        for row in range(self.rooms_table.rowCount()):
+            payload = {}
+            for column, (key, _title) in enumerate(ROOM_COLUMNS):
+                item = self.rooms_table.item(row, column)
+                payload[key] = item.text() if item is not None else ""
+            room = room_from_mapping(payload)
+            if room is not None:
+                rooms.append(room)
+        return rooms
+
+    def _room_cell_changed(self, _item) -> None:
+        if self._filling_rooms:
+            return
+        self._rooms_custom = True
+        if hasattr(self, "_recalc_timer"):
+            self._recalc_timer.start()
+
+    def add_room(self) -> None:
+        from domain.planning.rooms import Room
+
+        self._filling_rooms = True
+        try:
+            self._append_room_row(Room(f"Помещение {self.rooms_table.rowCount() + 1}", 5, 4, workstations=4))
+        finally:
+            self._filling_rooms = False
+        self._rooms_custom = True
+        self.calculate()
+
+    def remove_room(self) -> None:
+        row = self.rooms_table.currentRow()
+        if row < 0:
+            row = self.rooms_table.rowCount() - 1
+        if row >= 0:
+            self.rooms_table.removeRow(row)
+            self._rooms_custom = True
+            self.calculate()
+
+    def reset_rooms(self) -> None:
+        self._rooms_custom = False
+        self._fill_rooms_table(self.rooms_presenter.default_rooms(self.presenter.components))
+        self.calculate()
+
+    def read_rooms_settings(self) -> RoomsSettings:
+        return RoomsSettings.from_mapping(
+            {
+                "rooms": [],
+                "ups_minutes": self.ups_minutes_input.text().replace(",", ".") or 15,
+                "ups_for_workstations": self.ups_workstations_check.isChecked(),
+                "tariff_per_kwh": self.rooms_tariff_input.text().replace(",", ".") or 8,
+                "custom": self._rooms_custom,
+            }
+        )
+
+    def _apply_rooms_settings(self, settings: RoomsSettings) -> None:
+        self._rooms_custom = settings.custom
+        rooms = settings.rooms if settings.custom else self.rooms_presenter.default_rooms(self.presenter.components)
+        self._fill_rooms_table(rooms)
+        self.ups_minutes_input.setText(f"{settings.ups_minutes:g}")
+        self.ups_workstations_check.blockSignals(True)
+        self.ups_workstations_check.setChecked(settings.ups_for_workstations)
+        self.ups_workstations_check.blockSignals(False)
+        self.rooms_tariff_input.setText(f"{settings.tariff_per_kwh:g}")
+
+    def _sync_rooms(self, save: bool) -> None:
+        base = self.read_rooms_settings()
+        settings = RoomsSettings(tuple(self.read_rooms()), base.ups_minutes, base.ups_for_workstations, base.tariff_per_kwh, self._rooms_custom)
+        if save:
+            self.rooms_presenter.save_settings(settings)
+        result = self.rooms_presenter.build(settings)
+        self.last_rooms = result
+        self.room_result_model.replace_rows(self.rooms_presenter.room_rows(result))
+        self.room_lines_model.replace_rows(self.rooms_presenter.line_rows(result))
+        self.rooms_note.setText(self.rooms_presenter.summary(result))
+        if result.by_group:
+            self.rooms_chart.show_stacked_bars(list(result.by_group), [("Сумма", list(result.by_group.values()))], "Инфраструктура помещений по разделам")
+        else:
+            self.rooms_chart.show_empty("Нет помещений")
+
     def read_license_settings(self) -> LicenseSettings:
         start = parse_date(self.license_start_input.text())
         payload = {"start": start.isoformat() if start else "", "remind_days": self.license_remind_input.text() or 14}
@@ -575,6 +741,8 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
             self.license_remind_input,
             self.implementation_start_input,
             self.budget_input,
+            self.ups_minutes_input,
+            self.rooms_tariff_input,
         ]:
             line.textEdited.connect(lambda _text: self._recalc_timer.start())
 
@@ -589,6 +757,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self.license_start_input.setText(ru_date(license_settings.start))
         self.license_remind_input.setText(str(license_settings.remind_days))
         self._apply_implementation_settings(self.implementation_presenter.saved_settings())
+        self._apply_rooms_settings(self.rooms_presenter.saved_settings())
         self.calculate(save=False)
 
     def load_from_selection(self) -> None:
@@ -621,6 +790,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self._sync_financing(values, save)
         self._sync_licenses(values, save)
         self._sync_implementation(values, save)
+        self._sync_rooms(save)
         self._sync_extra_tabs(values)
         self.status_label.setText("Рассчитано" if values.one_time or values.opex_annual or values.electricity_annual else "Нет данных")
 
