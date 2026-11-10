@@ -9,12 +9,15 @@ from ui_qt.presenters.npv_presenter import (
 )
 from ui_qt.widgets import CollapsibleSection, CompactLabel, EmptyState, InfoHint
 from ui_qt.widgets.npv_chart import NpvChart
+from ui_qt.widgets.analysis_chart import AnalysisChart
+from ui_qt.presenters.npv_risk_presenter import NpvRiskPresenter, RiskSettings
 
 try:
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QDoubleValidator, QIntValidator
     from PySide6.QtWidgets import (
         QFrame,
+        QLabel,
         QGridLayout,
         QHBoxLayout,
         QHeaderView,
@@ -31,6 +34,7 @@ except ModuleNotFoundError as exc:
         raise
     Qt = QTimer = None  # type: ignore[assignment]
     QDoubleValidator = QIntValidator = None  # type: ignore[assignment]
+    QLabel = None  # type: ignore[assignment]
     QFrame = QGridLayout = QHBoxLayout = QHeaderView = QLineEdit = QPushButton = None  # type: ignore[assignment]
     QScrollArea = QStackedLayout = QTableView = QVBoxLayout = None  # type: ignore[assignment]
     QWidget = object  # type: ignore[assignment,misc]
@@ -54,6 +58,23 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self.cash_flow_model = RowTableModel(columns=self._columns(), headers=self._headers())
         self.basis_model = RowTableModel(columns=("name", "value"), headers={"name": "Источник", "value": "Сумма"})
         self._summary_labels: dict[str, CompactLabel] = {}
+        self.risk_presenter = NpvRiskPresenter()
+        self.metrics_model = RowTableModel(
+            columns=("name", "value", "note"),
+            headers={"name": "Показатель", "value": "Значение", "note": "Вывод"},
+        )
+        self.monte_carlo_model = RowTableModel(columns=("name", "value"), headers={"name": "Показатель", "value": "Значение"})
+        self.tornado_model = RowTableModel(
+            columns=("factor", "low", "high", "range", "break_even"),
+            headers={
+                "factor": "Фактор",
+                "low": "Пессимистично",
+                "high": "Оптимистично",
+                "range": "Размах",
+                "break_even": "Точка безубыточности",
+            },
+        )
+        self.last_risk_view = None
         self._build_ui()
         self._setup_auto_recalculation()
         self._load_defaults()
@@ -169,6 +190,8 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         layout.addWidget(self._build_chart_section(), 0)
+        layout.addWidget(self._build_profitability_section(), 0)
+        layout.addWidget(self._build_risk_section(), 0)
         layout.addWidget(self._build_cash_flow_section(), 0)
         layout.addWidget(self._build_basis_section(), 0)
         layout.addWidget(self._build_table_section(), 0)
@@ -189,6 +212,122 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
             tooltip="Показывает накопленный NPV и точку окупаемости.",
             expanded=True,
         )
+
+    def _table(self, model: RowTableModel, parent: QWidget, height: int) -> QTableView:  # type: ignore[valid-type]
+        table = QTableView(parent)
+        table.setModel(model)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.setMinimumHeight(height)
+        return table
+
+    def _build_profitability_section(self) -> CollapsibleSection:
+        content = QFrame(self)
+        content.setObjectName("card")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.metrics_table = self._table(self.metrics_model, content, 190)
+        layout.addWidget(self.metrics_table)
+        return CollapsibleSection(
+            "Доходность",
+            content,
+            self,
+            tooltip="IRR, индекс доходности PI, простой и дисконтированный сроки окупаемости.",
+            expanded=True,
+        )
+
+    def _build_risk_section(self) -> CollapsibleSection:
+        content = QFrame(self)
+        content.setObjectName("card")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(8)
+
+        spreads = QGridLayout()
+        spreads.setHorizontalSpacing(10)
+        self.investment_spread_input = self._line("10")
+        self.cash_flow_spread_input = self._line("20")
+        self.rate_spread_input = self._line("2")
+        self._add_field(spreads, "± вложения, %", self.investment_spread_input, 0, 0)
+        self._add_field(spreads, "± потоки, %", self.cash_flow_spread_input, 0, 2)
+        self._add_field(spreads, "± ставка, п. п.", self.rate_spread_input, 0, 4)
+        for column in (1, 3, 5):
+            spreads.setColumnStretch(column, 1)
+        layout.addLayout(spreads)
+
+        self.risk_verdict_label = QLabel("Нет расчёта", content)
+        self.risk_verdict_label.setWordWrap(True)
+        layout.addWidget(self.risk_verdict_label)
+
+        self.tornado_chart = AnalysisChart(content)
+        layout.addWidget(self.tornado_chart)
+        self.tornado_table = self._table(self.tornado_model, content, 190)
+        header = self.tornado_table.horizontalHeader()
+        for column in range(4):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.tornado_table.setWordWrap(True)
+        self.tornado_table.resizeRowsToContents()
+        layout.addWidget(self.tornado_table)
+        self.histogram_chart = AnalysisChart(content)
+        layout.addWidget(self.histogram_chart)
+        self.monte_carlo_table = self._table(self.monte_carlo_model, content, 280)
+        layout.addWidget(self.monte_carlo_table)
+        return CollapsibleSection(
+            "Риск: торнадо и Монте-Карло",
+            content,
+            self,
+            tooltip=(
+                "Торнадо показывает, какой фактор сильнее всего двигает NPV. "
+                "Монте-Карло 2000 раз случайно меняет вложения, потоки и ставку в заданных пределах."
+            ),
+            expanded=False,
+        )
+
+    def risk_settings(self) -> RiskSettings:
+        return RiskSettings(
+            investment_spread=max(self._float_value(self.investment_spread_input.text(), default=10.0), 0.0) / 100,
+            cash_flow_spread=max(self._float_value(self.cash_flow_spread_input.text(), default=20.0), 0.0) / 100,
+            rate_spread=max(self._float_value(self.rate_spread_input.text(), default=2.0), 0.0) / 100,
+        )
+
+    def _sync_risk(self, values: NpvInput | None) -> None:
+        if values is None:
+            self.last_risk_view = None
+            for model in (self.metrics_model, self.monte_carlo_model, self.tornado_model):
+                model.replace_rows([])
+            self.risk_verdict_label.setText("Нет расчёта")
+            self.tornado_chart.show_empty()
+            self.histogram_chart.show_empty()
+            return
+        view = self.risk_presenter.build(values.investment, values.cash_flows, values.discount_rate, self.risk_settings())
+        self.last_risk_view = view
+        self.metrics_model.replace_rows(self.risk_presenter.metric_rows(view, values.discount_rate))
+        self.monte_carlo_model.replace_rows(self.risk_presenter.monte_carlo_rows(view))
+        self.tornado_model.replace_rows(self.risk_presenter.tornado_rows(view))
+        self.tornado_table.resizeRowsToContents()
+        self.risk_verdict_label.setText(self.risk_presenter.verdict(view))
+        if view.tornado is not None:
+            bars = view.tornado.bars
+            self.tornado_chart.show_tornado(
+                [bar.label for bar in bars],
+                [bar.low for bar in bars],
+                [bar.high for bar in bars],
+                view.tornado.base_npv,
+                "Торнадо: влияние факторов на NPV",
+            )
+        else:
+            self.tornado_chart.show_empty()
+        if view.monte_carlo is not None:
+            bins = view.monte_carlo.bins
+            self.histogram_chart.show_histogram(
+                [item.low for item in bins],
+                [item.high for item in bins],
+                [item.count for item in bins],
+                "Монте-Карло: распределение NPV",
+            )
+        else:
+            self.histogram_chart.show_empty()
 
     def _build_cash_flow_section(self) -> CollapsibleSection:
         content = QFrame(self)
@@ -299,6 +438,8 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self.rate_input.textEdited.connect(self._schedule_recalculation)
         self.horizon_input.textEdited.connect(self._schedule_generated_flow_recalculation)
         self.effect_input.textEdited.connect(self._schedule_generated_flow_recalculation)
+        for spread_input in (self.investment_spread_input, self.cash_flow_spread_input, self.rate_spread_input):
+            spread_input.textEdited.connect(self._schedule_recalculation)
 
     def _mark_manual_financial_input(self, _text: str) -> None:
         self.presenter.clear_basis()
@@ -376,10 +517,12 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
             self.cash_flow_model.replace_rows(self.presenter.table_rows(report))
             self._sync_summary(report)
             self._sync_chart(report)
+            self._sync_risk(self._read_input())
             self.status_label.setText("Восстановлено")
         else:
             self._sync_summary()
             self._sync_chart()
+            self._sync_risk(None)
         self._sync_detail_state()
 
     def load_from_costs(self) -> None:
@@ -417,6 +560,7 @@ class NpvScreen(QWidget):  # type: ignore[misc,valid-type]
         self._sync_detail_state()
         self._sync_summary(report)
         self._sync_chart(report)
+        self._sync_risk(values)
         warnings = self.presenter.warnings(report)
         self.status_label.setText("Есть риски" if warnings else "Рассчитано")
         if warnings:
