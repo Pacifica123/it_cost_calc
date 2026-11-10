@@ -128,6 +128,55 @@ class AnalysisChart(QWidget):
             self._axis.legend(fontsize=7, frameon=False, labelcolor=tokens.text_muted)
         self._finish("lines")
 
+    def show_gantt(self, labels: Sequence[str], starts: Sequence[float], durations: Sequence[float], critical: Sequence[bool], title: str) -> None:
+        if not labels:
+            self.show_empty()
+            return
+        if not self._begin():
+            return
+        tokens = self._tokens()
+        positions = list(range(len(labels)))[::-1]
+        for position, start, duration, is_critical in zip(positions, starts, durations, critical):
+            self._axis.barh(position, duration, left=start, height=0.55, color=tokens.danger if is_critical else tokens.accent, alpha=0.85)
+        self._axis.set_yticks(positions)
+        self._axis.set_yticklabels(list(labels), fontsize=8)
+        self._axis.set_xlabel("Рабочие дни (красным — критический путь)", color=tokens.text_muted, fontsize=9)
+        self._axis.set_title(title, color=tokens.text, fontsize=10, pad=8)
+        self._finish("gantt")
+
+    def show_matrix(self, matrix: Sequence[Sequence[int]], title: str) -> None:
+        """Risk matrix 5 × 5: rows = impact 5..1, columns = probability 1..5."""
+        if not self._begin():
+            return
+        tokens = self._tokens()
+        size = len(matrix)
+        for row_index, row in enumerate(matrix):
+            impact = size - row_index
+            for column_index, count in enumerate(row):
+                probability = column_index + 1
+                score = probability * impact
+                color = tokens.danger if score >= 10 else (tokens.text_muted if score >= 5 else tokens.accent)
+                alpha = 0.75 if score >= 16 else 0.45 if score >= 10 else 0.3
+                self._axis.add_patch(self._rectangle((column_index, size - 1 - row_index), color, alpha))
+                if count:
+                    self._axis.text(column_index + 0.5, size - 1 - row_index + 0.5, str(count), ha="center", va="center", color=tokens.text, fontsize=10, fontweight="bold")
+        self._axis.set_xlim(0, size)
+        self._axis.set_ylim(0, size)
+        self._axis.set_xticks([index + 0.5 for index in range(size)])
+        self._axis.set_xticklabels([str(index + 1) for index in range(size)])
+        self._axis.set_yticks([index + 0.5 for index in range(size)])
+        self._axis.set_yticklabels([str(index + 1) for index in range(size)])
+        self._axis.set_xlabel("Вероятность", color=tokens.text_muted, fontsize=9)
+        self._axis.set_ylabel("Влияние", color=tokens.text_muted, fontsize=9)
+        self._axis.set_title(title, color=tokens.text, fontsize=10, pad=8)
+        self._finish("matrix")
+
+    @staticmethod
+    def _rectangle(xy: tuple[float, float], color: str, alpha: float):
+        from matplotlib.patches import Rectangle
+
+        return Rectangle(xy, 1, 1, facecolor=color, alpha=alpha, edgecolor="white", linewidth=1.5)
+
     # --- helpers --------------------------------------------------------------------------------
 
     def _begin(self) -> bool:
@@ -146,7 +195,7 @@ class AnalysisChart(QWidget):
         for spine in ("left", "bottom"):
             self._axis.spines[spine].set_color(tokens.border)
         self._axis.tick_params(colors=tokens.text_muted, labelsize=8)
-        if kind != "empty":
+        if kind not in ("empty", "matrix"):
             self._axis.grid(True, linestyle=":", linewidth=0.8, color=tokens.border, alpha=0.8)
         self._figure.tight_layout(pad=1.0)
         self._canvas.draw_idle()

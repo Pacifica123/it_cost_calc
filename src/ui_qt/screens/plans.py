@@ -4,6 +4,11 @@ from dataclasses import asdict
 
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import QtAppPresenter
+from ui_qt.presenters.implementation_presenter import (
+    SHIFT_FIELDS,
+    ImplementationPresenter,
+    ImplementationSettings,
+)
 from ui_qt.presenters.licenses_presenter import LicenseSettings, LicensesPresenter, parse_date, ru_date
 from ui_qt.presenters.financing_presenter import FINANCING_FIELDS, FinancingPresenter, FinancingSettings
 from ui_qt.presenters.planning_presenter import PlanningInput, PlanningPresenter
@@ -52,7 +57,7 @@ PLAN_FIELDS: tuple[tuple[str, str, str], ...] = (
 
 
 class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
-    """«Планы»: TCO по годам, амортизация, план замены, финансирование и календарь лицензий."""
+    """«Планы»: TCO по годам, амортизация, замена, финансирование, лицензии, внедрение, риски и сценарии."""
 
     def __init__(self, app_presenter: QtAppPresenter | None = None, parent: QWidget | None = None) -> None:  # type: ignore[valid-type]
         if QLineEdit is None:
@@ -68,6 +73,21 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         )
         self.staff_model = RowTableModel(columns=("name", "value"), headers={"name": "Показатель", "value": "Значение"})
         self.licenses_presenter = LicensesPresenter(self.presenter.app_presenter)
+        self.implementation_presenter = ImplementationPresenter(self.presenter.app_presenter)
+        self.duration_inputs: dict[str, QLineEdit] = {}  # type: ignore[valid-type]
+        self.shift_inputs: dict[str, QLineEdit] = {}  # type: ignore[valid-type]
+        self.schedule_model = RowTableModel(
+            columns=("title", "section", "duration", "dates", "slack"),
+            headers={"title": "Этап", "section": "Раздел", "duration": "Дней", "dates": "Сроки", "slack": "Резерв"},
+        )
+        self.risk_model = RowTableModel(
+            columns=("title", "category", "pi", "level", "response"),
+            headers={"title": "Риск", "category": "Область", "pi": "P × I", "level": "Уровень", "response": "Мера"},
+        )
+        self.scenario_model = RowTableModel(
+            columns=("title", "one_time", "running", "tco", "npv", "irr"),
+            headers={"title": "Сценарий", "one_time": "Разово", "running": "В год", "tco": "TCO", "npv": "NPV", "irr": "IRR"},
+        )
         self.license_model = RowTableModel(
             columns=("name", "kind", "period", "amount", "next"),
             headers={"name": "Позиция", "kind": "Вид", "period": "Период", "amount": "Платёж", "next": "Ближайшие даты"},
@@ -141,6 +161,8 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self.tabs.addTab(self._build_replacement_tab(), "План замены")
         self.tabs.addTab(self._build_financing_tab(), "Финансирование")
         self.tabs.addTab(self._build_licenses_tab(), "Лицензии")
+        self.tabs.addTab(self._build_implementation_tab(), "Внедрение")
+        self.tabs.addTab(self._build_risks_tab(), "Риски и сценарии")
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
         header = QFrame(self)
@@ -310,6 +332,139 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addStretch(1)
         return page
 
+    def _build_implementation_tab(self) -> QWidget:  # type: ignore[valid-type]
+        page, layout = self._tab_page()
+        row = QHBoxLayout()
+        row.addWidget(CompactLabel("Начало внедрения", page), 0)
+        self.implementation_start_input = QLineEdit(page)
+        self.implementation_start_input.setPlaceholderText("ДД.ММ.ГГГГ")
+        row.addWidget(self.implementation_start_input, 1)
+        row.addStretch(1)
+        layout.addLayout(row)
+        self.durations_grid = QGridLayout()
+        self.durations_grid.setHorizontalSpacing(10)
+        layout.addWidget(CompactLabel("Длительность этапов, рабочих дней (можно менять)", page))
+        layout.addLayout(self.durations_grid)
+        self.schedule_note = self._note(page)
+        layout.addWidget(self.schedule_note)
+        self.gantt_chart = AnalysisChart(page, height=300)
+        layout.addWidget(self.gantt_chart)
+        self.schedule_table = self._table(self.schedule_model, page, 300)
+        layout.addWidget(self.schedule_table)
+        layout.addStretch(1)
+        return page
+
+    def _build_risks_tab(self) -> QWidget:  # type: ignore[valid-type]
+        page, layout = self._tab_page()
+        self.risk_note = self._note(page)
+        layout.addWidget(self.risk_note)
+        row = QHBoxLayout()
+        row.addWidget(CompactLabel("Бюджет проекта, ₽ (0 — не задан)", page), 0)
+        self.budget_input = QLineEdit(page)
+        row.addWidget(self.budget_input, 1)
+        row.addStretch(1)
+        layout.addLayout(row)
+        self.risk_matrix_chart = AnalysisChart(page, height=260)
+        layout.addWidget(self.risk_matrix_chart)
+        self.risk_table = self._table(self.risk_model, page, 440)
+        header = self.risk_table.horizontalHeader()
+        for column in (1, 2, 3):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.risk_table)
+        layout.addWidget(CompactLabel("Сценарии", page))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        for index, (key, label) in enumerate(SHIFT_FIELDS):
+            line = QLineEdit(page)
+            self.shift_inputs[key] = line
+            row_index, column = divmod(index, 3)
+            grid.addWidget(CompactLabel(label, page), row_index, column * 2)
+            grid.addWidget(line, row_index, column * 2 + 1)
+        layout.addLayout(grid)
+        self.scenario_note = self._note(page)
+        layout.addWidget(self.scenario_note)
+        self.scenario_table = self._table(self.scenario_model, page, 150)
+        layout.addWidget(self.scenario_table)
+        layout.addStretch(1)
+        return page
+
+    def read_implementation_settings(self) -> ImplementationSettings:
+        start = parse_date(self.implementation_start_input.text())
+        durations = {}
+        for key, line in self.duration_inputs.items():
+            text = line.text().strip()
+            if text:
+                durations[key] = text
+        shifts = {}
+        for key, line in self.shift_inputs.items():
+            text = line.text().replace(" ", "").replace(",", ".")
+            if text:
+                shifts[key] = text
+        return ImplementationSettings.from_mapping(
+            {
+                "start": start.isoformat() if start else "",
+                "durations": durations,
+                "shifts": shifts,
+                "budget": self.budget_input.text().replace(" ", "").replace(",", ".") or 0,
+            }
+        )
+
+    def _apply_implementation_settings(self, settings: ImplementationSettings) -> None:
+        self.implementation_start_input.setText(ru_date(settings.start))
+        self._saved_durations = dict(settings.durations)
+        for key, value in settings.shifts.items():
+            if key in self.shift_inputs:
+                self.shift_inputs[key].setText(f"{value:g}")
+        self.budget_input.setText(f"{settings.budget:g}")
+
+    def _sync_duration_inputs(self, view) -> None:
+        keys = [task.key for task in view.schedule.tasks]
+        if keys == list(self.duration_inputs):
+            for task in view.schedule.tasks:
+                line = self.duration_inputs[task.key]
+                if not line.hasFocus():
+                    line.setText(str(task.duration))
+            return
+        while self.durations_grid.count():
+            item = self.durations_grid.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self.duration_inputs.clear()
+        for index, task in enumerate(view.schedule.tasks):
+            line = QLineEdit(str(task.duration), self)
+            line.setMaximumWidth(70)
+            line.textEdited.connect(lambda _text: self._recalc_timer.start() if hasattr(self, "_recalc_timer") else None)
+            self.duration_inputs[task.key] = line
+            row, column = divmod(index, 3)
+            self.durations_grid.addWidget(CompactLabel(task.title, self), row, column * 2)
+            self.durations_grid.addWidget(line, row, column * 2 + 1)
+
+    def _sync_implementation(self, values: PlanningInput, save: bool) -> None:
+        settings = self.read_implementation_settings()
+        if not self.duration_inputs and getattr(self, "_saved_durations", None):
+            settings = ImplementationSettings(settings.start, dict(self._saved_durations), settings.shifts, settings.budget)
+        if save:
+            self.implementation_presenter.save_settings(settings)
+        view = self.implementation_presenter.build(self.presenter.components, values, settings)
+        self.last_implementation = view
+        self._sync_duration_inputs(view)
+        self.schedule_model.replace_rows(self.implementation_presenter.schedule_rows(view))
+        self.schedule_note.setText(self.implementation_presenter.schedule_text(view))
+        tasks = view.schedule.tasks
+        self.gantt_chart.show_gantt(
+            [task.title for task in tasks],
+            [task.es for task in tasks],
+            [task.duration for task in tasks],
+            [task.critical for task in tasks],
+            "Диаграмма Ганта",
+        )
+        self.risk_model.replace_rows(self.implementation_presenter.risk_rows(view))
+        self.risk_table.resizeRowsToContents()
+        self.risk_note.setText(self.implementation_presenter.risk_text(view))
+        self.risk_matrix_chart.show_matrix(self.implementation_presenter.matrix(view), "Матрица рисков")
+        self.scenario_model.replace_rows(self.implementation_presenter.scenario_rows(view))
+        self.scenario_note.setText(self.implementation_presenter.scenario_text(view))
+
     def read_license_settings(self) -> LicenseSettings:
         start = parse_date(self.license_start_input.text())
         payload = {"start": start.isoformat() if start else "", "remind_days": self.license_remind_input.text() or 14}
@@ -412,7 +567,15 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self._recalc_timer.setSingleShot(True)
         self._recalc_timer.setInterval(300)
         self._recalc_timer.timeout.connect(self.calculate)
-        for line in [*self.inputs.values(), *self.financing_inputs.values(), self.license_start_input, self.license_remind_input]:
+        for line in [
+            *self.inputs.values(),
+            *self.financing_inputs.values(),
+            *self.shift_inputs.values(),
+            self.license_start_input,
+            self.license_remind_input,
+            self.implementation_start_input,
+            self.budget_input,
+        ]:
             line.textEdited.connect(lambda _text: self._recalc_timer.start())
 
     def refresh_data(self) -> None:
@@ -425,6 +588,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         license_settings = self.licenses_presenter.saved_settings()
         self.license_start_input.setText(ru_date(license_settings.start))
         self.license_remind_input.setText(str(license_settings.remind_days))
+        self._apply_implementation_settings(self.implementation_presenter.saved_settings())
         self.calculate(save=False)
 
     def load_from_selection(self) -> None:
@@ -456,6 +620,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self._sync_replacement(values)
         self._sync_financing(values, save)
         self._sync_licenses(values, save)
+        self._sync_implementation(values, save)
         self._sync_extra_tabs(values)
         self.status_label.setText("Рассчитано" if values.one_time or values.opex_annual or values.electricity_annual else "Нет данных")
 

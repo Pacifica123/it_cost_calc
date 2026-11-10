@@ -1466,6 +1466,11 @@ class QtAppPresenter:
             license_view = licenses.build(planning.components, values, licenses.saved_settings())
             if license_view.sources:
                 sections.append(("Календарь продления лицензий", licenses.report_section(license_view)))
+        from ui_qt.presenters.implementation_presenter import ImplementationPresenter
+
+        implementation = ImplementationPresenter(self)
+        implementation_view = implementation.build(planning.components, values, implementation.saved_settings())
+        sections.extend(implementation.report_sections(implementation_view))
         return sections
 
     def open_generated_reports_folder(self) -> Path:
