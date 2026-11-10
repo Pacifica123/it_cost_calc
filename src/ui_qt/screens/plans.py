@@ -4,6 +4,7 @@ from dataclasses import asdict
 
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import QtAppPresenter
+from ui_qt.presenters.licenses_presenter import LicenseSettings, LicensesPresenter, parse_date, ru_date
 from ui_qt.presenters.financing_presenter import FINANCING_FIELDS, FinancingPresenter, FinancingSettings
 from ui_qt.presenters.planning_presenter import PlanningInput, PlanningPresenter
 from ui_qt.widgets import CompactLabel, InfoHint
@@ -51,7 +52,7 @@ PLAN_FIELDS: tuple[tuple[str, str, str], ...] = (
 
 
 class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
-    """«Планы»: TCO по годам, амортизация, план замены и финансирование (покупка/лизинг/аренда, штат, облако)."""
+    """«Планы»: TCO по годам, амортизация, план замены, финансирование и календарь лицензий."""
 
     def __init__(self, app_presenter: QtAppPresenter | None = None, parent: QWidget | None = None) -> None:  # type: ignore[valid-type]
         if QLineEdit is None:
@@ -66,6 +67,15 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
             headers={"title": "Вариант", "upfront": "Сразу", "monthly": "В месяц", "total": "Всего", "pv": "Приведённо"},
         )
         self.staff_model = RowTableModel(columns=("name", "value"), headers={"name": "Показатель", "value": "Значение"})
+        self.licenses_presenter = LicensesPresenter(self.presenter.app_presenter)
+        self.license_model = RowTableModel(
+            columns=("name", "kind", "period", "amount", "next"),
+            headers={"name": "Позиция", "kind": "Вид", "period": "Период", "amount": "Платёж", "next": "Ближайшие даты"},
+        )
+        self.license_year_model = RowTableModel(
+            columns=("year", "licenses", "subscriptions", "total"),
+            headers={"year": "Год", "licenses": "Продления", "subscriptions": "Подписки", "total": "Итого"},
+        )
         self.local_cloud_model = RowTableModel(
             columns=("year", "local", "cloud"),
             headers={"year": "Год", "local": "Локально", "cloud": "Облако"},
@@ -130,6 +140,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self.tabs.addTab(self._build_amortization_tab(), "Амортизация")
         self.tabs.addTab(self._build_replacement_tab(), "План замены")
         self.tabs.addTab(self._build_financing_tab(), "Финансирование")
+        self.tabs.addTab(self._build_licenses_tab(), "Лицензии")
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
         header = QFrame(self)
@@ -203,6 +214,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self.tco_bars)
         self.tco_table = self._table(self.tco_model, page)
         layout.addWidget(self.tco_table)
+        layout.addStretch(1)
         return page
 
     def _build_amortization_tab(self) -> QWidget:  # type: ignore[valid-type]
@@ -211,6 +223,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self.amortization_note)
         self.amortization_table = self._table(self.amortization_model, page, 260)
         layout.addWidget(self.amortization_table)
+        layout.addStretch(1)
         return page
 
     def _build_replacement_tab(self) -> QWidget:  # type: ignore[valid-type]
@@ -219,11 +232,12 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self.replacement_note)
         self.replacement_chart = AnalysisChart(page)
         layout.addWidget(self.replacement_chart)
-        self.replacement_table = self._table(self.replacement_model, page)
+        self.replacement_table = self._table(self.replacement_model, page, 340)
         header = self.replacement_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.replacement_table)
+        layout.addStretch(1)
         return page
 
     def _build_financing_tab(self) -> QWidget:  # type: ignore[valid-type]
@@ -266,7 +280,75 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self.local_cloud_chart)
         self.local_cloud_table = self._table(self.local_cloud_model, page, 200)
         layout.addWidget(self.local_cloud_table)
+        layout.addStretch(1)
         return page
+
+    def _build_licenses_tab(self) -> QWidget:  # type: ignore[valid-type]
+        page, layout = self._tab_page()
+        row = QHBoxLayout()
+        row.addWidget(CompactLabel("Дата покупки", page), 0)
+        self.license_start_input = QLineEdit(page)
+        self.license_start_input.setPlaceholderText("ДД.ММ.ГГГГ")
+        self.license_start_input.setToolTip("От этой даты считаются продления. Срок лицензии берётся из поля «Срок лицензий, мес».")
+        row.addWidget(self.license_start_input, 1)
+        row.addWidget(CompactLabel("Напомнить за, дней", page), 0)
+        self.license_remind_input = QLineEdit(page)
+        row.addWidget(self.license_remind_input, 1)
+        self.ics_button = QPushButton("Сохранить .ics", page)
+        self.ics_button.setToolTip("Календарь продлений с напоминаниями для Outlook, Google Календаря и телефона.")
+        self.ics_button.clicked.connect(self.export_ics)
+        row.addWidget(self.ics_button, 0)
+        layout.addLayout(row)
+        self.license_note = self._note(page)
+        layout.addWidget(self.license_note)
+        self.license_table = self._table(self.license_model, page, 160)
+        layout.addWidget(self.license_table)
+        self.license_chart = AnalysisChart(page)
+        layout.addWidget(self.license_chart)
+        self.license_year_table = self._table(self.license_year_model, page, 160)
+        layout.addWidget(self.license_year_table)
+        layout.addStretch(1)
+        return page
+
+    def read_license_settings(self) -> LicenseSettings:
+        start = parse_date(self.license_start_input.text())
+        payload = {"start": start.isoformat() if start else "", "remind_days": self.license_remind_input.text() or 14}
+        return LicenseSettings.from_mapping(payload)
+
+    def _sync_licenses(self, values: PlanningInput, save: bool) -> None:
+        settings = self.read_license_settings()
+        if save:
+            self.licenses_presenter.save_settings(settings)
+        view = self.licenses_presenter.build(self.presenter.components, values, settings)
+        self.last_licenses = view
+        self.license_model.replace_rows(self.licenses_presenter.source_rows(view))
+        self.license_year_model.replace_rows(self.licenses_presenter.year_rows(view))
+        self.license_note.setText(self.licenses_presenter.summary(view))
+        self.ics_button.setEnabled(bool(view.sources))
+        years = view.calendar.by_year
+        if any(year.total for year in years):
+            self.license_chart.show_stacked_bars(
+                [str(year.year) for year in years],
+                [("Продления", [year.licenses for year in years]), ("Подписки", [year.subscriptions for year in years])],
+                "Платежи за лицензии по годам",
+            )
+        else:
+            self.license_chart.show_empty("Нет платежей")
+
+    def export_ics(self) -> None:
+        view = getattr(self, "last_licenses", None)
+        if view is None or not view.sources:
+            return
+        try:
+            path = self.licenses_presenter.export_ics(view)
+        except Exception as exc:  # pragma: no cover - GUI status fallback
+            self.status_label.setText("Ошибка .ics")
+            self.status_label.setToolTip(str(exc))
+            return
+        self.last_ics_path = path
+        self.status_label.setText("Календарь сохранён")
+        self.status_label.setToolTip(str(path))
+        self.license_note.setText(self.licenses_presenter.summary(view) + f" Файл: {path}")
 
     def read_financing_settings(self) -> FinancingSettings:
         payload = {}
@@ -330,7 +412,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self._recalc_timer.setSingleShot(True)
         self._recalc_timer.setInterval(300)
         self._recalc_timer.timeout.connect(self.calculate)
-        for line in [*self.inputs.values(), *self.financing_inputs.values()]:
+        for line in [*self.inputs.values(), *self.financing_inputs.values(), self.license_start_input, self.license_remind_input]:
             line.textEdited.connect(lambda _text: self._recalc_timer.start())
 
     def refresh_data(self) -> None:
@@ -340,6 +422,9 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
             values = self.presenter.load_selection(values)
         self._apply_input(values)
         self._apply_financing_settings(self.financing_presenter.saved_settings())
+        license_settings = self.licenses_presenter.saved_settings()
+        self.license_start_input.setText(ru_date(license_settings.start))
+        self.license_remind_input.setText(str(license_settings.remind_days))
         self.calculate(save=False)
 
     def load_from_selection(self) -> None:
@@ -370,6 +455,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self._sync_amortization(values)
         self._sync_replacement(values)
         self._sync_financing(values, save)
+        self._sync_licenses(values, save)
         self._sync_extra_tabs(values)
         self.status_label.setText("Рассчитано" if values.one_time or values.opex_annual or values.electricity_annual else "Нет данных")
 

@@ -41,6 +41,11 @@ class ExportPresenter:
             "DOCX: итоговый отчёт, доходность и риск NPV, планы по годам. Открывается в Word и LibreOffice.",
         ),
         ExportMode(
+            "licenses_ics",
+            "Календарь лицензий",
+            "ICS: продления лицензий и оплаты подписок с напоминаниями (Outlook, Google, телефон).",
+        ),
+        ExportMode(
             "interactive_dashboard",
             "Интерактивный дашборд",
             "Офлайн HTML-визуализация DecisionReport с фильтрами и сравнением альтернатив.",

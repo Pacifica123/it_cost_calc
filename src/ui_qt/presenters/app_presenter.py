@@ -1317,6 +1317,17 @@ class QtAppPresenter:
                     self._npv_markdown(),
                 )
             }
+        elif mode == "licenses_ics":
+            from ui_qt.presenters.licenses_presenter import LicensesPresenter
+            from ui_qt.presenters.planning_presenter import PlanningPresenter
+
+            planning = PlanningPresenter(self)
+            values = planning.load_selection(planning.saved_input())
+            licenses = LicensesPresenter(self)
+            view = licenses.build(planning.components, values, licenses.saved_settings())
+            target = export_root / "licenses.ics"
+            target.write_bytes(licenses.ics_text(view).encode("utf-8"))
+            paths = {"ics": target}
         elif mode == "word_report":
             report = self._build_decision_report_snapshot()
             paths = {"docx": self._export_decision_report_docx(report, export_root / "decision_report.docx")}
@@ -1441,6 +1452,7 @@ class QtAppPresenter:
     def extra_report_sections(self) -> list[tuple[str, dict[str, Any]]]:
         """Further report sections that live on the «Планы» screen (financing, licenses)."""
         from ui_qt.presenters.financing_presenter import FinancingPresenter
+        from ui_qt.presenters.licenses_presenter import LicensesPresenter
         from ui_qt.presenters.planning_presenter import PlanningPresenter
 
         sections: list[tuple[str, dict[str, Any]]] = []
@@ -1450,6 +1462,10 @@ class QtAppPresenter:
             financing = FinancingPresenter(self)
             view = financing.build(planning.components, values, financing.saved_settings())
             sections.append(("Варианты финансирования и эксплуатации", financing.report_section(view)))
+            licenses = LicensesPresenter(self)
+            license_view = licenses.build(planning.components, values, licenses.saved_settings())
+            if license_view.sources:
+                sections.append(("Календарь продления лицензий", licenses.report_section(license_view)))
         return sections
 
     def open_generated_reports_folder(self) -> Path:
