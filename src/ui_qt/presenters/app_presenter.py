@@ -305,6 +305,71 @@ class QtAppPresenter:
         self.session_store.delete_session(session_id)
         self._restore_candidate_pools()
 
+    # ---- Templates and backups ---------------------------------------------
+    @property
+    def project_template_service(self):
+        from application.services.project_template_service import ProjectTemplateService
+
+        return ProjectTemplateService(
+            self.paths.resource_root / "data" / "templates" / "project_templates.json",
+            self.paths.session_db_path.parent / "user_project_templates.json",
+        )
+
+    def list_project_templates(self) -> list[Any]:
+        return self.project_template_service.list_templates()
+
+    def create_session_from_template(self, template_id: str, *, name: str | None = None, context_type: str = "работа") -> SessionInfo:
+        template = self.project_template_service.get(template_id)
+        info = self.session_store.import_session(
+            name or template.title,
+            {"entities": deepcopy(template.entities)},
+            context_type=context_type,
+        )
+        self._restore_candidate_pools()
+        return info
+
+    def save_active_as_template(self, title: str, description: str = "") -> Any:
+        return self.project_template_service.save_user_template(title, description, self.entities_snapshot())
+
+    def delete_project_template(self, template_id: str) -> None:
+        self.project_template_service.delete_user_template(template_id)
+
+    def _session_backup_payload(self, session_id: str) -> dict[str, Any]:
+        from application.services.session_backup_service import build_backup_payload
+
+        info = next((item for item in self.list_sessions() if item.session_id == session_id), None)
+        if info is None:
+            raise KeyError(f"Unknown session: {session_id}")
+        return build_backup_payload(info.name, info.context_type, self.session_store.session_state(session_id))
+
+    def export_session_backup(self, session_id: str | None = None, path: str | Path | None = None) -> Path:
+        from application.services.session_backup_service import safe_file_stem, write_session_json
+
+        session_id = session_id or self.active_session().session_id
+        payload = self._session_backup_payload(session_id)
+        target = Path(path) if path is not None else (
+            self.paths.session_db_path.parent / "backups" / f"{safe_file_stem(payload['name'])}.itcost.json"
+        )
+        return write_session_json(target, payload)
+
+    def export_all_sessions_backup(self, path: str | Path | None = None) -> Path:
+        from application.services.session_backup_service import write_sessions_zip
+
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        target = Path(path) if path is not None else self.paths.session_db_path.parent / "backups" / f"sessions_{stamp}.zip"
+        return write_sessions_zip(target, [self._session_backup_payload(info.session_id) for info in self.list_sessions()])
+
+    def import_sessions_backup(self, path: str | Path) -> list[SessionInfo]:
+        """Restores every session from a .json or .zip backup as new sessions; the last one becomes active."""
+        from application.services.session_backup_service import read_backups
+
+        restored = [
+            self.session_store.import_session(item.name, item.state, context_type=item.context_type)
+            for item in read_backups(path)
+        ]
+        self._restore_candidate_pools()
+        return restored
+
     def save_active_entities_as_global(self) -> None:
         """Explicitly replace reusable global data from the active session."""
 

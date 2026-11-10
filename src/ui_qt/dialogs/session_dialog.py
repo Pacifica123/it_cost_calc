@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -55,6 +56,22 @@ class SessionDialog(QDialog):
             row.addWidget(button)
         row.addStretch(1)
         layout.addLayout(row)
+
+        extra = QHBoxLayout()
+        extra_actions = (
+            ("Из шаблона…", self._from_template, "Новая сессия из типового набора альтернатив."),
+            ("Сохранить как шаблон…", self._save_template, "Данные активной сессии станут шаблоном для новых проектов."),
+            ("Экспорт…", self._export_selected, "Резервная копия выбранной сессии в файл .json."),
+            ("Экспорт всех…", self._export_all, "Все сессии одним архивом .zip."),
+            ("Импорт…", self._import, "Восстановить сессии из .json или .zip как новые."),
+        )
+        for text, callback, tooltip in extra_actions:
+            button = QPushButton(text, self)
+            button.setToolTip(tooltip)
+            button.clicked.connect(callback)
+            extra.addWidget(button)
+        extra.addStretch(1)
+        layout.addLayout(extra)
 
         self.message_label = QLabel("", self)
         self.message_label.setWordWrap(True)
@@ -167,6 +184,53 @@ class SessionDialog(QDialog):
         )
         if answer == QMessageBox.StandardButton.Yes:
             self._run(lambda: self.presenter.delete_session(session_id))
+
+    def _from_template(self) -> None:
+        templates = self.presenter.list_project_templates()
+        if not templates:
+            self.message_label.setText("Шаблонов нет.")
+            return
+        labels = [f"{item.title}{'' if item.builtin else ' (мой)'} — {item.description}" for item in templates]
+        choice, ok = QInputDialog.getItem(self, "Шаблон проекта", "Шаблон:", labels, 0, False)
+        if not ok:
+            return
+        template = templates[labels.index(choice)]
+        name, ok = QInputDialog.getText(self, "Новая сессия", "Название:", text=template.title)
+        if ok and name.strip():
+            self._run(lambda: self.presenter.create_session_from_template(template.template_id, name=name.strip()))
+
+    def _save_template(self) -> None:
+        title, ok = QInputDialog.getText(self, "Сохранить как шаблон", "Название шаблона:", text=self.presenter.active_session().name)
+        if not ok or not title.strip():
+            return
+        description, ok = QInputDialog.getText(self, "Сохранить как шаблон", "Описание (необязательно):")
+        if ok:
+            self._run(lambda: self.presenter.save_active_as_template(title.strip(), description.strip()))
+            self.message_label.setText(f"Шаблон «{title.strip()}» сохранён.")
+
+    def _export_selected(self) -> None:
+        session_id = self._selected_id() or self.presenter.active_session().session_id
+        current = next((item for item in self.presenter.list_sessions() if item.session_id == session_id), None)
+        default = f"{current.name if current else 'session'}.itcost.json"
+        path, _filter = QFileDialog.getSaveFileName(self, "Резервная копия сессии", default, "Сессия IT Cost (*.json)")
+        if path:
+            self._run(lambda: self.presenter.export_session_backup(session_id, path))
+            self.message_label.setText(f"Сохранено: {path}")
+
+    def _export_all(self) -> None:
+        path, _filter = QFileDialog.getSaveFileName(self, "Резервная копия всех сессий", "sessions.zip", "Архив (*.zip)")
+        if path:
+            self._run(lambda: self.presenter.export_all_sessions_backup(path))
+            self.message_label.setText(f"Сохранено: {path}")
+
+    def _import(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(self, "Восстановить сессии", "", "Резервная копия (*.json *.zip)")
+        if not path:
+            return
+        restored: list = []
+        self._run(lambda: restored.extend(self.presenter.import_sessions_backup(path)))
+        if restored:
+            self.message_label.setText(f"Восстановлено сессий: {len(restored)}.")
 
     def _run(self, action) -> None:
         try:

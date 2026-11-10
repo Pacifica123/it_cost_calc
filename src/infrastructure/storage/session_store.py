@@ -455,6 +455,40 @@ class SessionStore:
                 )
         return next(item for item in self.list_sessions() if item.session_id == new_id)
 
+    def import_session(
+        self,
+        name: str,
+        state: Mapping[str, Any],
+        *,
+        context_type: str = "discussion",
+        activate: bool = True,
+    ) -> SessionInfo:
+        """Create a new session from a full state (backup restore or project template)."""
+        if not isinstance(state, Mapping):
+            raise ValueError("Session state must be an object.")
+        base = default_session_state()
+        merged = {**base, **deepcopy(dict(state))}
+        merged["state_schema_version"] = STATE_SCHEMA_VERSION
+        if not isinstance(merged.get("entities"), Mapping):
+            merged["entities"] = {}
+        safe_name = str(name or "Импортированная сессия").strip() or "Импортированная сессия"
+        session_id = uuid4().hex
+        now = _utc_now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "INSERT INTO sessions(id, name, context_type, created_at, updated_at, revision, "
+                "input_revision, state_json) VALUES (?, ?, ?, ?, ?, 0, 0, ?)",
+                (session_id, safe_name, str(context_type or "discussion"), now, now, _dumps(merged)),
+            )
+            if activate:
+                connection.execute(
+                    "INSERT INTO meta(key, value) VALUES ('active_session_id', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (session_id,),
+                )
+        return next(item for item in self.list_sessions() if item.session_id == session_id)
+
     def delete_session(self, session_id: str) -> None:
         sessions = self.list_sessions()
         if len(sessions) <= 1:

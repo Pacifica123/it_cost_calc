@@ -1,0 +1,679 @@
+{
+  "schema_version": 1,
+  "description": "Встроенные шаблоны проектов: наборы альтернатив для типовых задач. Шаблон создаёт новую сессию.",
+  "templates": [
+    {
+      "id": "small-office",
+      "title": "Малый офис, 10 мест",
+      "description": "Рабочие места, простая сеть, NAS или мини-сервер для файлов, облачная почта.",
+      "entities": {
+        "server": [
+          {
+            "name": "Файловое хранилище NAS 2 диска 8 ТБ",
+            "quantity": 1,
+            "price": 45000,
+            "max_power": 30,
+            "client_seats": 0,
+            "category": "server",
+            "scope": "technical",
+            "component_type": "server",
+            "ram_gb": 2,
+            "cpu_cores": 4,
+            "storage_gb": 8000,
+            "max_power_watts": 30
+          },
+          {
+            "name": "Мини-сервер Xeon E / 32 ГБ",
+            "quantity": 1,
+            "price": 160000,
+            "max_power": 150,
+            "client_seats": 0,
+            "category": "server",
+            "scope": "technical",
+            "component_type": "server",
+            "ram_gb": 32,
+            "cpu_cores": 8,
+            "storage_gb": 2000,
+            "max_power_watts": 150
+          }
+        ],
+        "client": [
+          {
+            "name": "Офисный ПК i3 / 8 ГБ",
+            "quantity": 10,
+            "price": 42000,
+            "max_power": 65,
+            "client_seats": 10,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 8,
+            "cpu_cores": 4,
+            "storage_gb": 256,
+            "max_power_watts": 65
+          },
+          {
+            "name": "Офисный ПК i5 / 16 ГБ",
+            "quantity": 10,
+            "price": 56000,
+            "max_power": 75,
+            "client_seats": 10,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 16,
+            "cpu_cores": 6,
+            "storage_gb": 512,
+            "max_power_watts": 75
+          },
+          {
+            "name": "Моноблок 24\" i5",
+            "quantity": 10,
+            "price": 68000,
+            "max_power": 60,
+            "client_seats": 10,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 16,
+            "cpu_cores": 6,
+            "storage_gb": 512,
+            "max_power_watts": 60
+          },
+          {
+            "name": "МФУ A4 лазерное",
+            "quantity": 1,
+            "price": 32000,
+            "max_power": 30,
+            "client_seats": 0,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "peripheral",
+            "ram_gb": 0,
+            "cpu_cores": 0,
+            "storage_gb": 0,
+            "max_power_watts": 30
+          }
+        ],
+        "network": [
+          {
+            "name": "Маршрутизатор SOHO с Wi-Fi 6",
+            "quantity": 1,
+            "price": 9000,
+            "max_power": 15,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 4,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 1800,
+            "ipv6_support": true,
+            "max_power_watts": 15
+          },
+          {
+            "name": "Коммутатор 16 портов неуправляемый",
+            "quantity": 1,
+            "price": 7000,
+            "max_power": 10,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 16,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 0,
+            "ipv6_support": true,
+            "max_power_watts": 10
+          },
+          {
+            "name": "Коммутатор 24 порта управляемый",
+            "quantity": 1,
+            "price": 16000,
+            "max_power": 20,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 24,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 0,
+            "ipv6_support": true,
+            "max_power_watts": 20
+          }
+        ],
+        "licenses": [
+          {
+            "name": "ОС для рабочих мест (бессрочно)",
+            "quantity": 10,
+            "price": 15000,
+            "max_power": 0.0,
+            "client_seats": 0,
+            "category": "licenses",
+            "scope": "software",
+            "component_type": "software_license"
+          },
+          {
+            "name": "Офисный пакет (бессрочно)",
+            "quantity": 10,
+            "price": 9000,
+            "max_power": 0.0,
+            "client_seats": 0,
+            "category": "licenses",
+            "scope": "software",
+            "component_type": "software_license"
+          }
+        ],
+        "subscription_licenses": [
+          {
+            "name": "Облачный офис и почта, 10 пользователей",
+            "monthly_cost": 3500,
+            "category": "subscription_licenses",
+            "scope": "software",
+            "component_type": "software_subscription"
+          },
+          {
+            "name": "Антивирус, 10 рабочих мест",
+            "monthly_cost": 1200,
+            "category": "subscription_licenses",
+            "scope": "software",
+            "component_type": "software_subscription"
+          }
+        ],
+        "server_rental": [],
+        "migration": [
+          {
+            "name": "Перенос почты и документов",
+            "one_time_cost": 15000,
+            "category": "migration",
+            "scope": "implementation",
+            "component_type": "implementation_service"
+          }
+        ],
+        "testing": [
+          {
+            "name": "Приёмка рабочих мест",
+            "one_time_cost": 8000,
+            "category": "testing",
+            "scope": "implementation",
+            "component_type": "implementation_service"
+          }
+        ],
+        "backup": [
+          {
+            "name": "Облачное резервное копирование 500 ГБ",
+            "monthly_cost": 1500,
+            "category": "backup",
+            "scope": "common",
+            "component_type": "support_service"
+          }
+        ],
+        "labor_costs": [
+          {
+            "name": "Сопровождение по договору (аутсорсинг)",
+            "monthly_cost": 15000,
+            "category": "labor_costs",
+            "scope": "common",
+            "component_type": "support_service"
+          }
+        ],
+        "server_administration": []
+      }
+    },
+    {
+      "id": "office-server-room",
+      "title": "Офис с серверной, 30 мест",
+      "description": "Свой сервер и СХД, управляемая сеть, Wi-Fi, администрирование.",
+      "entities": {
+        "server": [
+          {
+            "name": "Сервер 1U Xeon 16 ядер / 64 ГБ",
+            "quantity": 1,
+            "price": 380000,
+            "max_power": 450,
+            "client_seats": 0,
+            "category": "server",
+            "scope": "technical",
+            "component_type": "server",
+            "ram_gb": 64,
+            "cpu_cores": 16,
+            "storage_gb": 4000,
+            "max_power_watts": 450
+          },
+          {
+            "name": "Сервер 2U Xeon 24 ядра / 128 ГБ",
+            "quantity": 1,
+            "price": 560000,
+            "max_power": 650,
+            "client_seats": 0,
+            "category": "server",
+            "scope": "technical",
+            "component_type": "server",
+            "ram_gb": 128,
+            "cpu_cores": 24,
+            "storage_gb": 8000,
+            "max_power_watts": 650
+          },
+          {
+            "name": "СХД NAS 4 диска 16 ТБ",
+            "quantity": 1,
+            "price": 120000,
+            "max_power": 80,
+            "client_seats": 0,
+            "category": "server",
+            "scope": "technical",
+            "component_type": "server",
+            "ram_gb": 8,
+            "cpu_cores": 4,
+            "storage_gb": 16000,
+            "max_power_watts": 80
+          }
+        ],
+        "client": [
+          {
+            "name": "Офисный ПК i5 / 16 ГБ",
+            "quantity": 30,
+            "price": 56000,
+            "max_power": 75,
+            "client_seats": 30,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 16,
+            "cpu_cores": 6,
+            "storage_gb": 512,
+            "max_power_watts": 75
+          },
+          {
+            "name": "Рабочая станция i7 / 32 ГБ",
+            "quantity": 30,
+            "price": 92000,
+            "max_power": 120,
+            "client_seats": 30,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 32,
+            "cpu_cores": 8,
+            "storage_gb": 1000,
+            "max_power_watts": 120
+          },
+          {
+            "name": "Тонкий клиент",
+            "quantity": 30,
+            "price": 28000,
+            "max_power": 15,
+            "client_seats": 30,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 4,
+            "cpu_cores": 4,
+            "storage_gb": 32,
+            "max_power_watts": 15
+          },
+          {
+            "name": "МФУ A3 цветное",
+            "quantity": 2,
+            "price": 95000,
+            "max_power": 80,
+            "client_seats": 0,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "peripheral",
+            "ram_gb": 0,
+            "cpu_cores": 0,
+            "storage_gb": 0,
+            "max_power_watts": 80
+          }
+        ],
+        "network": [
+          {
+            "name": "Коммутатор 48 портов L2+ PoE",
+            "quantity": 1,
+            "price": 85000,
+            "max_power": 60,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 48,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 0,
+            "ipv6_support": true,
+            "max_power_watts": 60
+          },
+          {
+            "name": "Коммутатор 24 порта L2",
+            "quantity": 2,
+            "price": 26000,
+            "max_power": 25,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 24,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 0,
+            "ipv6_support": true,
+            "max_power_watts": 25
+          },
+          {
+            "name": "Межсетевой экран / маршрутизатор",
+            "quantity": 1,
+            "price": 70000,
+            "max_power": 30,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 8,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 0,
+            "ipv6_support": true,
+            "max_power_watts": 30
+          },
+          {
+            "name": "Точка доступа Wi-Fi 6",
+            "quantity": 3,
+            "price": 14000,
+            "max_power": 12,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 1,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 1800,
+            "ipv6_support": true,
+            "max_power_watts": 12
+          }
+        ],
+        "licenses": [
+          {
+            "name": "Серверная ОС (на сервер)",
+            "quantity": 1,
+            "price": 120000,
+            "max_power": 0.0,
+            "client_seats": 0,
+            "category": "licenses",
+            "scope": "software",
+            "component_type": "software_license"
+          },
+          {
+            "name": "Клиентские лицензии CAL",
+            "quantity": 30,
+            "price": 4500,
+            "max_power": 0.0,
+            "client_seats": 0,
+            "category": "licenses",
+            "scope": "software",
+            "component_type": "software_license"
+          },
+          {
+            "name": "Офисный пакет (бессрочно)",
+            "quantity": 30,
+            "price": 9000,
+            "max_power": 0.0,
+            "client_seats": 0,
+            "category": "licenses",
+            "scope": "software",
+            "component_type": "software_license"
+          },
+          {
+            "name": "ОС для рабочих мест (бессрочно)",
+            "quantity": 30,
+            "price": 15000,
+            "max_power": 0.0,
+            "client_seats": 0,
+            "category": "licenses",
+            "scope": "software",
+            "component_type": "software_license"
+          }
+        ],
+        "subscription_licenses": [
+          {
+            "name": "Антивирус, 30 рабочих мест + сервер",
+            "monthly_cost": 4200,
+            "category": "subscription_licenses",
+            "scope": "software",
+            "component_type": "software_subscription"
+          },
+          {
+            "name": "Система резервного копирования (лицензия-подписка)",
+            "monthly_cost": 3000,
+            "category": "subscription_licenses",
+            "scope": "software",
+            "component_type": "software_subscription"
+          }
+        ],
+        "server_rental": [],
+        "migration": [
+          {
+            "name": "Миграция данных и учётных записей",
+            "one_time_cost": 60000,
+            "category": "migration",
+            "scope": "implementation",
+            "component_type": "implementation_service"
+          }
+        ],
+        "testing": [
+          {
+            "name": "Нагрузочное и приёмочное тестирование",
+            "one_time_cost": 35000,
+            "category": "testing",
+            "scope": "implementation",
+            "component_type": "implementation_service"
+          }
+        ],
+        "backup": [
+          {
+            "name": "Резервное копирование в облако 4 ТБ",
+            "monthly_cost": 6000,
+            "category": "backup",
+            "scope": "common",
+            "component_type": "support_service"
+          }
+        ],
+        "labor_costs": [
+          {
+            "name": "Поддержка пользователей",
+            "monthly_cost": 25000,
+            "category": "labor_costs",
+            "scope": "common",
+            "component_type": "support_service"
+          }
+        ],
+        "server_administration": [
+          {
+            "name": "Администрирование серверов и сети",
+            "monthly_cost": 30000,
+            "category": "server_administration",
+            "scope": "technical",
+            "component_type": "support_service"
+          }
+        ]
+      }
+    },
+    {
+      "id": "cloud-office",
+      "title": "Облачный офис, 8 ноутбуков",
+      "description": "Ноутбуки и подписки, сервер 1С в аренде, NAS только для локальных копий.",
+      "entities": {
+        "server": [
+          {
+            "name": "NAS для локальных копий 2 диска 4 ТБ",
+            "quantity": 1,
+            "price": 32000,
+            "max_power": 25,
+            "client_seats": 0,
+            "category": "server",
+            "scope": "technical",
+            "component_type": "server",
+            "ram_gb": 2,
+            "cpu_cores": 4,
+            "storage_gb": 4000,
+            "max_power_watts": 25
+          }
+        ],
+        "client": [
+          {
+            "name": "Ноутбук 14\" i5 / 16 ГБ",
+            "quantity": 8,
+            "price": 62000,
+            "max_power": 45,
+            "client_seats": 8,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 16,
+            "cpu_cores": 6,
+            "storage_gb": 512,
+            "max_power_watts": 45
+          },
+          {
+            "name": "Ноутбук 15\" i3 / 8 ГБ",
+            "quantity": 8,
+            "price": 48000,
+            "max_power": 40,
+            "client_seats": 8,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 8,
+            "cpu_cores": 4,
+            "storage_gb": 256,
+            "max_power_watts": 40
+          },
+          {
+            "name": "Ноутбук 14\" i7 / 32 ГБ",
+            "quantity": 8,
+            "price": 98000,
+            "max_power": 55,
+            "client_seats": 8,
+            "category": "client",
+            "scope": "technical",
+            "component_type": "workstation",
+            "ram_gb": 32,
+            "cpu_cores": 8,
+            "storage_gb": 1000,
+            "max_power_watts": 55
+          }
+        ],
+        "network": [
+          {
+            "name": "Wi-Fi роутер с резервным LTE",
+            "quantity": 1,
+            "price": 18000,
+            "max_power": 15,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 4,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 1800,
+            "ipv6_support": true,
+            "max_power_watts": 15
+          },
+          {
+            "name": "Точка доступа Wi-Fi 6 mesh",
+            "quantity": 2,
+            "price": 12000,
+            "max_power": 10,
+            "client_seats": 0,
+            "category": "network",
+            "scope": "technical",
+            "component_type": "network_device",
+            "lan_ports": 1,
+            "lan_speed_mbps": 1000,
+            "wifi_total_mbps": 1800,
+            "ipv6_support": true,
+            "max_power_watts": 10
+          }
+        ],
+        "licenses": [
+          {
+            "name": "Защита конечных точек (бессрочно)",
+            "quantity": 8,
+            "price": 4500,
+            "max_power": 0.0,
+            "client_seats": 0,
+            "category": "licenses",
+            "scope": "software",
+            "component_type": "software_license"
+          }
+        ],
+        "subscription_licenses": [
+          {
+            "name": "Облачный офис, почта и диск, 8 пользователей",
+            "monthly_cost": 4800,
+            "category": "subscription_licenses",
+            "scope": "software",
+            "component_type": "software_subscription"
+          },
+          {
+            "name": "CRM в облаке, 8 пользователей",
+            "monthly_cost": 9600,
+            "category": "subscription_licenses",
+            "scope": "software",
+            "component_type": "software_subscription"
+          },
+          {
+            "name": "Видеосвязь и мессенджер",
+            "monthly_cost": 2400,
+            "category": "subscription_licenses",
+            "scope": "software",
+            "component_type": "software_subscription"
+          }
+        ],
+        "server_rental": [
+          {
+            "name": "Облачный сервер 4 vCPU / 8 ГБ для 1С",
+            "monthly_cost": 6500,
+            "category": "server_rental",
+            "scope": "technical",
+            "component_type": "cloud_server"
+          }
+        ],
+        "migration": [
+          {
+            "name": "Перенос в облако",
+            "one_time_cost": 25000,
+            "category": "migration",
+            "scope": "implementation",
+            "component_type": "implementation_service"
+          }
+        ],
+        "testing": [
+          {
+            "name": "Проверка доступа и сценариев работы",
+            "one_time_cost": 7000,
+            "category": "testing",
+            "scope": "implementation",
+            "component_type": "implementation_service"
+          }
+        ],
+        "backup": [
+          {
+            "name": "Резервное копирование облачных данных",
+            "monthly_cost": 1800,
+            "category": "backup",
+            "scope": "common",
+            "component_type": "support_service"
+          }
+        ],
+        "labor_costs": [
+          {
+            "name": "Удалённая поддержка пользователей",
+            "monthly_cost": 12000,
+            "category": "labor_costs",
+            "scope": "common",
+            "component_type": "support_service"
+          }
+        ],
+        "server_administration": []
+      }
+    }
+  ]
+}
