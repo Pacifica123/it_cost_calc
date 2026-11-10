@@ -10,9 +10,11 @@ from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 try:  # pragma: no cover - optional GUI dependency branch
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from matplotlib.figure import Figure
+    from matplotlib.ticker import MaxNLocator
 except Exception:  # pragma: no cover - graceful GUI fallback
     FigureCanvasQTAgg = None  # type: ignore[assignment]
     Figure = None  # type: ignore[assignment]
+    MaxNLocator = None  # type: ignore[assignment]
 
 
 class AnalysisChart(QWidget):
@@ -120,6 +122,8 @@ class AnalysisChart(QWidget):
         self._axis.set_title(title, color=tokens.text, fontsize=10, pad=8)
         if x_label:
             self._axis.set_xlabel(x_label, color=tokens.text_muted, fontsize=9)
+        if MaxNLocator is not None and all(float(x).is_integer() for x in xs):
+            self._axis.xaxis.set_major_locator(MaxNLocator(integer=True))
         if len(series) > 1:
             self._axis.legend(fontsize=7, frameon=False, labelcolor=tokens.text_muted)
         self._finish("lines")

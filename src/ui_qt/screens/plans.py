@@ -4,6 +4,7 @@ from dataclasses import asdict
 
 from ui_qt.models import RowTableModel
 from ui_qt.presenters import QtAppPresenter
+from ui_qt.presenters.financing_presenter import FINANCING_FIELDS, FinancingPresenter, FinancingSettings
 from ui_qt.presenters.planning_presenter import PlanningInput, PlanningPresenter
 from ui_qt.widgets import CompactLabel, InfoHint
 from ui_qt.widgets.analysis_chart import AnalysisChart
@@ -50,7 +51,7 @@ PLAN_FIELDS: tuple[tuple[str, str, str], ...] = (
 
 
 class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
-    """«Планы»: TCO по годам с ростом цен, амортизация и план замены оборудования."""
+    """«Планы»: TCO по годам, амортизация, план замены и финансирование (покупка/лизинг/аренда, штат, облако)."""
 
     def __init__(self, app_presenter: QtAppPresenter | None = None, parent: QWidget | None = None) -> None:  # type: ignore[valid-type]
         if QLineEdit is None:
@@ -58,6 +59,17 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         super().__init__(parent)
         self.presenter = PlanningPresenter(app_presenter)
         self.inputs: dict[str, QLineEdit] = {}  # type: ignore[valid-type]
+        self.financing_presenter = FinancingPresenter(self.presenter.app_presenter)
+        self.financing_inputs: dict[str, QLineEdit] = {}  # type: ignore[valid-type]
+        self.lease_model = RowTableModel(
+            columns=("title", "upfront", "monthly", "total", "pv"),
+            headers={"title": "Вариант", "upfront": "Сразу", "monthly": "В месяц", "total": "Всего", "pv": "Приведённо"},
+        )
+        self.staff_model = RowTableModel(columns=("name", "value"), headers={"name": "Показатель", "value": "Значение"})
+        self.local_cloud_model = RowTableModel(
+            columns=("year", "local", "cloud"),
+            headers={"year": "Год", "local": "Локально", "cloud": "Облако"},
+        )
         self.tco_model = RowTableModel(
             columns=("year", "opex", "electricity", "total", "discounted", "cumulative"),
             headers={
@@ -117,6 +129,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self.tabs.addTab(self._build_tco_tab(), "TCO по годам")
         self.tabs.addTab(self._build_amortization_tab(), "Амортизация")
         self.tabs.addTab(self._build_replacement_tab(), "План замены")
+        self.tabs.addTab(self._build_financing_tab(), "Финансирование")
 
     def _build_header(self) -> QWidget:  # type: ignore[valid-type]
         header = QFrame(self)
@@ -213,6 +226,88 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         layout.addWidget(self.replacement_table)
         return page
 
+    def _build_financing_tab(self) -> QWidget:  # type: ignore[valid-type]
+        page, layout = self._tab_page()
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(6)
+        for index, (key, label, tooltip) in enumerate(FINANCING_FIELDS):
+            line = QLineEdit(page)
+            line.setMinimumHeight(28)
+            line.setToolTip(tooltip)
+            self.financing_inputs[key] = line
+            row, column = divmod(index, 3)
+            caption = CompactLabel(label, page)
+            caption.setToolTip(tooltip)
+            grid.addWidget(caption, row, column * 2)
+            grid.addWidget(line, row, column * 2 + 1)
+        for column in (1, 3, 5):
+            grid.setColumnStretch(column, 1)
+        layout.addLayout(grid)
+
+        layout.addWidget(CompactLabel("Покупка, лизинг или аренда техники", page))
+        self.lease_note = self._note(page)
+        layout.addWidget(self.lease_note)
+        self.lease_chart = AnalysisChart(page)
+        layout.addWidget(self.lease_chart)
+        self.lease_table = self._table(self.lease_model, page, 130)
+        layout.addWidget(self.lease_table)
+
+        layout.addWidget(CompactLabel("Свой ИТ-штат или аутсорсинг", page))
+        self.staff_note = self._note(page)
+        layout.addWidget(self.staff_note)
+        self.staff_table = self._table(self.staff_model, page, 170)
+        layout.addWidget(self.staff_table)
+
+        layout.addWidget(CompactLabel("Локальная инфраструктура или облако", page))
+        self.local_cloud_note = self._note(page)
+        layout.addWidget(self.local_cloud_note)
+        self.local_cloud_chart = AnalysisChart(page)
+        layout.addWidget(self.local_cloud_chart)
+        self.local_cloud_table = self._table(self.local_cloud_model, page, 200)
+        layout.addWidget(self.local_cloud_table)
+        return page
+
+    def read_financing_settings(self) -> FinancingSettings:
+        payload = {}
+        for key, line in self.financing_inputs.items():
+            text = line.text().replace(" ", "").replace(",", ".")
+            if text:
+                payload[key] = text
+        return FinancingSettings.from_mapping(payload)
+
+    def _apply_financing_settings(self, settings: FinancingSettings) -> None:
+        for key, value in asdict(settings).items():
+            if key in self.financing_inputs:
+                self.financing_inputs[key].setText(f"{value:g}" if isinstance(value, float) else str(value))
+
+    def _sync_financing(self, values: PlanningInput, save: bool) -> None:
+        settings = self.read_financing_settings()
+        if save:
+            self.financing_presenter.save_settings(settings)
+        view = self.financing_presenter.build(self.presenter.components, values, settings)
+        self.last_financing = view
+        self.lease_model.replace_rows(self.financing_presenter.lease_rows(view))
+        self.lease_note.setText(self.financing_presenter.lease_text(view))
+        options = view.lease_buy.options
+        self.lease_chart.show_lines(
+            list(range(len(options[0].curve))),
+            [(option.title, option.curve) for option in options],
+            "Накопленные затраты (приведённо)",
+            x_label="Год",
+        )
+        self.staff_model.replace_rows(self.financing_presenter.staff_rows(view))
+        self.staff_note.setText(self.financing_presenter.staff_text(view))
+        self.local_cloud_model.replace_rows(self.financing_presenter.local_cloud_rows(view))
+        self.local_cloud_note.setText(self.financing_presenter.local_cloud_text(view))
+        result = view.local_cloud
+        self.local_cloud_chart.show_lines(
+            list(range(len(result.local_curve))),
+            [("Локально", result.local_curve), ("Облако", result.cloud_curve)],
+            "Локально или облако: накопленно",
+            x_label="Год",
+        )
+
     def _build_actions(self) -> QHBoxLayout:  # type: ignore[valid-type]
         row = QHBoxLayout()
         self.from_selection_button = QPushButton("Из выбора", self)
@@ -235,7 +330,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self._recalc_timer.setSingleShot(True)
         self._recalc_timer.setInterval(300)
         self._recalc_timer.timeout.connect(self.calculate)
-        for line in self.inputs.values():
+        for line in [*self.inputs.values(), *self.financing_inputs.values()]:
             line.textEdited.connect(lambda _text: self._recalc_timer.start())
 
     def refresh_data(self) -> None:
@@ -244,6 +339,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         if values.one_time == 0 and values.opex_annual == 0 and values.electricity_annual == 0:
             values = self.presenter.load_selection(values)
         self._apply_input(values)
+        self._apply_financing_settings(self.financing_presenter.saved_settings())
         self.calculate(save=False)
 
     def load_from_selection(self) -> None:
@@ -273,6 +369,7 @@ class PlansScreen(QWidget):  # type: ignore[misc,valid-type]
         self._sync_tco(values)
         self._sync_amortization(values)
         self._sync_replacement(values)
+        self._sync_financing(values, save)
         self._sync_extra_tabs(values)
         self.status_label.setText("Рассчитано" if values.one_time or values.opex_annual or values.electricity_annual else "Нет данных")
 

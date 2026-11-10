@@ -1439,8 +1439,18 @@ class QtAppPresenter:
         return presenter.report_section(values)
 
     def extra_report_sections(self) -> list[tuple[str, dict[str, Any]]]:
-        """Further report sections (financing, licenses); empty until those screens add them."""
-        return []
+        """Further report sections that live on the «Планы» screen (financing, licenses)."""
+        from ui_qt.presenters.financing_presenter import FinancingPresenter
+        from ui_qt.presenters.planning_presenter import PlanningPresenter
+
+        sections: list[tuple[str, dict[str, Any]]] = []
+        planning = PlanningPresenter(self)
+        values = planning.load_selection(planning.saved_input())
+        if planning.source_status == "ok":
+            financing = FinancingPresenter(self)
+            view = financing.build(planning.components, values, financing.saved_settings())
+            sections.append(("Варианты финансирования и эксплуатации", financing.report_section(view)))
+        return sections
 
     def open_generated_reports_folder(self) -> Path:
         export_root = self.generated_reports_dir()
