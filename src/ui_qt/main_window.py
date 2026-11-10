@@ -18,6 +18,7 @@ from ui_qt.screens import (
     EnergyScreen,
     ExportScreen,
     NpvScreen,
+    PlansScreen,
     PlaceholderScreen,
     SoftwareWorkspaceScreen,
     TechnicalWorkspaceScreen,
@@ -136,6 +137,8 @@ class QtMainWindow(QMainWindow):
                 self._screen_factories[route.route_id] = lambda: EnergyScreen(self.presenter)
             elif route.route_id == "npv":
                 self._screen_factories[route.route_id] = lambda: NpvScreen(self.presenter)
+            elif route.route_id == "plans":
+                self._screen_factories[route.route_id] = lambda: PlansScreen(self.presenter)
             elif route.route_id == "export":
                 self._screen_factories[route.route_id] = lambda: ExportScreen(self.presenter)
             else:

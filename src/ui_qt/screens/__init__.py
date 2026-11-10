@@ -7,6 +7,7 @@ _SCREEN_MODULES = {
     "ExportScreen": "ui_qt.screens.export",
     "NpvScreen": "ui_qt.screens.npv",
     "PlaceholderScreen": "ui_qt.screens.placeholder_screen",
+    "PlansScreen": "ui_qt.screens.plans",
     "SoftwareWorkspaceScreen": "ui_qt.screens.software_workspace",
     "TechnicalWorkspaceScreen": "ui_qt.screens.technical_workspace",
 }

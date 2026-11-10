@@ -83,6 +83,16 @@ ROOT_ROUTES: tuple[RootRoute, ...] = (
         ),
     ),
     RootRoute(
+        route_id="plans",
+        label="Планы",
+        title="Планы и бюджет",
+        status="Финансы по годам",
+        details=(
+            "TCO по годам с ростом цен, амортизация и план замены оборудования "
+            "для итоговой Hybrid-конфигурации."
+        ),
+    ),
+    RootRoute(
         route_id="export",
         label="Экспорт",
         title="Экспорт",

@@ -6,7 +6,7 @@ def test_root_routes_keep_expected_sections_and_short_labels():
     labels = [route.label for route in ROOT_ROUTES]
     titles = [route.title for route in ROOT_ROUTES]
 
-    assert labels == ["ПО", "ТО", "Каталог", "Компоненты", "Энергия", "NPV", "Экспорт"]
+    assert labels == ["ПО", "ТО", "Каталог", "Компоненты", "Энергия", "NPV", "Планы", "Экспорт"]
     assert titles == [
         "Программное обеспечение",
         "Техническое обеспечение",
@@ -14,6 +14,7 @@ def test_root_routes_keep_expected_sections_and_short_labels():
         "Редактор компонентов",
         "Электроэнергия",
         "NPV-анализ",
+        "Планы и бюджет",
         "Экспорт",
     ]
     assert all(count_words(route.label) <= 10 for route in ROOT_ROUTES)
