@@ -30,9 +30,10 @@ def test_export_presenter_builds_decision_report_files(tmp_path: Path):
         "dashboard",
         "sensitivity_dashboard",
         "sensitivity_json",
+        "docx",
     } <= set(paths)
     assert all(path.exists() for path in paths.values())
-    assert presenter.summary().last_files == 7
+    assert presenter.summary().last_files == 8
     assert "Сводка экспорта" in presenter.dashboard_text()
 
 

@@ -34,6 +34,7 @@ from infrastructure.exporters.decision_report_exporter import (
     export_decision_report_markdown,
     export_solution_component_csv,
 )
+from infrastructure.exporters.decision_report_docx import export_decision_report_docx
 from infrastructure.exporters.interactive_dashboard_exporter import export_interactive_dashboard
 from infrastructure.exporters.sensitivity_dashboard_exporter import (
     export_decision_sensitivity_dashboard,
@@ -1316,6 +1317,9 @@ class QtAppPresenter:
                     self._npv_markdown(),
                 )
             }
+        elif mode == "word_report":
+            report = self._build_decision_report_snapshot()
+            paths = {"docx": self._export_decision_report_docx(report, export_root / "decision_report.docx")}
         elif mode == "interactive_dashboard":
             report = self._build_decision_report_snapshot()
             paths = {
@@ -1395,9 +1399,48 @@ class QtAppPresenter:
                 report,
                 export_root / "decision_sensitivity.json",
             ),
+            "docx": self._export_decision_report_docx(report, export_root / "decision_report.docx"),
         }
         self._record_export_paths("full_decision_report", paths)
         return paths
+
+    def _export_decision_report_docx(self, report: Mapping[str, Any], path: Path) -> Path:
+        return export_decision_report_docx(
+            report,
+            path,
+            risk_section=self.npv_risk_report_section(),
+            plans_section=self.plans_report_section(),
+            extra_sections=self.extra_report_sections(),
+        )
+
+    def npv_risk_report_section(self) -> dict[str, Any] | None:
+        """IRR/PI/payback, tornado and Monte Carlo for the last saved NPV inputs."""
+        if not self.get_npv_report():
+            return None
+        inputs = self.get_npv_inputs()
+        cash_flows = [self._finite_float(value, 0.0) for value in inputs.get("cash_flows", [])]
+        if not cash_flows:
+            return None
+        from ui_qt.presenters.npv_risk_presenter import NpvRiskPresenter
+
+        rate = self._finite_float(inputs.get("discount_rate"), 0.1)
+        presenter = NpvRiskPresenter()
+        view = presenter.build(self._finite_float(inputs.get("investment"), 0.0), cash_flows, rate)
+        return presenter.report_section(view, rate)
+
+    def plans_report_section(self) -> dict[str, Any] | None:
+        """TCO by years, amortization and replacement plan with the settings of the «Планы» screen."""
+        from ui_qt.presenters.planning_presenter import PlanningPresenter
+
+        presenter = PlanningPresenter(self)
+        values = presenter.load_selection(presenter.saved_input())
+        if presenter.source_status != "ok":
+            return None
+        return presenter.report_section(values)
+
+    def extra_report_sections(self) -> list[tuple[str, dict[str, Any]]]:
+        """Further report sections (financing, licenses); empty until those screens add them."""
+        return []
 
     def open_generated_reports_folder(self) -> Path:
         export_root = self.generated_reports_dir()

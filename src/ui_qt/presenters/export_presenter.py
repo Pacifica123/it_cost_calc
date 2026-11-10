@@ -33,7 +33,12 @@ class ExportPresenter:
         ExportMode(
             "full_decision_report",
             "Полный отчёт",
-            "JSON, Markdown, CSV, интерактивный дашборд и сценарный анализ чувствительности.",
+            "JSON, Markdown, Word, CSV, интерактивный дашборд и сценарный анализ чувствительности.",
+        ),
+        ExportMode(
+            "word_report",
+            "Отчёт Word",
+            "DOCX: итоговый отчёт, доходность и риск NPV, планы по годам. Открывается в Word и LibreOffice.",
         ),
         ExportMode(
             "interactive_dashboard",
